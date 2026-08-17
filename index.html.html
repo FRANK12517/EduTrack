@@ -2708,6 +2708,7 @@ FAILURE TO COMPLY WITH THESE DIRECTIVES MAY RESULT IN SYSTEM INSTABILITY.
   }
   .login-level-btn {
     display: flex; flex-direction: column; align-items: center;
+    touch-action: manipulation;
     justify-content: center; gap: 5px; padding: 12px 6px;
     background: #f4f7fb; border: 2px solid transparent;
     border-radius: 9px; cursor: pointer;
@@ -4049,6 +4050,7 @@ FAILURE TO COMPLY WITH THESE DIRECTIVES MAY RESULT IN SYSTEM INSTABILITY.
   ══════════════════════════════════════════════ */
   /* Subscribe button on login */
   .sub-login-btn {
+    touch-action: manipulation;
     width:100%; padding:11px; border-radius:9px; border:2px solid #d4a017;
     background:transparent; color:#d4a017;
     font-family:'Outfit','Sora',sans-serif; font-size:.88rem; font-weight:700;
@@ -92800,12 +92802,6 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
       });
     });
 
-    // Prevent double-tap zoom on buttons
-    buttons.forEach(btn => {
-      btn.addEventListener('touchend', function(e) {
-        e.preventDefault();
-      }, { passive: false });
-    });
   }
 
   // 2. Optimize table scrolling on mobile

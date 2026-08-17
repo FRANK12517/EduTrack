@@ -2779,6 +2779,7 @@ FAILURE TO COMPLY WITH THESE DIRECTIVES MAY RESULT IN SYSTEM INSTABILITY.
   @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
   .login-enter-btn {
     width:100%; padding:15px; border-radius:9px; border:none;
+    touch-action: manipulation;
     background: linear-gradient(135deg, #3dbdbd 0%, #2a9b9b 100%);
     color:#fff; font-family:'Outfit','Sora',sans-serif;
     font-size:.95rem; font-weight:700; letter-spacing:0.3px;
@@ -5253,7 +5254,7 @@ td input, td select, td textarea, td button {
     <!-- AI_PROTECTED_ZONE_END: LOGIN_PAGE_COMPONENTS -->
 
     <!-- Login Button -->
-    <button class="login-enter-btn" data-ai-protected="true" data-ai-protected="true" id="v43LoginBtn" onclick="EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)">
+    <button class="login-enter-btn" data-ai-protected="true" data-ai-protected="true" id="v43LoginBtn" type="button" onclick="EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)">
       🔐 Enter System
     </button>
 

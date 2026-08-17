@@ -25148,6 +25148,8 @@ const V43_CONFIG = {
 
 let v43CurrentLevel = null;
 let v43SelectedPmsRole = null;
+const V43_GENERIC_LOGIN_ERROR = 'incorrect staff ID or access code';
+let v43LoginInProgress = false;
 
 /* AI_PROTECTED_ZONE_START: LOGIN_LOGIC_FUNCTIONS */
 function v43SelectLevel(level) {
@@ -25447,6 +25449,15 @@ window.v43GetActiveDistrictRoles = v43GetActiveDistrictRoles;
 window.v43PopulateDistrictRoles = v43PopulateDistrictRoles;
 window.v43ResetRoleField = v43ResetRoleField;
 
+function v43IsAuthorizedLoginRole(level, role, region, district) {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  if (!normalizedRole || !V43_CONFIG.roles[level]) return false;
+  if (level === 'DISTRICT' && typeof v43GetActiveDistrictRoles === 'function') {
+    return v43GetActiveDistrictRoles(region, district).some(r => String(r || '').trim().toLowerCase() === normalizedRole);
+  }
+  return V43_CONFIG.roles[level].some(r => String(r || '').trim().toLowerCase() === normalizedRole);
+}
+
 function v43ShowError(msg) {
   const el = document.getElementById('v43LoginError');
   el.textContent = msg; el.style.display = 'block';
@@ -25482,7 +25493,7 @@ function v43HideError() {
 //  it deliberately never says which of the four credentials was wrong.
 // ═══════════════════════════════════════════════════════════════════
 function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
-  const GENERIC_FAIL = { ok: false, message: 'Incorrect Staff ID or Access Code' };
+  const GENERIC_FAIL = { ok: false, message: V43_GENERIC_LOGIN_ERROR };
   try {
     const code = String(accessCode || '').trim();
     const sid  = String(staffId || '').trim();
@@ -25565,7 +25576,7 @@ function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
 
 function v43DoLogin() {
   if (!v43CurrentLevel) {
-    v43ShowError('⚠ Please select your access level to continue.');
+    v43ShowError(V43_GENERIC_LOGIN_ERROR);
     return;
   }
 
@@ -25576,14 +25587,15 @@ function v43DoLogin() {
   const region   = val('v43-region') || '';
   const district = val('v43-district') || '';
 
-  if (!role) { v43ShowError('⚠ Please select your role.'); return; }
+  if (!role) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
+  if (!v43IsAuthorizedLoginRole(v43CurrentLevel, role, region, district)) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
   if (['REGIONAL','DISTRICT','SCHOOL'].includes(v43CurrentLevel) && !region) {
-    v43ShowError('⚠ Please select your region.'); return;
+    v43ShowError(V43_GENERIC_LOGIN_ERROR); return;
   }
   if (['DISTRICT','SCHOOL'].includes(v43CurrentLevel) && !district) {
-    v43ShowError('⚠ Please select your district.'); return;
+    v43ShowError(V43_GENERIC_LOGIN_ERROR); return;
   }
-  if (!staffId) { v43ShowError('⚠ Please enter your Staff ID.'); return; }
+  if (!staffId) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
 
   // PART 6 — SCHOOL level only: Region + District + School Access Code +
   // Staff ID must all validate before the existing login flow below is
@@ -25591,9 +25603,9 @@ function v43DoLogin() {
   // Parent/Student) is completely untouched by this block.
   if (v43CurrentLevel === 'SCHOOL') {
     const schoolAccessCode = val('v43-school-access-code');
-    if (!schoolAccessCode) { v43ShowError('⚠ Please enter your School Access Code.'); return; }
+    if (!schoolAccessCode) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
     const schoolAuth = v43ValidateSchoolLogin(region, district, schoolAccessCode, staffId);
-    if (!schoolAuth.ok) { v43ShowError(schoolAuth.message); return; }
+    if (!schoolAuth.ok) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
     // Resolved context available to anything downstream that wants it —
     // additive only, nothing existing reads or requires this.
     window._v43SchoolLoginContext = schoolAuth;
@@ -25603,11 +25615,14 @@ function v43DoLogin() {
   const pin = val('v43-login-pin');
   const savedPin = localStorage.getItem('ems_access_pin');
   if (savedPin && pin !== savedPin) {
-    v43ShowError('⚠ Incorrect PIN. Please try again.'); return;
+    v43ShowError(V43_GENERIC_LOGIN_ERROR); return;
   }
   if (!savedPin && pin.length === 4) {
     localStorage.setItem('ems_access_pin', pin);
   }
+
+  if (v43LoginInProgress) return;
+  v43LoginInProgress = true;
 
   // Save to localStorage for the main system
   const levelToRole = { NATIONAL:'national', REGIONAL:'regional', DISTRICT:'district', SCHOOL:'school' };
@@ -25689,6 +25704,7 @@ function v43DoLogin() {
           } else if (typeof showPageById === 'function') {
             showPageById('dashboard');
           }
+          v43LoginInProgress = false;
         }
       }, 250); // v314: was 600ms — trimmed to match global-standard transition speed
     }, 500); // v314: was 1400ms — Access Granted now shows briefly instead of lingering
@@ -149733,7 +149749,7 @@ window.SRG_ANNUAL = (function(){
   function fieldSelect(id,label,options,disabled){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var x=document.createElement('select');x.id=id;x.className='v43-field-select';x.disabled=!!disabled;var ph=document.createElement('option');ph.value='';ph.textContent=disabled?'— Select region first —':'— Choose '+label.replace('Select Your ','')+' —';x.appendChild(ph);(options||[]).forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;x.appendChild(o);});w.appendChild(x);return w;}
 function fieldInput(id,label,placeholder,type){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var i=document.createElement('input');i.id=id;i.type=type||'text';i.className='v43-field-input';i.placeholder=placeholder;i.autocomplete='off';w.appendChild(i);return w;}
 function selectSchoolLevel(ev){if(ev){ev.preventDefault();ev.stopPropagation();}document.querySelectorAll('.login-level-btn').forEach(function(b){var a=b.dataset.level==='SCHOOL';b.classList.toggle('active',a);b.setAttribute('aria-pressed',a?'true':'false');});var c=document.getElementById('v43DynamicFields');if(!c)return;c.innerHTML='';var rg=fieldSelect('v43-region','Select Your Region',Object.keys(window.GH_REGIONS_DISTRICTS||{}),false),rs=rg.querySelector('select'),dg=fieldSelect('v43-district','Select Your District',[],true),ds=dg.querySelector('select');rs.addEventListener('change',function(){ds.innerHTML='';var p=document.createElement('option');p.value='';p.textContent=this.value?'— Choose District —':'— Select region first —';ds.appendChild(p);(window.GH_REGIONS_DISTRICTS[this.value]||[]).slice().sort().forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;ds.appendChild(o);});ds.disabled=!this.value;});c.appendChild(rg);c.appendChild(dg);c.appendChild(fieldInput('v43-school-access-code','School Access Code',"Enter your school's Access Code"));c.appendChild(fieldInput('v43-staffId','Staff ID','Enter your Staff ID'));var pin=document.getElementById('v43-pin-section');if(pin)pin.style.display='';}
-function schoolLogin(ev){if(ev){ev.preventDefault();ev.stopPropagation();}var v=function(id){var e=document.getElementById(id);return e?String(e.value||'').trim():'';};var r=window.v43ValidateSchoolLogin(v('v43-region'),v('v43-district'),v('v43-school-access-code'),v('v43-staffId'));if(!r.ok){var e=document.getElementById('v43LoginError');if(e){e.textContent=GENERIC_FAIL;e.style.display='block';e.classList.add('show');}return false;}localStorage.setItem('ems_login_role','school');localStorage.setItem('v43_login_level','SCHOOL');localStorage.setItem('v43_login_staffid',v('v43-staffId'));localStorage.setItem('ems_login_region',r.school.region);localStorage.setItem('ems_login_district',r.school.district);var m=document.getElementById('loginSuccessMsg'),o=document.getElementById('loginSuccessOverlay');if(m)m.textContent='SCHOOL | '+v('v43-staffId');if(o)o.classList.add('show');return true;}
+function schoolLogin(ev){if(ev){ev.preventDefault();ev.stopPropagation();}return v43DoLogin();}
 window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshLifecycle, generateSchoolAccessCode:strictGenerate, genericFailure:GENERIC_FAIL, selectSchoolLevel:selectSchoolLevel, schoolLogin:schoolLogin };
 })();
 </script>

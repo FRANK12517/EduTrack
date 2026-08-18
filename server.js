@@ -34,6 +34,11 @@ function parsePaymentPlans() {
   return {};
 }
 const requestLimits = new Map();
+const aiUsage = new Map();
+const AI_ROLE_LIMITS = Object.freeze({ DEVELOPER_ROOT: 60, SUPER_ADMIN: 30, NATIONAL: 20, REGIONAL: 15, DISTRICT: 12, SCHOOL: 10, TEACHER: 8, PARENT: 5, STUDENT: 5 });
+const AI_MAX_PROMPT_CHARS = 12000;
+const AI_MAX_CONTEXT_ITEMS = 5;
+const PROMPT_INJECTION_PATTERNS = Object.freeze([/ignore\s+(all|any|the|previous)\s+instructions/i, /reveal\s+(the\s+)?system\s+prompt/i, /act\s+as\s+(an?\s+)?administrator/i, /disable\s+security/i, /call\s+(this\s+)?function\s+without\s+authorization/i, /override\s+(system|developer)\s+instructions/i]);
 
 function ensureData() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -149,9 +154,23 @@ function validateText(value, { required = false, max = 200, pattern = null } = {
   if (!text || text.length > max || (pattern && !pattern.test(text))) return null;
   return text;
 }
+function correlationId(req) { return req.correlationId || (req.correlationId = randomToken(16)); }
 function auditSecurityEvent(db, action, req, extra = {}) {
-  db.audit.push({ id: id('audit'), action, at: new Date().toISOString(), ip: clientIp(req), ...extra });
+  const safe = { id: id('audit'), action, severity: extra.severity || 'medium', at: new Date().toISOString(), correlationId: correlationId(req), ip: clientIp(req), userAgent: String(req.headers['user-agent'] || '').slice(0, 300), ...extra };
+  delete safe.password; delete safe.token; delete safe.secret; delete safe.apiKey; delete safe.contentBase64; delete safe.prompt;
+  db.audit.push(safe);
 }
+function aiQuotaState(user) {
+  const key = user.id; const now = Date.now(); const existing = aiUsage.get(key);
+  if (!existing || now - existing.startedAt >= 60 * 60 * 1000) { const state = { startedAt: now, count: 0 }; aiUsage.set(key, state); return state; }
+  return existing;
+}
+function consumeAiQuota(user) {
+  const state = aiQuotaState(user); const limit = AI_ROLE_LIMITS[user.role] || 5;
+  if (state.count >= limit) return { allowed: false, limit };
+  state.count += 1; return { allowed: true, limit };
+}
+function containsPromptInjection(text) { return PROMPT_INJECTION_PATTERNS.some(pattern => pattern.test(String(text || ''))); }
 function allowedOrigin(req) {
   const origin = req.headers.origin;
   if (!origin) return null;
@@ -266,6 +285,7 @@ function applyTrustedPayment(db, { reference, user, plan, amount, currency, even
 
 async function handler(req, res) {
   const db = loadDb(); cleanup(db);
+  res.setHeader('X-Request-ID', correlationId(req));
   if (Buffer.byteLength(String(req.url || '')) > MAX_URL_BYTES) return json(res, 414, { error: 'Request URI too long' });
   if (!ALLOWED_METHODS.has(req.method)) return json(res, 405, { error: 'Method not allowed' }, { Allow: 'GET, POST, OPTIONS' });
   if (!applyCors(req, res)) { auditSecurityEvent(db, 'CORS_REJECTED', req, { endpoint: req.url }); saveDb(db); return json(res, 403, { error: 'Origin not allowed' }); }
@@ -286,8 +306,8 @@ async function handler(req, res) {
     const valid = !!user && !locked && verifyPassword(password, user.passwordHash) && verifyPassword(accessCode, user.accessCodeHash);
     if (!valid) {
       registerFailure(limitKey(req, 'login'), LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT);
-      if (user) { user.failedLoginCount = (user.failedLoginCount || 0) + 1; if (user.failedLoginCount >= LOGIN_LIMIT.maxFailures) user.lockedUntil = new Date(Date.now() + LOGIN_LIMIT.blockMs).toISOString(); }
-      db.audit.push({ id: id('audit'), action: 'LOGIN_REJECTED', at: new Date().toISOString(), ip: clientIp(req) }); saveDb(db);
+      if (user) { user.failedLoginCount = (user.failedLoginCount || 0) + 1; if (user.failedLoginCount >= LOGIN_LIMIT.maxFailures) { user.lockedUntil = new Date(Date.now() + LOGIN_LIMIT.blockMs).toISOString(); auditSecurityEvent(db, 'ACCOUNT_LOCKOUT', req, { userId: user.id, severity: 'high' }); } }
+      auditSecurityEvent(db, 'LOGIN_REJECTED', req, { severity: 'medium' }); saveDb(db);
       return json(res, 401, { error: GENERIC_AUTH_ERROR });
     }
     clearLimit(limitKey(req, 'login')); clearLimit(accountKey); user.failedLoginCount = 0; user.lockedUntil = null;
@@ -306,7 +326,7 @@ async function handler(req, res) {
   }
   if (req.method === 'POST' && req.url === '/api/auth/logout') {
     if (!requireSameOrigin(req, res)) return;
-    const token = parseCookies(req)[COOKIE_NAME]; db.sessions = db.sessions.filter(s => s.tokenHash !== tokenHash(token)); saveDb(db);
+    const token = parseCookies(req)[COOKIE_NAME]; db.sessions = db.sessions.filter(s => s.tokenHash !== tokenHash(token)); auditSecurityEvent(db, 'LOGOUT', req, { result: 'success' }); saveDb(db);
     return json(res, 200, { ok: true }, { 'Set-Cookie': cookie(COOKIE_NAME, '', 0) });
   }
   if (req.method === 'POST' && req.url === '/api/auth/password-reset/request') {
@@ -377,7 +397,7 @@ async function handler(req, res) {
     const result = await response.json(); const data = result && result.data;
     const customerEmail = data && data.customer && String(data.customer.email || '').toLowerCase();
     if (!result.status || !data || data.status !== 'success' || Number(data.amount) !== intent.amount || String(data.currency).toUpperCase() !== String(intent.currency).toUpperCase() || (customerEmail && customerEmail !== auth.user.email.toLowerCase())) return json(res, 400, { error: 'Payment verification failed' });
-    intent.status = 'verified'; const applied = applyTrustedPayment(db, { reference, user: auth.user, plan: planFor(intent.planId), amount: intent.amount, currency: intent.currency }); saveDb(db); auditSecurityEvent(db, 'PAYMENT_VERIFIED', req, { userId: auth.user.id, reference }); saveDb(db); return json(res, 200, { ok: true, reference, status: applied.duplicate ? 'already_processed' : 'verified' });
+    intent.status = 'verified'; const applied = applyTrustedPayment(db, { reference, user: auth.user, plan: planFor(intent.planId), amount: intent.amount, currency: intent.currency }); auditSecurityEvent(db, 'PAYMENT_VERIFIED', req, { userId: auth.user.id, reference, result: 'success' }); auditSecurityEvent(db, applied.duplicate ? 'PAYMENT_DUPLICATE' : 'SUBSCRIPTION_ACTIVATED', req, { userId: auth.user.id, reference }); saveDb(db); return json(res, 200, { ok: true, reference, status: applied.duplicate ? 'already_processed' : 'verified' });
   }
   if (req.method === 'POST' && req.url === '/api/payments/paystack/webhook') {
     const secret = process.env.PAYSTACK_WEBHOOK_SECRET || process.env.PAYSTACK_SECRET_KEY; const signature = String(req.headers['x-paystack-signature'] || ''); if (!secret || !signature) return json(res, 503, { error: 'Webhook verification unavailable' });
@@ -389,7 +409,30 @@ async function handler(req, res) {
     if (db.paymentEvents.some(item => item.eventId === event.id || item.reference === reference) || db.transactions.some(tx => tx.reference === reference)) return json(res, 200, { ok: true, status: 'already_processed' });
     const user = db.users.find(item => item.id === intent.userId && item.active); const plan = planFor(intent.planId);
     if (!user || !plan || Number(event.data.amount) !== plan.amount || String(event.data.currency).toUpperCase() !== String(plan.currency).toUpperCase()) return json(res, 400, { error: 'Payment verification failed' });
-    applyTrustedPayment(db, { reference, user, plan, amount: plan.amount, currency: plan.currency, eventId: validateText(event.id, { max: 160, pattern: /^[A-Za-z0-9._:-]+$/ }) || reference }); auditSecurityEvent(db, 'PAYMENT_WEBHOOK_ACCEPTED', req, { userId: user.id, reference }); saveDb(db); return json(res, 200, { ok: true });
+    applyTrustedPayment(db, { reference, user, plan, amount: plan.amount, currency: plan.currency, eventId: validateText(event.id, { max: 160, pattern: /^[A-Za-z0-9._:-]+$/ }) || reference }); auditSecurityEvent(db, 'PAYMENT_WEBHOOK_ACCEPTED', req, { userId: user.id, reference, result: 'success' }); auditSecurityEvent(db, 'SUBSCRIPTION_RENEWED', req, { userId: user.id, reference }); saveDb(db); return json(res, 200, { ok: true });
+  }
+  if (req.method === 'POST' && req.url === '/api/ai/request') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = authorize(req, res, db); if (!auth) return;
+    let input; try { input = await body(req, 256 * 1024); } catch { auditSecurityEvent(db, 'AI_REQUEST_REJECTED', req, { userId: auth.user.id, reason: 'invalid_payload' }); saveDb(db); return json(res, 400, { error: 'AI request rejected' }); }
+    const keys = Object.keys(input || {}); const allowedKeys = new Set(['prompt', 'context']); if (keys.some(key => !allowedKeys.has(key))) { auditSecurityEvent(db, 'AI_REQUEST_REJECTED', req, { userId: auth.user.id, reason: 'unknown_parameter' }); saveDb(db); return json(res, 400, { error: 'AI request rejected' }); }
+    const prompt = validateText(input.prompt, { required: true, max: AI_MAX_PROMPT_CHARS }); const context = Array.isArray(input.context) ? input.context : [];
+    if (!prompt || context.length > AI_MAX_CONTEXT_ITEMS || context.some(item => typeof item !== 'string' || item.length > 20000) || containsPromptInjection([prompt, ...context].join('\\n'))) { auditSecurityEvent(db, 'AI_PROMPT_INJECTION', req, { userId: auth.user.id, severity: 'high', reason: 'untrusted_instruction_detected' }); saveDb(db); return json(res, 400, { error: 'AI request rejected' }); }
+    const quota = consumeAiQuota(auth.user); if (!quota.allowed) { auditSecurityEvent(db, 'AI_QUOTA_VIOLATION', req, { userId: auth.user.id, severity: 'high', role: auth.user.role }); saveDb(db); return json(res, 429, { error: 'AI request limit reached' }, { 'Retry-After': '3600' }); }
+    auditSecurityEvent(db, 'AI_REQUEST', req, { userId: auth.user.id, role: auth.user.role, contextItems: context.length }); saveDb(db);
+    if (!process.env.EDUTRACK_AI_PROVIDER) return json(res, 503, { error: 'AI service unavailable' });
+    return json(res, 503, { error: 'AI service unavailable' });
+  }
+  if (req.method === 'POST' && req.url === '/api/ai/tool') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = authorize(req, res, db); if (!auth) return;
+    let input; try { input = await body(req, 64 * 1024); } catch { return json(res, 400, { error: 'Tool request rejected' }); }
+    const keys = Object.keys(input || {}); if (keys.some(key => !['tool', 'arguments'].includes(key)) || typeof input.tool !== 'string' || !input.arguments || Array.isArray(input.arguments)) { auditSecurityEvent(db, 'AI_TOOL_AUTHORIZATION_FAILURE', req, { userId: auth.user.id, severity: 'high', reason: 'invalid_schema' }); saveDb(db); return json(res, 400, { error: 'Tool request rejected' }); }
+    auditSecurityEvent(db, 'AI_TOOL_AUTHORIZATION_FAILURE', req, { userId: auth.user.id, severity: 'high', reason: 'no_tools_enabled' }); saveDb(db); return json(res, 403, { error: 'Tool not permitted' });
+  }
+  if (req.method === 'GET' && req.url === '/api/admin/security-audit') {
+    const auth = authorize(req, res, db, { roles: ['DEVELOPER_ROOT'] }); if (!auth) return;
+    return json(res, 200, { events: db.audit.slice(-500).map(event => ({ id: event.id, action: event.action, severity: event.severity, at: event.at, correlationId: event.correlationId, userId: event.userId || null, role: event.role || null, result: event.result || null })) });
   }
   if (req.method === 'GET' && req.url === '/api/admin/summary') {
     const auth = authorize(req, res, db, { roles: ['DEVELOPER_ROOT', 'SUPER_ADMIN'], dashboard: 'super-admin' });

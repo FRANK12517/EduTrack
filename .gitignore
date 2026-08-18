@@ -2,4 +2,9 @@ data/edutrack.json
 data/edutrack.json.tmp
 data/uploads/
 .env
+.env.*
+*.log
+*.bak
+*.backup
+*.tmp
 node_modules/

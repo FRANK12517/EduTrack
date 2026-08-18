@@ -1,0 +1,12 @@
+{
+  "name": "edutrack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EduTrack static application with secure server-side authentication",
+  "scripts": {
+    "start": "node server.js",
+    "provision": "node server.js --provision",
+    "reset": "node server.js --reset",
+    "check": "node --check server.js && node --check privileged-auth.js"
+  }
+}

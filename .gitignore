@@ -1,0 +1,4 @@
+data/edutrack.json
+data/edutrack.json.tmp
+.env
+node_modules/

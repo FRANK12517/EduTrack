@@ -149795,7 +149795,9 @@ function schoolLogin(ev){
   var released=false;
   function release(){if(!released){released=true;window.__EDUTRACK_LOGIN_ACTION_LOCK=false;}}
   try{
-    var result=v43DoLogin();
+    // Call the window-level function so all later authentication wrappers
+    // (school tenancy, role handoff, session, and routing) remain authoritative.
+    var result=(typeof window.v43DoLogin === 'function' ? window.v43DoLogin() : v43DoLogin());
     // Validation failures leave the button enabled, so release immediately.
     // Successful authentication disables it; hold the lock until the existing
     // login flow restores the control after routing completes.

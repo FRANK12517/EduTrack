@@ -7,6 +7,11 @@
     "start": "node server.js",
     "provision": "node server.js --provision",
     "reset": "node server.js --reset",
-    "check": "node --check server.js && node --check privileged-auth.js"
+    "check": "node --check server.js && node --check privileged-auth.js && node --check test/protected-features.spec.js",
+    "test:protected": "node test/protected-features.spec.js",
+    "test": "npm run check && npm run test:protected"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }

@@ -149745,6 +149745,18 @@ window.SRG_ANNUAL = (function(){
       // do not create an authenticated session until v43DoLogin accepts role,
       // PIN, and its remaining checks below.
       window._v43SchoolLoginContext = result;
+      // School login has no visible role selector; use the already-authorized
+      // scoped staff role for the existing role gate without changing the UI.
+      var roleEl = document.getElementById('v43-role');
+      if (!roleEl) {
+        roleEl = document.createElement('input');
+        roleEl.type = 'hidden';
+        roleEl.id = 'v43-role';
+        document.body.appendChild(roleEl);
+      }
+      if (!String(roleEl.value || '').trim()) {
+        roleEl.value = String((result.teacher && result.teacher.role) || 'Headteacher');
+      }
     }
     var outcome = priorDoLogin.apply(this, arguments);
     if (isSchool) {

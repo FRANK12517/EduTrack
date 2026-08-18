@@ -57,6 +57,24 @@ async function run() {
 
     const session = await request('/api/auth/session', { headers: { cookie: sessionCookie } });
     assert.equal(session.status, 200);
+    const summary = await request('/api/admin/summary', { headers: { cookie: sessionCookie } });
+    assert.equal(summary.status, 200);
+    const forbidden = await request('/api/admin/summary', { headers: { cookie: 'edutrack_session=invalid' } });
+    assert.equal(forbidden.status, 401);
+    const corsRejected = await request('/api/health', { headers: { origin: 'https://attacker.invalid' } });
+    assert.equal(corsRejected.status, 403);
+    assert.equal(corsRejected.headers.get('access-control-allow-origin'), null);
+    const preflight = await request('/api/auth/login', { method: 'OPTIONS', headers: { origin: BASE, 'access-control-request-method': 'POST' } });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), BASE);
+    const methodRejected = await request('/api/auth/login', { method: 'PUT', headers: { origin: BASE } });
+    assert.equal(methodRejected.status, 405);
+    const traversal = await request('/.git/config');
+    assert.equal(traversal.status, 404);
+    const oversized = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'x'.repeat(9000), password: 'x', accessCode: 'x' }) });
+    assert.equal(oversized.status, 400);
+    const malformed = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'not-an-email', password: 'x', accessCode: 'x' }) });
+    assert.equal(malformed.status, 400);
     assert.equal((await jsonResponse(session)).user.role, 'DEVELOPER_ROOT');
 
     const csrf = await request('/api/auth/csrf', { headers: { cookie: sessionCookie } });
@@ -93,6 +111,9 @@ async function run() {
     const changed = await request('/api/auth/password-change', { method: 'POST', headers: { 'content-type': 'application/json', cookie: passwordChangeCookie, origin: BASE }, body: JSON.stringify({ currentPassword: PASSWORD, newPassword: 'new correct password' }) });
     assert.equal(changed.status, 200);
     assert.equal((await request('/api/auth/session', { headers: { cookie: passwordChangeCookie } })).status, 401);
+    const auditDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(auditDb.audit.some((event) => event.action === 'UNAUTHORIZED_API_ACCESS'));
+    assert.ok(auditDb.audit.some((event) => event.action === 'CORS_REJECTED'));
 
     const dbForReset = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     const user = dbForReset.users.find((record) => record.email === EMAIL);

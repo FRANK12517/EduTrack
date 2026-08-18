@@ -18,6 +18,11 @@ const GENERIC_AUTH_ERROR = 'Authentication failed';
 const GENERIC_RESET_MESSAGE = 'If the account is eligible, reset instructions will be sent.';
 const LOGIN_LIMIT = { windowMs: 15 * 60 * 1000, maxFailures: 8, blockMs: 15 * 60 * 1000 };
 const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60 * 1000 };
+const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_URL_BYTES = 8192;
+const ALLOWED_METHODS = new Set(['GET', 'POST', 'OPTIONS']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js']);
+const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const requestLimits = new Map();
 
 function ensureData() {
@@ -99,21 +104,68 @@ function authUser(req, db) {
   const user = db.users.find(u => u.id === session.userId && u.active);
   return user ? { user, session } : null;
 }
+function securityHeaders() {
+  const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', 'Content-Security-Policy': "default-src 'self' 'unsafe-inline' https: data:; frame-ancestors 'none'" };
+  if (process.env.NODE_ENV === 'production') headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
+  return headers;
+}
 function json(res, status, body, headers = {}) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', ...headers });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...securityHeaders(), ...headers });
   res.end(JSON.stringify(body));
 }
 function body(req) {
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => { raw += c; if (raw.length > 1e6) { req.destroy(); reject(new Error('Payload too large')); } });
+    req.on('data', c => { raw += c; if (Buffer.byteLength(raw) > MAX_BODY_BYTES) { reject(new Error('Payload too large')); req.destroy(); } });
     req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
     req.on('error', reject);
   });
 }
 function publicUser(user) { return { id: user.id, email: user.email, role: user.role, hierarchy: user.hierarchy, scope: user.scope }; }
 function roleContext(user) { return { role: user.role, hierarchy: user.hierarchy, scope: user.scope, dashboard: user.role === 'DEVELOPER_ROOT' ? 'developer-root' : user.role === 'SUPER_ADMIN' ? 'super-admin' : 'school' }; }
-function dashboardAllowed(user, dashboard) { return user.role === 'DEVELOPER_ROOT' || (user.role === 'SUPER_ADMIN' && dashboard === 'super-admin'); }
+function dashboardAllowed(user, dashboard) {
+  if (!user || !user.active) return false;
+  if (user.role === 'DEVELOPER_ROOT') return ['developer-root', 'super-admin'].includes(dashboard);
+  return user.role === 'SUPER_ADMIN' && dashboard === 'super-admin';
+}
+function validateText(value, { required = false, max = 200, pattern = null } = {}) {
+  if (value === undefined || value === null || value === '') return required ? null : '';
+  const text = String(value).trim();
+  if (!text || text.length > max || (pattern && !pattern.test(text))) return null;
+  return text;
+}
+function auditSecurityEvent(db, action, req, extra = {}) {
+  db.audit.push({ id: id('audit'), action, at: new Date().toISOString(), ip: clientIp(req), ...extra });
+}
+function allowedOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return null;
+  if (ALLOWED_ORIGINS.has(origin)) return origin;
+  if (process.env.NODE_ENV !== 'production') {
+    try { const parsed = new URL(origin); if (['http:', 'https:'].includes(parsed.protocol) && ['localhost', '127.0.0.1'].includes(parsed.hostname)) return origin; } catch {}
+  }
+  return null;
+}
+function applyCors(req, res) {
+  const origin = allowedOrigin(req);
+  if (req.headers.origin && !origin) return false;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
+  }
+  return true;
+}
+function authorize(req, res, db, { roles = [], dashboard = null } = {}) {
+  const auth = authUser(req, db);
+  if (!auth) { auditSecurityEvent(db, 'UNAUTHORIZED_API_ACCESS', req, { endpoint: req.url }); saveDb(db); json(res, 401, { error: 'Authentication required' }); return null; }
+  if (!auth.user.active || (roles.length && !roles.includes(auth.user.role)) || (dashboard && !dashboardAllowed(auth.user, dashboard))) {
+    auditSecurityEvent(db, 'FORBIDDEN_API_ACCESS', req, { userId: auth.user.id, endpoint: req.url, role: auth.user.role }); saveDb(db); json(res, 403, { error: 'Permission denied' }); return null;
+  }
+  return auth;
+}
 function clientIp(req) { return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim(); }
 function limitKey(req, suffix) { return `${clientIp(req)}:${suffix}`; }
 function checkLimit(key, config) {
@@ -149,12 +201,17 @@ function resetRecord(db, token) { return db.passwordResets.find(r => r.tokenHash
 
 async function handler(req, res) {
   const db = loadDb(); cleanup(db);
+  if (Buffer.byteLength(String(req.url || '')) > MAX_URL_BYTES) return json(res, 414, { error: 'Request URI too long' });
+  if (!ALLOWED_METHODS.has(req.method)) return json(res, 405, { error: 'Method not allowed' }, { Allow: 'GET, POST, OPTIONS' });
+  if (!applyCors(req, res)) { auditSecurityEvent(db, 'CORS_REJECTED', req, { endpoint: req.url }); saveDb(db); return json(res, 403, { error: 'Origin not allowed' }); }
+  if (req.method === 'OPTIONS') { res.writeHead(204, securityHeaders()); return res.end(); }
   if (req.method === 'GET' && req.url === '/api/health') return json(res, 200, { ok: true });
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
-    const identifier = String(input.email || input.staffId || '').trim().toLowerCase();
-    const password = String(input.password || input.pin || '');
-    const accessCode = String(input.accessCode || input.schoolAccessCode || input.pin || '');
+    const identifier = validateText(input.email || input.staffId, { required: true, max: 254, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ });
+    const password = validateText(input.password || input.pin, { required: true, max: 256 });
+    const accessCode = validateText(input.accessCode || input.schoolAccessCode || input.pin, { required: true, max: 256 });
+    if (!identifier || !password || !accessCode) return json(res, 400, { error: GENERIC_AUTH_ERROR });
     const ipState = checkLimit(limitKey(req, 'login'), LOGIN_LIMIT);
     const accountKey = limitKey(req, `account:${identifier || 'unknown'}`);
     const accountState = checkLimit(accountKey, LOGIN_LIMIT);
@@ -193,14 +250,14 @@ async function handler(req, res) {
     if (state.blocked) return json(res, 429, { message: GENERIC_RESET_MESSAGE }, { 'Retry-After': String(state.retryAfter) });
     let input; try { input = await body(req); } catch { return json(res, 400, { message: GENERIC_RESET_MESSAGE }); }
     registerFailure(key, RESET_LIMIT);
-    const identifier = String(input.email || '').trim().toLowerCase(); const user = db.users.find(u => u.active && u.email.toLowerCase() === identifier);
+    const identifier = validateText(input.email, { required: true, max: 254, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ }); const user = identifier && db.users.find(u => u.active && u.email.toLowerCase() === identifier);
     if (user) { const raw = randomToken(); db.passwordResets.push({ id: id('rst'), userId: user.id, tokenHash: tokenHash(raw), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + RESET_TTL_MS).toISOString(), usedAt: null }); }
     saveDb(db); return json(res, 202, { message: GENERIC_RESET_MESSAGE });
   }
   if (req.method === 'POST' && req.url === '/api/auth/password-reset/confirm') {
     if (!requireSameOrigin(req, res)) return;
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
-    const record = resetRecord(db, String(input.token || '')); const password = String(input.password || '');
+    const resetToken = validateText(input.token, { required: true, max: 512 }); const record = resetRecord(db, resetToken || ''); const password = validateText(input.password, { required: true, max: 256 }) || '';
     if (!record || password.length < 12) return json(res, 400, { error: 'Password reset could not be completed' });
     const user = db.users.find(u => u.id === record.userId && u.active); if (!user) return json(res, 400, { error: 'Password reset could not be completed' });
     user.passwordHash = hashPassword(password); user.failedLoginCount = 0; user.lockedUntil = null; record.usedAt = new Date().toISOString(); invalidateSessions(db, user.id); db.audit.push({ id: id('audit'), userId: user.id, action: 'PASSWORD_RESET_COMPLETED', at: new Date().toISOString() }); saveDb(db);
@@ -210,25 +267,29 @@ async function handler(req, res) {
     if (!requireSameOrigin(req, res)) return;
     const auth = authUser(req, db); if (!auth) return json(res, 401, { error: GENERIC_AUTH_ERROR });
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
-    if (!verifyPassword(String(input.currentPassword || ''), auth.user.passwordHash) || String(input.newPassword || '').length < 12) return json(res, 400, { error: 'Password change could not be completed' });
-    auth.user.passwordHash = hashPassword(String(input.newPassword)); invalidateSessions(db, auth.user.id); db.audit.push({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString() }); saveDb(db);
+    const currentPassword = validateText(input.currentPassword, { required: true, max: 256 }) || '';
+    const newPassword = validateText(input.newPassword, { required: true, max: 256 }) || '';
+    if (!verifyPassword(currentPassword, auth.user.passwordHash) || newPassword.length < 12) return json(res, 400, { error: 'Password change could not be completed' });
+    auth.user.passwordHash = hashPassword(newPassword); invalidateSessions(db, auth.user.id); db.audit.push({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString() }); saveDb(db);
     return json(res, 200, { ok: true }, { 'Set-Cookie': cookie(COOKIE_NAME, '', 0) });
   }
   if (req.method === 'GET' && req.url === '/api/admin/summary') {
-    const auth = authUser(req, db); if (!auth) return json(res, 401, { error: 'Authentication required' });
-    if (!dashboardAllowed(auth.user, auth.user.role === 'DEVELOPER_ROOT' ? 'developer-root' : 'super-admin')) return json(res, 403, { error: 'Permission denied' });
+    const auth = authorize(req, res, db, { roles: ['DEVELOPER_ROOT', 'SUPER_ADMIN'], dashboard: 'super-admin' });
+    if (!auth) return;
     return json(res, 200, { schools: db.schools.length, staff: db.staff.length, students: 0, transactions: db.transactions.length, subscriptions: db.subscriptions.length });
   }
   if (req.method === 'GET' && req.url === '/api/admin/authorized-hierarchies') {
-    const auth = authUser(req, db); if (!auth) return json(res, 401, { error: 'Authentication required' });
-    if (auth.user.role !== 'DEVELOPER_ROOT') return json(res, 403, { error: 'Permission denied' });
+    const auth = authorize(req, res, db, { roles: ['DEVELOPER_ROOT'] });
+    if (!auth) return;
     return json(res, 200, { role: auth.user.role, scope: auth.user.scope });
   }
   if (req.method === 'GET') {
-    const file = req.url === '/' ? '/index.html' : req.url.split('?')[0]; const safe = path.normalize(path.join(ROOT, file));
-    if (!safe.startsWith(ROOT) || !fs.existsSync(safe) || fs.statSync(safe).isDirectory()) return json(res, 404, { error: 'Not found' });
-    const ext = path.extname(safe); const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript' };
-    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', 'Content-Security-Policy': "default-src 'self' 'unsafe-inline' https: data:; frame-ancestors 'none'" }); return fs.createReadStream(safe).pipe(res);
+    const requested = req.url === '/' ? 'index.html' : decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
+    const safe = path.resolve(ROOT, requested);
+    const relative = path.relative(ROOT, safe);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || requested.includes('\\0') || requested.split('/').some(part => part.startsWith('.')) || !SAFE_PUBLIC_FILES.has(relative) || !fs.existsSync(safe) || fs.statSync(safe).isDirectory()) return json(res, 404, { error: 'Not found' });
+    const ext = path.extname(safe); const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', ...securityHeaders() }); return fs.createReadStream(safe).pipe(res);
   }
   json(res, 404, { error: 'Not found' });
 }

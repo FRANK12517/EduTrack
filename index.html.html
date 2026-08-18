@@ -5245,7 +5245,7 @@ td input, td select, td textarea, td button {
       <div class="login-group">
         <input id="v43-login-pin" type="password" maxlength="4" placeholder="Enter 4-digit PIN or leave blank"
           oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-          onkeydown="if(event.key==='Enter')v43DoLogin()"/>
+          onkeydown="if(event.key==='Enter')EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)"/>
       </div>
     </div>
 
@@ -149727,21 +149727,45 @@ window.SRG_ANNUAL = (function(){
     } catch(e) { return {ok:false,message:GENERIC_FAIL}; }
   };
 
-  // Preserve the existing six-card routing, but persist a strict school-scoped
-  // session after successful SCHOOL authentication.
+  // Preserve the existing six-card routing, but persist the strict school-scoped
+  // session only after the existing login flow accepts all credentials.
   var priorDoLogin = window.v43DoLogin;
   window.v43DoLogin = function(){
-    if (window.v43CurrentLevel === 'SCHOOL' || (typeof v43CurrentLevel !== 'undefined' && v43CurrentLevel === 'SCHOOL')) {
-      var get = function(id){ var el=document.getElementById(id); return el ? String(el.value||'').trim() : ''; };
-      var result = window.v43ValidateSchoolLogin(get('v43-region'), get('v43-district'), get('v43-school-access-code'), get('v43-staffId'));
-      if (!result.ok) { if (typeof v43ShowError === 'function') v43ShowError(GENERIC_FAIL); return; }
-      try {
-        localStorage.setItem('edutrack_staff_v3_session', JSON.stringify({teacherId:result.teacher.teacherId || null, staffId:result.teacher.staffId, role:get('v43-role') || result.teacher.role, schoolId:result.school.id, schoolName:result.school.name, region:result.school.region, district:result.school.district, loginAt:new Date().toISOString()}));
-        if (typeof CONFIG !== 'undefined') { CONFIG.schoolId = result.school.id; CONFIG.school = result.school.name; CONFIG.region = result.school.region; CONFIG.district = result.school.district; }
-        window._v43SchoolLoginContext = result;
-      } catch(e) { if (typeof v43ShowError === 'function') v43ShowError(GENERIC_FAIL); return; }
+    var isSchool = window.v43CurrentLevel === 'SCHOOL' || (typeof v43CurrentLevel !== 'undefined' && v43CurrentLevel === 'SCHOOL');
+    var get = function(id){ var el=document.getElementById(id); return el ? String(el.value||'').trim() : ''; };
+    var result = null;
+    if (isSchool) {
+      result = window.v43ValidateSchoolLogin(get('v43-region'), get('v43-district'), get('v43-school-access-code'), get('v43-staffId'));
+      if (!result.ok) {
+        try { localStorage.removeItem('edutrack_staff_v3_session'); } catch(e) {}
+        if (typeof v43ShowError === 'function') v43ShowError(GENERIC_FAIL);
+        return;
+      }
+      // Make the validated tenant context available to the existing flow, but
+      // do not create an authenticated session until v43DoLogin accepts role,
+      // PIN, and its remaining checks below.
+      window._v43SchoolLoginContext = result;
     }
-    return priorDoLogin.apply(this, arguments);
+    var outcome = priorDoLogin.apply(this, arguments);
+    if (isSchool) {
+      // v43DoLogin sets this only after all validation succeeds. A false value
+      // means the attempt failed and must not create a session or route.
+      if (typeof v43LoginInProgress !== 'undefined' && !v43LoginInProgress) {
+        try { localStorage.removeItem('edutrack_staff_v3_session'); } catch(e) {}
+        return outcome;
+      }
+      try {
+        var role = get('v43-role') || result.teacher.role || '';
+        var session = {teacherId:result.teacher.teacherId || null, staffId:result.teacher.staffId, role:role, schoolId:result.school.id, schoolName:result.school.name, region:result.school.region, district:result.school.district, authenticated:true, loginAt:new Date().toISOString()};
+        localStorage.setItem('edutrack_staff_v3_session', JSON.stringify(session));
+        if (typeof CONFIG !== 'undefined') { CONFIG.schoolId = result.school.id; CONFIG.school = result.school.name; CONFIG.region = result.school.region; CONFIG.district = result.school.district; }
+      } catch(e) {
+        try { localStorage.removeItem('edutrack_staff_v3_session'); } catch(ignore) {}
+        if (typeof v43ShowError === 'function') v43ShowError(GENERIC_FAIL);
+        return;
+      }
+    }
+    return outcome;
   };
 
   // Enforce expiry/code lifecycle on page load and before each login attempt.
@@ -149749,7 +149773,28 @@ window.SRG_ANNUAL = (function(){
   function fieldSelect(id,label,options,disabled){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var x=document.createElement('select');x.id=id;x.className='v43-field-select';x.disabled=!!disabled;var ph=document.createElement('option');ph.value='';ph.textContent=disabled?'— Select region first —':'— Choose '+label.replace('Select Your ','')+' —';x.appendChild(ph);(options||[]).forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;x.appendChild(o);});w.appendChild(x);return w;}
 function fieldInput(id,label,placeholder,type){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var i=document.createElement('input');i.id=id;i.type=type||'text';i.className='v43-field-input';i.placeholder=placeholder;i.autocomplete='off';w.appendChild(i);return w;}
 function selectSchoolLevel(ev){if(ev){ev.preventDefault();ev.stopPropagation();}document.querySelectorAll('.login-level-btn').forEach(function(b){var a=b.dataset.level==='SCHOOL';b.classList.toggle('active',a);b.setAttribute('aria-pressed',a?'true':'false');});var c=document.getElementById('v43DynamicFields');if(!c)return;c.innerHTML='';var rg=fieldSelect('v43-region','Select Your Region',Object.keys(window.GH_REGIONS_DISTRICTS||{}),false),rs=rg.querySelector('select'),dg=fieldSelect('v43-district','Select Your District',[],true),ds=dg.querySelector('select');rs.addEventListener('change',function(){ds.innerHTML='';var p=document.createElement('option');p.value='';p.textContent=this.value?'— Choose District —':'— Select region first —';ds.appendChild(p);(window.GH_REGIONS_DISTRICTS[this.value]||[]).slice().sort().forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;ds.appendChild(o);});ds.disabled=!this.value;});c.appendChild(rg);c.appendChild(dg);c.appendChild(fieldInput('v43-school-access-code','School Access Code',"Enter your school's Access Code"));c.appendChild(fieldInput('v43-staffId','Staff ID','Enter your Staff ID'));var pin=document.getElementById('v43-pin-section');if(pin)pin.style.display='';}
-function schoolLogin(ev){if(ev){ev.preventDefault();ev.stopPropagation();}return v43DoLogin();}
+function schoolLogin(ev){
+  // One authoritative action for mouse, touch, and keyboard activation.
+  // The button is type=button, so only cancel a real cancellable event.
+  if(ev && ev.cancelable) ev.preventDefault();
+  var btn=document.getElementById('v43LoginBtn');
+  if(window.__EDUTRACK_LOGIN_ACTION_LOCK || (btn && btn.disabled)) return false;
+  window.__EDUTRACK_LOGIN_ACTION_LOCK=true;
+  var released=false;
+  function release(){if(!released){released=true;window.__EDUTRACK_LOGIN_ACTION_LOCK=false;}}
+  try{
+    var result=v43DoLogin();
+    // Validation failures leave the button enabled, so release immediately.
+    // Successful authentication disables it; hold the lock until the existing
+    // login flow restores the control after routing completes.
+    var ticks=0;
+    (function waitForCompletion(){
+      if(!btn || !btn.disabled || ++ticks>120){release();return;}
+      setTimeout(waitForCompletion,50);
+    })();
+    return result;
+  }catch(e){release();throw e;}
+}
 window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshLifecycle, generateSchoolAccessCode:strictGenerate, genericFailure:GENERIC_FAIL, selectSchoolLevel:selectSchoolLevel, schoolLogin:schoolLogin };
 })();
 </script>
@@ -149787,26 +149832,27 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   'use strict';
   var FAIL={ok:false,message:'Incorrect Staff ID or Access Code.'};
   function norm(v){return String(v||'').replace(/\s+region$/i,'').trim().toLowerCase()}
+  function normDistrict(v){return String(v||'').trim().toLowerCase().replace(/[\/]+/g,' ').replace(/\s+/g,' ')}
   window.v43ValidateSchoolLogin=function(region,district,accessCode,staffId){
     try{
-      var code=String(accessCode||'').trim().toUpperCase(), sid=String(staffId||'').trim().toUpperCase();
+      var code=String(accessCode||'').trim(), sid=String(staffId||'').trim();
       if(!code||!sid)return FAIL;
       var keys=Object.keys(window.GH_REGIONS_DISTRICTS||{}), key=keys.find(function(k){return norm(k)===norm(region)});
       if(!key)return FAIL;
       var ds=window.GH_REGIONS_DISTRICTS[key]||[];
-      if(!district||ds.indexOf(district)===-1)return FAIL;
+      if(!district||!ds.some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;
       if(typeof window.sacRefreshExpiry==='function')window.sacRefreshExpiry();
       var reg=typeof window.sacReadRegistry==='function'?window.sacReadRegistry():[];
-      var ar=reg.find(function(r){return String(r&&r.accessCode||'').trim().toUpperCase()===code});
+      var ar=reg.find(function(r){return String(r&&r.accessCode||'').trim()===code});
       if(!ar||ar.status!=='ACTIVE')return FAIL;
       var schools=typeof window.subGetArr==='function'&&typeof window.SUB_KEYS!=='undefined'?window.subGetArr(window.SUB_KEYS.schools):JSON.parse(localStorage.getItem('sub_v60_schools')||'[]');
       var school=schools.find(function(x){return x&&String(x.id)===String(ar.schoolId)});
       if(!school)return FAIL;
       if(typeof window.subIsLocked==='function'&&window.subIsLocked(school))return FAIL;
-      if(norm(school.region)!==norm(key)||String(school.district||'').trim().toLowerCase()!==String(district).trim().toLowerCase())return FAIL;
+      if(norm(school.region)!==norm(key)||normDistrict(school.district)!==normDistrict(district))return FAIL;
       if(typeof window.loadTeacherData==='function')window.loadTeacherData();
       var tl=(typeof window.TEACHERS!=='undefined'&&Array.isArray(window.TEACHERS))?window.TEACHERS:[];
-      var teacher=tl.find(function(t){return String(t&& (t.staffId||t.teacher_staff_id)||'').trim().toUpperCase()===sid});
+      var teacher=tl.find(function(t){return String(t&& (t.staffId||t.teacher_staff_id)||'').trim()===sid});
       if(!teacher||['REMOVED','INACTIVE'].indexOf(String(teacher.status||'ACTIVE').toUpperCase())>=0)return FAIL;
       if(String(teacher.school||'').trim().toLowerCase()!==String(school.name||'').trim().toLowerCase())return FAIL;
       return {ok:true,isDevDefault:false,school:school,teacher:teacher,accessRecord:ar};
@@ -150029,6 +150075,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   var FAIL={ok:false,message:'Incorrect Staff ID or Access Code.'};
   function read(k){try{var x=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(x)?x:[]}catch(e){return[]}}
   function norm(v){return String(v||'').trim().toLowerCase()}
+  function normDistrict(v){return String(v||'').trim().toLowerCase().replace(/[\/]+/g,' ').replace(/\s+/g,' ')}
   function current(){var c=window._v43SchoolLoginContext&&window._v43SchoolLoginContext.school;var id=c&&c.id,name=(c&&c.name)||(window.CONFIG&&CONFIG.school)||'';return {id:String(id||''),name:String(name||'').trim()}}
   function schoolOf(t){return String(t&&t.schoolId||'')}
   function scopedTeacher(t,school){return t&&String(t.status||'ACTIVE').toUpperCase()==='ACTIVE'&&(school.id&&schoolOf(t)===school.id || !school.id&&norm(t.school||t.schoolName)===norm(school.name))}
@@ -150040,13 +150087,13 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   window.ctRegRefreshAllAutofill=function(){var ks=['KG1','KG2','KG3'].concat(typeof SIG_BS_KEYS!=='undefined'?SIG_BS_KEYS:[]).concat(typeof SIG_JHS_KEYS!=='undefined'?SIG_JHS_KEYS:[]);ks.forEach(window.ctRegAutofillName)};
   function refresh(){try{if(typeof window.ctRegRefreshAllAutofill==='function')window.ctRegRefreshAllAutofill()}catch(e){}}
   function validator(region,district,code,staffId){try{
-    code=String(code||'').trim().toUpperCase();staffId=String(staffId||'').trim().toUpperCase();
+    code=String(code||'').trim();staffId=String(staffId||'').trim();
     if(code==='12345'&&staffId==='12345'){var de=window.SAC_DEFAULT_ENGINE;if(de&&typeof de.matchesActive==='function'&&de.matchesActive(code,staffId))return {ok:true,isDevDefault:true,school:null,teacher:null};return FAIL}
-    var keys=Object.keys(window.GH_REGIONS_DISTRICTS||{}),key=keys.find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key)return FAIL;var ds=window.GH_REGIONS_DISTRICTS[key]||[];if(ds.indexOf(district)<0)return FAIL;
-    if(typeof window.sacRefreshExpiry==='function')window.sacRefreshExpiry();var ar=read('ems_school_access_code_registry_v1').find(function(x){return String(x.accessCode||'').toUpperCase()===code});if(!ar||String(ar.status).toUpperCase()!=='ACTIVE')return FAIL;
+    var keys=Object.keys(window.GH_REGIONS_DISTRICTS||{}),key=keys.find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key)return FAIL;var ds=window.GH_REGIONS_DISTRICTS[key]||[];if(!ds.some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;
+    if(typeof window.sacRefreshExpiry==='function')window.sacRefreshExpiry();var ar=read('ems_school_access_code_registry_v1').find(function(x){return String(x.accessCode||'').trim()===code});if(!ar||String(ar.status).toUpperCase()!=='ACTIVE')return FAIL;
     var schools=read('sub_v60_schools'),school=schools.find(function(x){return x&&String(x.id)===String(ar.schoolId)});if(!school)return FAIL;
-    if(typeof window.subIsLocked==='function'&&window.subIsLocked(school))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||norm(school.district)!==norm(district))return FAIL;
-    var teachers=read('ems_teachers'),teacher=teachers.find(function(t){return String(t.staffId||t.teacher_staff_id).toUpperCase()===staffId&&String(t.schoolId||'')===String(school.id)});if(!teacher||String(teacher.status||'ACTIVE').toUpperCase()!=='ACTIVE'||teacher.revoked)return FAIL;
+    if(typeof window.subIsLocked==='function'&&window.subIsLocked(school))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||normDistrict(school.district)!==normDistrict(district))return FAIL;
+    var teachers=read('ems_teachers'),teacher=teachers.find(function(t){return String(t.staffId||t.teacher_staff_id).trim()===staffId&&String(t.schoolId||'')===String(school.id)});if(!teacher||String(teacher.status||'ACTIVE').toUpperCase()!=='ACTIVE'||teacher.revoked)return FAIL;
     return {ok:true,isDevDefault:false,school:school,teacher:teacher,accessRecord:ar};
   }catch(e){return FAIL}}
   window.v43ValidateSchoolLogin=validator;
@@ -150104,9 +150151,10 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   var FAIL={ok:false,message:'Incorrect Staff ID or Access Code.'};
   function arr(k){try{var x=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(x)?x:[]}catch(e){return[]}}
   function norm(v){return String(v||'').trim().toLowerCase()}
+  function normDistrict(v){return String(v||'').trim().toLowerCase().replace(/[\/]+/g,' ').replace(/\s+/g,' ')}
   function schools(){try{if(typeof subGetArr==='function'&&typeof SUB_KEYS!=='undefined')return subGetArr(SUB_KEYS.schools)||[]}catch(e){}return arr('sub_v60_schools')}
   function registry(){try{if(typeof sacRefreshExpiry==='function')sacRefreshExpiry();if(typeof sacReadRegistry==='function')return sacReadRegistry()||[]}catch(e){}return arr('ems_school_access_code_registry_v1')}
-  function validate(region,district,code,staffId){try{var c=String(code||'').trim().toUpperCase(),sid=String(staffId||'').trim().toUpperCase();if(c==='12345'&&sid==='12345'){var d=window.SAC_DEFAULT_ENGINE;if(d&&d.matchesActive(c,sid))return {ok:true,isDevDefault:true,school:null,teacher:null};return FAIL}var key=Object.keys(window.GH_REGIONS_DISTRICTS||{}).find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key||!(window.GH_REGIONS_DISTRICTS[key]||[]).includes(district))return FAIL;var ar=registry().find(function(x){return String(x.accessCode||'').trim().toUpperCase()===c&&String(x.status||'').toUpperCase()==='ACTIVE'});if(!ar)return FAIL;var school=schools().find(function(x){return String(x.id)===String(ar.schoolId)});if(!school)return FAIL;if(typeof subIsLocked==='function'&&subIsLocked(school))return FAIL;if(school.expiryDate&&new Date(school.expiryDate).getTime()<=Date.now())return FAIL;if(['expired','locked','inactive'].includes(norm(school.status)))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||norm(school.district)!==norm(district))return FAIL;var pool=arr('ems_teachers').concat(arr('edutrack_staff_v3_teachers'));var t=pool.find(function(x){return String(x.staffId||x.teacher_staff_id).toUpperCase()===sid&&((String(x.schoolId||'')===String(school.id))||(norm(x.schoolName||x.school)===norm(school.name)))&&String(x.status||'ACTIVE').toUpperCase()==='ACTIVE'&&!x.revoked});return t?{ok:true,isDevDefault:false,school:school,teacher:t,accessRecord:ar}:FAIL}catch(e){return FAIL}}
+  function validate(region,district,code,staffId){try{var c=String(code||'').trim(),sid=String(staffId||'').trim();if(c==='12345'&&sid==='12345'){var d=window.SAC_DEFAULT_ENGINE;if(d&&d.matchesActive(c,sid))return {ok:true,isDevDefault:true,school:null,teacher:null};return FAIL}var key=Object.keys(window.GH_REGIONS_DISTRICTS||{}).find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key||!(window.GH_REGIONS_DISTRICTS[key]||[]).some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;var ar=registry().find(function(x){return String(x.accessCode||'').trim()===c&&String(x.status||'').toUpperCase()==='ACTIVE'});if(!ar)return FAIL;var school=schools().find(function(x){return String(x.id)===String(ar.schoolId)});if(!school)return FAIL;if(typeof subIsLocked==='function'&&subIsLocked(school))return FAIL;if(school.expiryDate&&new Date(school.expiryDate).getTime()<=Date.now())return FAIL;if(['expired','locked','inactive'].includes(norm(school.status)))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||normDistrict(school.district)!==normDistrict(district))return FAIL;var pool=arr('ems_teachers').concat(arr('edutrack_staff_v3_teachers'));var t=pool.find(function(x){return String(x.staffId||x.teacher_staff_id).trim()===sid&&String(x.schoolId||'')===String(school.id)&&String(x.status||'ACTIVE').toUpperCase()==='ACTIVE'&&!x.revoked});var initial=String(school.registrantStaffId||'').trim()===sid;if(!t&&!initial)return FAIL;var teacher=t||{teacherId:'registration-'+school.id,schoolId:school.id,schoolName:school.name,staffId:sid,name:school.registrantName||'School Registrant',role:school.registrantRole||'Headteacher',status:'ACTIVE'};return {ok:true,isDevDefault:false,school:school,teacher:teacher,accessRecord:ar}}catch(e){return FAIL}}
   validate._part6Final=true;window.v43ValidateSchoolLogin=validate;
   window.subv2RenewPayWithPaystack=function(){return window.subv2RenewSubmit()};window.__EDUTRACK_PAYMENT_FREE_FINAL=true;
   window.EDUTRACK_FINAL_PART6_CORRECTION={validate:validate,paymentFree:true};

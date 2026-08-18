@@ -1,4 +1,5 @@
 data/edutrack.json
 data/edutrack.json.tmp
+data/uploads/
 .env
 node_modules/

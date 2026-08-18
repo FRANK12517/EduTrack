@@ -23,21 +23,32 @@ const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'OPTIONS']);
 const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
+const PAYMENT_PLANS = Object.freeze(parsePaymentPlans());
+function parsePaymentPlans() {
+  try {
+    const configured = process.env.EDUTRACK_PAYMENT_PLANS ? JSON.parse(process.env.EDUTRACK_PAYMENT_PLANS) : null;
+    if (configured && typeof configured === 'object') return configured;
+  } catch {}
+  return {};
+}
 const requestLimits = new Map();
 
 function ensureData() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) saveDb({ version: 2, users: [], schools: [], staff: [], subscriptions: [], transactions: [], sessions: [], passwordResets: [], audit: [] });
+  if (!fs.existsSync(DB_FILE)) saveDb({ version: 3, users: [], schools: [], staff: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [] });
 }
 function loadDb() {
   ensureData();
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   db.users ||= []; db.schools ||= []; db.staff ||= []; db.subscriptions ||= []; db.transactions ||= [];
-  db.sessions ||= []; db.passwordResets ||= []; db.audit ||= [];
+  db.paymentIntents ||= []; db.paymentEvents ||= []; db.files ||= []; db.sessions ||= []; db.passwordResets ||= []; db.audit ||= [];
   return db;
 }
 function saveDb(db) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true, mode: 0o700 });
   const tmp = DB_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 2) + '\n', { mode: 0o600 });
   fs.renameSync(tmp, DB_FILE);
@@ -87,7 +98,7 @@ function provisionBootstrapAccounts() {
 function resetRegisteredData() {
   const db = loadDb();
   const privileged = db.users.filter(u => ['DEVELOPER_ROOT','SUPER_ADMIN'].includes(u.role));
-  db.users = privileged; db.schools = []; db.staff = []; db.subscriptions = []; db.transactions = []; db.sessions = []; db.passwordResets = [];
+  db.users = privileged; db.schools = []; db.staff = []; db.subscriptions = []; db.transactions = []; db.paymentIntents = []; db.paymentEvents = []; db.files = []; db.sessions = []; db.passwordResets = [];
   db.audit.push({ id: id('audit'), action: 'REGISTERED_DATA_RESET', at: new Date().toISOString() });
   saveDb(db);
   console.log('Registered schools, staff, and dependent application data reset. Privileged accounts retained.');
@@ -113,13 +124,17 @@ function json(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...securityHeaders(), ...headers });
   res.end(JSON.stringify(body));
 }
-function body(req) {
+function rawBody(req, limit = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => { raw += c; if (Buffer.byteLength(raw) > MAX_BODY_BYTES) { reject(new Error('Payload too large')); req.destroy(); } });
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
+    req.on('data', c => { raw += c; if (Buffer.byteLength(raw) > limit) { reject(new Error('Payload too large')); req.destroy(); } });
+    req.on('end', () => resolve(raw));
     req.on('error', reject);
   });
+}
+async function body(req, limit = MAX_BODY_BYTES) {
+  const raw = await rawBody(req, limit);
+  try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Invalid JSON'); }
 }
 function publicUser(user) { return { id: user.id, email: user.email, role: user.role, hierarchy: user.hierarchy, scope: user.scope }; }
 function roleContext(user) { return { role: user.role, hierarchy: user.hierarchy, scope: user.scope, dashboard: user.role === 'DEVELOPER_ROOT' ? 'developer-root' : user.role === 'SUPER_ADMIN' ? 'super-admin' : 'school' }; }
@@ -198,6 +213,56 @@ function cleanup(db) {
   db.passwordResets = db.passwordResets.filter(r => !r.usedAt && new Date(r.expiresAt).getTime() > now);
 }
 function resetRecord(db, token) { return db.passwordResets.find(r => r.tokenHash === tokenHash(token) && !r.usedAt && new Date(r.expiresAt) > new Date()); }
+function parseDataFile(input) {
+  const value = validateText(input, { required: true, max: 40 * 1024 * 1024 });
+  if (!value || !value.startsWith('data:')) return null;
+  const match = value.match(/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return null;
+  try { return { declaredMime: match[1].toLowerCase(), buffer: Buffer.from(match[2], 'base64') }; } catch { return null; }
+}
+function inspectUpload(input) {
+  const category = validateText(input.category, { required: true, max: 20, pattern: /^(passport|profile|document|report)$/ });
+  const filename = validateText(input.filename, { required: true, max: 180, pattern: /^[^\\/\\\\\\0]+$/ });
+  const parsed = parseDataFile(input.contentBase64);
+  if (!category || !filename || !parsed) return { error: 'invalid_metadata' };
+  const ext = path.extname(filename).toLowerCase();
+  const signatures = [
+    { mime: 'image/jpeg', ext: '.jpg', ok: parsed.buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) },
+    { mime: 'image/png', ext: '.png', ok: parsed.buffer.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])) },
+    { mime: 'image/webp', ext: '.webp', ok: parsed.buffer.subarray(0, 4).toString() === 'RIFF' && parsed.buffer.subarray(8, 12).toString() === 'WEBP' },
+    { mime: 'application/pdf', ext: '.pdf', ok: parsed.buffer.subarray(0, 5).toString() === '%PDF-' }
+  ];
+  const detected = signatures.find(signature => signature.ok);
+  const allowed = category === 'passport' || category === 'profile' ? signatures.slice(0, 3) : signatures;
+  if (!detected || !allowed.some(signature => signature.mime === detected.mime) || parsed.declaredMime !== detected.mime || ext !== detected.ext) return { error: 'file_type_mismatch' };
+  const limit = UPLOAD_LIMITS[category];
+  if (!limit || parsed.buffer.length === 0 || parsed.buffer.length > limit) return { error: 'file_too_large_or_empty' };
+  return { category, mimeType: detected.mime, extension: detected.ext, buffer: parsed.buffer };
+}
+function storePrivateFile(file, owner) {
+  const storageName = `${randomToken(24)}${file.extension}`;
+  const target = path.join(UPLOAD_DIR, storageName);
+  fs.writeFileSync(target, file.buffer, { mode: 0o600, flag: 'wx' });
+  return { id: id('file'), storageName, originalName: path.basename(file.originalName || 'upload'), mimeType: file.mimeType, size: file.buffer.length, category: file.category, ownerUserId: owner.user.id, schoolId: owner.user.schoolId || null, createdAt: new Date().toISOString() };
+}
+function planFor(planId) {
+  const plan = PAYMENT_PLANS[planId];
+  if (!plan || !Number.isInteger(plan.amount) || plan.amount <= 0 || typeof plan.currency !== 'string' || !Number.isInteger(plan.durationDays) || plan.durationDays <= 0) return null;
+  return { id: planId, amount: plan.amount, currency: plan.currency, durationDays: plan.durationDays };
+}
+function paymentRef(input) { return validateText(input, { required: true, max: 120, pattern: /^[A-Za-z0-9._-]+$/ }); }
+function applyTrustedPayment(db, { reference, user, plan, amount, currency, eventId = null }) {
+  if (db.transactions.some(tx => tx.reference === reference) || (eventId && db.paymentEvents.some(event => event.eventId === eventId))) return { duplicate: true };
+  const now = new Date(); const subscription = db.subscriptions.find(s => s.userId === user.id && s.active);
+  const start = subscription && new Date(subscription.expiresAt) > now ? new Date(subscription.expiresAt) : now;
+  const expiresAt = new Date(start.getTime() + plan.durationDays * 86400000).toISOString();
+  const transaction = { id: id('txn'), reference, userId: user.id, amount, currency, planId: plan.id, status: 'success', createdAt: now.toISOString(), eventId };
+  db.transactions.push(transaction);
+  if (subscription) Object.assign(subscription, { planId: plan.id, expiresAt, active: true, lastTransactionId: transaction.id });
+  else db.subscriptions.push({ id: id('sub'), userId: user.id, planId: plan.id, active: true, startsAt: now.toISOString(), expiresAt, lastTransactionId: transaction.id });
+  if (eventId) db.paymentEvents.push({ eventId, reference, processedAt: now.toISOString() });
+  return { transaction, subscription: subscription || db.subscriptions.at(-1) };
+}
 
 async function handler(req, res) {
   const db = loadDb(); cleanup(db);
@@ -272,6 +337,59 @@ async function handler(req, res) {
     if (!verifyPassword(currentPassword, auth.user.passwordHash) || newPassword.length < 12) return json(res, 400, { error: 'Password change could not be completed' });
     auth.user.passwordHash = hashPassword(newPassword); invalidateSessions(db, auth.user.id); db.audit.push({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString() }); saveDb(db);
     return json(res, 200, { ok: true }, { 'Set-Cookie': cookie(COOKIE_NAME, '', 0) });
+  }
+  if (req.method === 'POST' && req.url === '/api/files/upload') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = authorize(req, res, db); if (!auth) return;
+    let input; try { input = await body(req, Math.min(MAX_BODY_BYTES * 30, 30 * 1024 * 1024)); } catch { auditSecurityEvent(db, 'UPLOAD_REJECTED', req, { userId: auth.user.id, reason: 'payload_invalid' }); saveDb(db); return json(res, 400, { error: 'Upload rejected' }); }
+    const inspected = inspectUpload(input); if (inspected.error) { auditSecurityEvent(db, 'UPLOAD_REJECTED', req, { userId: auth.user.id, category: input.category || null, reason: inspected.error }); saveDb(db); return json(res, 400, { error: 'Upload rejected' }); }
+    inspected.originalName = path.basename(input.filename);
+    const record = storePrivateFile(inspected, auth); db.files.push(record); auditSecurityEvent(db, 'UPLOAD_ACCEPTED', req, { userId: auth.user.id, fileId: record.id, category: record.category, size: record.size }); saveDb(db);
+    return json(res, 201, { id: record.id, category: record.category, mimeType: record.mimeType, size: record.size });
+  }
+  if (req.method === 'GET' && /^\/api\/files\/[A-Za-z0-9_-]+$/.test(req.url)) {
+    const auth = authorize(req, res, db); if (!auth) return;
+    const fileId = req.url.slice('/api/files/'.length); const record = db.files.find(file => file.id === fileId);
+    if (!record || (auth.user.role !== 'DEVELOPER_ROOT' && auth.user.role !== 'SUPER_ADMIN' && record.ownerUserId !== auth.user.id)) { auditSecurityEvent(db, 'FILE_ACCESS_DENIED', req, { userId: auth.user.id, fileId }); saveDb(db); return json(res, 404, { error: 'File not found' }); }
+    const target = path.resolve(UPLOAD_DIR, record.storageName); if (path.dirname(target) !== path.resolve(UPLOAD_DIR) || !fs.existsSync(target)) return json(res, 404, { error: 'File not found' });
+    res.writeHead(200, { 'Content-Type': record.mimeType, 'Content-Disposition': `attachment; filename="${record.id}${path.extname(record.storageName)}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', ...securityHeaders() }); return fs.createReadStream(target).pipe(res);
+  }
+  if (req.method === 'POST' && req.url === '/api/payments/initialize') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = authorize(req, res, db); if (!auth) return;
+    const idempotencyKey = validateText(req.headers['x-idempotency-key'], { max: 120, pattern: /^[A-Za-z0-9._-]+$/ });
+    if (!idempotencyKey) return json(res, 400, { error: 'A valid idempotency key is required' });
+    const existing = db.paymentIntents.find(intent => intent.userId === auth.user.id && intent.idempotencyKey === idempotencyKey); if (existing) return json(res, 200, { reference: existing.reference, amount: existing.amount, currency: existing.currency, planId: existing.planId });
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment request' }); }
+    const planId = validateText(input.planId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ }); const plan = planFor(planId); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
+    const reference = `EDU_${randomToken(18)}`; db.paymentIntents.push({ reference, idempotencyKey, userId: auth.user.id, planId: plan.id, amount: plan.amount, currency: plan.currency, status: 'initialized', createdAt: new Date().toISOString() }); saveDb(db);
+    return json(res, 201, { reference, amount: plan.amount, currency: plan.currency, planId: plan.id });
+  }
+  if (req.method === 'POST' && req.url === '/api/payments/verify') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = authorize(req, res, db); if (!auth) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment request' }); }
+    const reference = paymentRef(input.reference); const intent = reference && db.paymentIntents.find(item => item.reference === reference && item.userId === auth.user.id); if (!intent) return json(res, 404, { error: 'Payment not found' });
+    if (db.transactions.some(tx => tx.reference === reference)) return json(res, 200, { ok: true, reference, status: 'already_processed' });
+    if (!process.env.PAYSTACK_SECRET_KEY) return json(res, 503, { error: 'Payment verification unavailable' });
+    const response = await fetch(`${process.env.PAYSTACK_API_URL || 'https://api.paystack.co'}/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } });
+    if (!response.ok) return json(res, 502, { error: 'Payment verification unavailable' });
+    const result = await response.json(); const data = result && result.data;
+    const customerEmail = data && data.customer && String(data.customer.email || '').toLowerCase();
+    if (!result.status || !data || data.status !== 'success' || Number(data.amount) !== intent.amount || String(data.currency).toUpperCase() !== String(intent.currency).toUpperCase() || (customerEmail && customerEmail !== auth.user.email.toLowerCase())) return json(res, 400, { error: 'Payment verification failed' });
+    intent.status = 'verified'; const applied = applyTrustedPayment(db, { reference, user: auth.user, plan: planFor(intent.planId), amount: intent.amount, currency: intent.currency }); saveDb(db); auditSecurityEvent(db, 'PAYMENT_VERIFIED', req, { userId: auth.user.id, reference }); saveDb(db); return json(res, 200, { ok: true, reference, status: applied.duplicate ? 'already_processed' : 'verified' });
+  }
+  if (req.method === 'POST' && req.url === '/api/payments/paystack/webhook') {
+    const secret = process.env.PAYSTACK_WEBHOOK_SECRET || process.env.PAYSTACK_SECRET_KEY; const signature = String(req.headers['x-paystack-signature'] || ''); if (!secret || !signature) return json(res, 503, { error: 'Webhook verification unavailable' });
+    let raw; try { raw = await rawBody(req, MAX_BODY_BYTES); } catch { return json(res, 400, { error: 'Invalid webhook' }); }
+    const expected = crypto.createHmac('sha512', secret).update(raw).digest('hex'); if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) { auditSecurityEvent(db, 'PAYMENT_WEBHOOK_REJECTED', req, { reason: 'signature' }); saveDb(db); return json(res, 401, { error: 'Webhook rejected' }); }
+    let event; try { event = JSON.parse(raw); } catch { return json(res, 400, { error: 'Invalid webhook' }); }
+    if (event.event !== 'charge.success' || !event.data || !paymentRef(event.data.reference)) return json(res, 400, { error: 'Invalid webhook' });
+    const reference = event.data.reference; const intent = db.paymentIntents.find(item => item.reference === reference); if (!intent) return json(res, 404, { error: 'Payment intent not found' });
+    if (db.paymentEvents.some(item => item.eventId === event.id || item.reference === reference) || db.transactions.some(tx => tx.reference === reference)) return json(res, 200, { ok: true, status: 'already_processed' });
+    const user = db.users.find(item => item.id === intent.userId && item.active); const plan = planFor(intent.planId);
+    if (!user || !plan || Number(event.data.amount) !== plan.amount || String(event.data.currency).toUpperCase() !== String(plan.currency).toUpperCase()) return json(res, 400, { error: 'Payment verification failed' });
+    applyTrustedPayment(db, { reference, user, plan, amount: plan.amount, currency: plan.currency, eventId: validateText(event.id, { max: 160, pattern: /^[A-Za-z0-9._:-]+$/ }) || reference }); auditSecurityEvent(db, 'PAYMENT_WEBHOOK_ACCEPTED', req, { userId: user.id, reference }); saveDb(db); return json(res, 200, { ok: true });
   }
   if (req.method === 'GET' && req.url === '/api/admin/summary') {
     const auth = authorize(req, res, db, { roles: ['DEVELOPER_ROOT', 'SUPER_ADMIN'], dashboard: 'super-admin' });

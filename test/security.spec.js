@@ -70,8 +70,12 @@ async function run() {
     assert.equal(preflight.headers.get('access-control-allow-origin'), BASE);
     const methodRejected = await request('/api/auth/login', { method: 'PUT', headers: { origin: BASE } });
     assert.equal(methodRejected.status, 405);
+    const sensitivePaths = ['/.env', '/.git/config', '/data/edutrack.json', '/server.js', '/package.json', '/backup.sql', '/application.log', '/temporary.tmp'];
+    for (const sensitivePath of sensitivePaths) assert.equal((await request(sensitivePath)).status, 404, `sensitive path exposed: ${sensitivePath}`);
     const traversal = await request('/.git/config');
     assert.equal(traversal.status, 404);
+    const massAssignment = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: EMAIL, password: PASSWORD, accessCode: ACCESS, role: 'DEVELOPER_ROOT', isAdmin: true }) });
+    assert.equal(massAssignment.status, 400);
     const oversized = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'x'.repeat(9000), password: 'x', accessCode: 'x' }) });
     assert.equal(oversized.status, 400);
     const malformed = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'not-an-email', password: 'x', accessCode: 'x' }) });

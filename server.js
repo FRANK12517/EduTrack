@@ -293,6 +293,7 @@ async function handler(req, res) {
   if (req.method === 'GET' && req.url === '/api/health') return json(res, 200, { ok: true });
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
+    if (Object.keys(input || {}).some(key => !['email', 'staffId', 'password', 'pin', 'accessCode', 'schoolAccessCode'].includes(key))) return json(res, 400, { error: GENERIC_AUTH_ERROR });
     const identifier = validateText(input.email || input.staffId, { required: true, max: 254, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ });
     const password = validateText(input.password || input.pin, { required: true, max: 256 });
     const accessCode = validateText(input.accessCode || input.schoolAccessCode || input.pin, { required: true, max: 256 });

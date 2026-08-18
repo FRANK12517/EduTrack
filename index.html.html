@@ -39179,67 +39179,7 @@ function fmsPrintOutstanding() {
     <table><thead><tr><th>Student</th><th>ID</th><th>Class</th><th>Term</th><th>Total Fees</th><th>Paid</th><th>Balance</th><th>Due Date</th><th>Overdue</th><th>Status</th></tr></thead>
     <tbody>${rowsHTML}</tbody></table>
 
-<script id="edutrack-part9-authoritative-login">
-(function EDUTRACK_PART9_AUTHORITATIVE_LOGIN(){
-  'use strict';
-  if(window.__EDUTRACK_PART9_AUTHORITY__) return;
-  window.__EDUTRACK_PART9_AUTHORITY__=true;
-  var previous=window.v43DoLogin;
-  var GENERIC='Incorrect Staff ID or Access Code.';
-  function get(id){var e=document.getElementById(id);return e?String(e.value||'').trim():'';}
-  function level(){
-    try{if(typeof v43CurrentLevel!=='undefined'&&v43CurrentLevel)return v43CurrentLevel;}catch(e){}
-    return window.v43CurrentLevel||((document.querySelector('.login-level-btn.active')||{}).dataset||{}).level||'';
-  }
-  function fail(){
-    try{if(typeof v43ShowError==='function')v43ShowError(GENERIC);}catch(e){}
-    return false;
-  }
-  function runSchoolAuthentication(){
-    var region=get('v43-region'),district=get('v43-district'),code=get('v43-school-access-code'),staffId=get('v43-staffId');
-    var result=window.v43ValidateSchoolLogin(region,district,code,staffId);
-    if(!result||!result.ok)return fail();
-    var pin=get('v43-login-pin'),savedPin=localStorage.getItem('ems_access_pin');
-    if(savedPin&&pin!==savedPin)return fail();
-    if(!savedPin&&pin.length===4)localStorage.setItem('ems_access_pin',pin);
-    var teacher=result.teacher||{},school=result.school||{},role=String(teacher.role||school.registrantRole||'Headteacher').trim();
-    var session={teacherId:teacher.teacherId||null,staffId:String(teacher.staffId||staffId).trim(),role:role,schoolId:school.id,schoolName:school.name,region:school.region,district:school.district,authenticated:true,loginAt:new Date().toISOString()};
-    try{
-      localStorage.setItem('edutrack_staff_v3_session',JSON.stringify(session));
-      localStorage.setItem('ems_login_role','school');
-      localStorage.setItem('v43_login_level','SCHOOL');
-      localStorage.setItem('v43_login_role',role);
-      localStorage.setItem('v43_login_staffid',session.staffId);
-      localStorage.setItem('ems_login_region',String(region));
-      localStorage.setItem('ems_login_district',String(district));
-      window._v43SchoolLoginContext=result;
-      if(typeof CONFIG!=='undefined'){CONFIG.schoolId=school.id;CONFIG.school=school.name;CONFIG.region=school.region;CONFIG.district=school.district;}
-      try{if(typeof selectedRole!=='undefined')selectedRole='school';}catch(e){}
-    }catch(e){try{localStorage.removeItem('edutrack_staff_v3_session');}catch(ignore){}return fail();}
-    var btn=document.getElementById('v43LoginBtn');
-    if(btn){btn.textContent='⏳ Authenticating...';btn.disabled=true;}
-    var msg=document.getElementById('loginSuccessMsg'),overlay=document.getElementById('loginSuccessOverlay');
-    if(msg)msg.textContent='SCHOOL | '+role+' | '+region+' | '+district+' | ID: '+session.staffId;
-    if(overlay)overlay.classList.add('show');
-    setTimeout(function(){
-      var login=document.getElementById('login-screen');if(login)login.classList.add('fade-out');
-      setTimeout(function(){
-        if(login)login.style.display='none';
-        if(typeof liveUpdateTopbar==='function')liveUpdateTopbar();
-        if(typeof showPageById==='function')showPageById('dashboard');
-        if(btn){btn.textContent='🔐 Enter System';btn.disabled=false;}
-        try{v43LoginInProgress=false;}catch(e){}
-      },250);
-    },300);
-    return true;
-  }
-  window.v43DoLogin=function(){
-    if(level()==='SCHOOL')return runSchoolAuthentication();
-    return typeof previous==='function'?previous.apply(this,arguments):undefined;
-  };
-  window.v43DoLogin._part9Authoritative=true;
-})();
-</script>
+
 </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);
@@ -44717,7 +44657,7 @@ window.addEventListener('load', function v61Init() {
       window.v43RenderFields._districtAccessV135=true;
     }
     normalizeDistrictFields();
-    if(window.v43DoLogin&&!window.v43DoLogin._districtAccessV135){
+    if(window.v43DoLogin&&!window.v43DoLogin._districtAccessV135&&!window.v43DoLogin._part9Authoritative){
       var oldLogin=window.v43DoLogin;
       window.v43DoLogin=function(){
         var activeLevel='';try{activeLevel=window.v43CurrentLevel||v43CurrentLevel;}catch(e){}
@@ -150108,6 +150048,9 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   setTimeout(install,650);
 })();
 </script>
+
+
+
 </body></html>
 
 <!-- EDUTRACK_STAFF_MANAGEMENT_PART3 -->
@@ -150234,5 +150177,75 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   validate._part6Final=true;window.v43ValidateSchoolLogin=validate;
   window.subv2RenewPayWithPaystack=function(){return window.subv2RenewSubmit()};window.__EDUTRACK_PAYMENT_FREE_FINAL=true;
   window.EDUTRACK_FINAL_PART6_CORRECTION={validate:validate,paymentFree:true};
+})();
+</script>
+
+<!-- EDUTRACK PART 13B: deterministic final authoritative school-login runtime -->
+<script id="edutrack-part13b-authoritative-login">
+(function EDUTRACK_PART13B_AUTHORITATIVE_LOGIN(){
+  'use strict';
+  if(window.__EDUTRACK_PART13B_INSTALLED__) return;
+  window.__EDUTRACK_PART13B_INSTALLED__=true;
+
+  var GENERIC='Incorrect Staff ID or Access Code.';
+  var previous=window.v43DoLogin;
+  function value(id){var e=document.getElementById(id);return e?String(e.value||'').trim():'';}
+  function level(){
+    try{if(typeof v43CurrentLevel!=='undefined'&&v43CurrentLevel)return v43CurrentLevel;}catch(e){}
+    return window.v43CurrentLevel||((document.querySelector('.login-level-btn.active')||{}).dataset||{}).level||'';
+  }
+  function fail(){
+    try{if(typeof window.v43ShowError==='function')window.v43ShowError(GENERIC);}catch(e){}
+    return false;
+  }
+  function runSchool(){
+    var region=value('v43-region'),district=value('v43-district'),code=value('v43-school-access-code'),staffId=value('v43-staffId');
+    var validator=window.v43ValidateSchoolLogin;
+    var result=typeof validator==='function'?validator(region,district,code,staffId):null;
+    if(!result||!result.ok)return fail();
+    var teacher=result.teacher||{},school=result.school||{};
+    var role=String(teacher.role||school.registrantRole||'Headteacher').trim();
+    try{
+      if(typeof window.v43IsAuthorizedLoginRole==='function'&&!window.v43IsAuthorizedLoginRole('SCHOOL',role,region,district))return fail();
+    }catch(e){return fail();}
+    var pin=value('v43-login-pin'),savedPin=localStorage.getItem('ems_access_pin');
+    if(savedPin&&pin!==savedPin)return fail();
+    if(!savedPin&&pin.length===4)localStorage.setItem('ems_access_pin',pin);
+    var session={teacherId:teacher.teacherId||null,staffId:String(teacher.staffId||staffId).trim(),role:role,schoolId:school.id,schoolName:school.name,region:school.region,district:school.district,authenticated:true,loginAt:new Date().toISOString()};
+    try{
+      localStorage.setItem('edutrack_staff_v3_session',JSON.stringify(session));
+      localStorage.setItem('ems_login_role','school');
+      localStorage.setItem('v43_login_level','SCHOOL');
+      localStorage.setItem('v43_login_role',role);
+      localStorage.setItem('v43_login_staffid',session.staffId);
+      localStorage.setItem('ems_login_region',String(region));
+      localStorage.setItem('ems_login_district',String(district));
+      window._v43SchoolLoginContext=result;
+      if(typeof CONFIG!=='undefined'){CONFIG.schoolId=school.id;CONFIG.school=school.name;CONFIG.region=school.region;CONFIG.district=school.district;}
+      try{if(typeof selectedRole!=='undefined')selectedRole='school';}catch(ignore){}
+    }catch(e){try{localStorage.removeItem('edutrack_staff_v3_session');}catch(ignore2){}return fail();}
+    var btn=document.getElementById('v43LoginBtn');
+    if(btn){btn.textContent='⏳ Authenticating...';btn.disabled=true;}
+    var msg=document.getElementById('loginSuccessMsg'),overlay=document.getElementById('loginSuccessOverlay');
+    if(msg)msg.textContent='SCHOOL | '+role+' | '+region+' | '+district+' | ID: '+session.staffId;
+    if(overlay)overlay.classList.add('show');
+    setTimeout(function(){
+      var login=document.getElementById('login-screen');if(login)login.classList.add('fade-out');
+      setTimeout(function(){
+        if(login)login.style.display='none';
+        if(typeof liveUpdateTopbar==='function')liveUpdateTopbar();
+        if(typeof showPageById==='function')showPageById('dashboard');
+        if(btn){btn.textContent='🔐 Enter System';btn.disabled=false;}
+        try{v43LoginInProgress=false;}catch(ignore){}
+      },250);
+    },300);
+    return true;
+  }
+  window.v43DoLogin=function(){
+    if(level()==='SCHOOL')return runSchool();
+    return typeof previous==='function'?previous.apply(this,arguments):undefined;
+  };
+  window.v43DoLogin._part9Authoritative=true;
+  window.__EDUTRACK_PART9_AUTHORITY__=true;
 })();
 </script>

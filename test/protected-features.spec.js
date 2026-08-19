@@ -46,20 +46,16 @@ async function run() {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3000);
     const pageLoadDiagnostics = consoleErrors.splice(0);
-    const promo = page.locator('#edutrack-promotional-collection');
-    const promoMessage = page.locator('#edutrack-promotional-collection-message');
-    await assertVisibleEnabled(promo, 'promotional display');
-    assert.equal(await page.locator('#edutrack-promotional-collection .epc-dot').count(), 10, 'all ten promotional messages should be available');
+    const promo = page.locator('#edutrack-promotional-social-proof');
+    const promoMessage = page.locator('#edutrack-promotional-social-proof-message');
+    await assertVisibleEnabled(promo, 'unified promotional display');
+    assert.equal(await page.locator('[data-promotional-display-only="true"]').count(), 1, 'only one social-proof display should remain');
+    assert.equal(await page.locator('#edutrack-promotional-collection').count(), 0, 'Discover EduTrack carousel should be removed');
+    assert.equal(await page.locator('[aria-label*="Previous promotional"], [aria-label*="Next promotional"], .epc-control, .epc-dot').count(), 0, 'manual carousel controls should be removed');
+    assert.equal(await promo.evaluate((node) => getComputedStyle(node).pointerEvents), 'auto');
     assert.match(await promoMessage.textContent(), /Join a growing community of schools/);
-    assert.equal(await page.locator('[data-promotional-display-only="true"]').count(), 2, 'existing and additive promotional displays should both remain present');
-    assert.equal(await page.locator('#edutrack-promotional-collection').evaluate((node) => getComputedStyle(node).pointerEvents), 'auto');
-
-    await page.locator('#edutrack-promotional-collection-next').tap();
-    await page.waitForTimeout(180);
+    await page.waitForTimeout(12100);
     assert.match(await promoMessage.textContent(), /Move your school management forward/);
-    await page.evaluate(() => document.getElementById('edutrack-promotional-collection-prev').click());
-    await page.waitForTimeout(180);
-    assert.match(await promoMessage.textContent(), /Join a growing community of schools/);
 
     const levels = ['NATIONAL', 'REGIONAL', 'DISTRICT', 'SCHOOL', 'PARENT', 'STUDENT'];
     for (const level of levels) {
@@ -110,7 +106,8 @@ async function run() {
     for (const width of [320, 360, 375, 390, 412, 430, 480]) {
       await page.setViewportSize({ width, height: 844 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true, `no horizontal overflow at ${width}px`);
-      assert.equal(await promo.isVisible(), true, `promotional display should remain visible at ${width}px`);
+      assert.equal(await promo.isVisible(), true, `unified promotional display should remain visible at ${width}px`);
+      assert.equal(await page.locator('#edutrack-promotional-collection').count(), 0, `Discover carousel should remain absent at ${width}px`);
     }
 
     const actionableErrors = consoleErrors.filter((error) => !String(error).includes('CRITICAL: EduTrack core fixes (Subscription/Signature)'));

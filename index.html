@@ -5102,7 +5102,7 @@ td input, td select, td textarea, td button {
 
 
     <!-- FRONTEND-ONLY PROMOTIONAL SOCIAL PROOF; independent from EduTrack records and data services. -->
-    <aside id="edutrack-promotional-social-proof" class="edutrack-promotional-social-proof" aria-label="EduTrack growth message" data-promotional-display-only="true">
+    <aside id="edutrack-promotional-social-proof" class="edutrack-promotional-social-proof" aria-label="EduTrack social proof" data-promotional-display-only="true">
       <div class="edutrack-promotional-social-proof__eyebrow"><span class="edutrack-promotional-social-proof__pulse" aria-hidden="true"></span><span>Growing with EduTrack</span></div>
       <div class="edutrack-promotional-social-proof__message" id="edutrack-promotional-social-proof-message" aria-live="polite">Join a growing community of schools using EduTrack.</div>
     </aside>
@@ -5118,12 +5118,22 @@ td input, td select, td textarea, td button {
       var message = document.getElementById('edutrack-promotional-social-proof-message');
       if (!root || !message) return;
 
-      var messages = [
-        '<strong>Join a growing community of schools</strong><br>EduTrack is helping schools simplify education management.',
-        '<strong>Schools are joining EduTrack every day</strong><br>Be part of a more connected education community.',
-        '<strong>Growing with EduTrack</strong><br>Move your education management to a modern digital platform.',
-        '<strong>More schools. Smarter management.</strong><br>Explore what EduTrack can do for your school.'
+      // Single source of truth for every approved promotional message.
+      // The existing Growing With EduTrack ticker remains the only renderer and
+      // rotation engine; the former Discover carousel contributes copy only.
+      var socialProofMessages = [
+        '<strong>Join a growing community of schools</strong><br>EduTrack is helping schools simplify administration, student management, attendance, assessments, and reporting.',
+        '<strong>Move your school management forward</strong><br>Join the growing movement toward smarter, simpler, and more organized education management with EduTrack.',
+        '<strong>100+ schools and growing</strong><br>Discover how EduTrack can help your institution manage everyday operations more efficiently.',
+        '<strong>More schools. Smarter management.</strong><br>Bring your school\'s important academic and administrative activities together in one powerful system.',
+        '<strong>Join the EduTrack movement</strong><br>Schools are discovering easier ways to manage students, staff, attendance, assessments, and school operations.',
+        '<strong>Built for modern education management</strong><br>EduTrack provides a digital workspace designed to support schools at every level.',
+        '<strong>Simplify your school\'s daily operations</strong><br>Reduce unnecessary paperwork and manage important school activities from one organized platform.',
+        '<strong>Growing with EduTrack</strong><br>Be part of a growing community exploring smarter tools for education management.',
+        '<strong>Your school can get started today</strong><br>Register your school and begin exploring a more organized approach to school administration.',
+        '<strong>Prepare your school for smarter management</strong><br>EduTrack brings together the tools schools need to manage education in a more connected and efficient way.'
       ];
+      var messages = socialProofMessages;
       var index = 0;
       var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -5146,72 +5156,6 @@ td input, td select, td textarea, td button {
     })();
     </script>
 
-
-    <!-- ADDITIVE FRONTEND-ONLY PROMOTIONAL COLLECTION: preserves the existing ticker above. -->
-    <style id="edutrack-promotional-collection-style">
-      #edutrack-promotional-collection {
-        width: 100%; min-height: 102px; margin: 0 0 14px; padding: 13px 16px;
-        border: 1px solid rgba(13,27,62,.10); border-radius: 13px;
-        background: linear-gradient(135deg, #fffaf0, #f7fbff);
-        box-shadow: 0 5px 18px rgba(13,27,62,.05); color: #28466d;
-        text-align: center; pointer-events: auto; overflow: hidden;
-      }
-      #edutrack-promotional-collection .epc-label { margin-bottom: 5px; color: #b07c12; font-size: .6rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-      #edutrack-promotional-collection .epc-message { min-height: 3.8em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-family: 'Outfit','Sora',sans-serif; line-height: 1.35; transition: opacity 220ms ease, transform 220ms ease; }
-      #edutrack-promotional-collection .epc-headline { color: #0e7c86; font-size: .86rem; font-weight: 800; }
-      #edutrack-promotional-collection .epc-description { max-width: 62rem; font-size: .74rem; font-weight: 500; }
-      #edutrack-promotional-collection .epc-controls { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 7px; }
-      #edutrack-promotional-collection .epc-control { min-width: 32px; min-height: 32px; padding: 0; border: 1px solid rgba(14,124,134,.25); border-radius: 50%; background: #fff; color: #0e7c86; cursor: pointer; touch-action: manipulation; }
-      #edutrack-promotional-collection .epc-control:focus-visible { outline: 3px solid rgba(26,181,196,.35); outline-offset: 2px; }
-      #edutrack-promotional-collection .epc-dots { display: flex; gap: 4px; }
-      #edutrack-promotional-collection .epc-dot { width: 6px; height: 6px; padding: 0; border: 0; border-radius: 50%; background: #b9c7d8; }
-      #edutrack-promotional-collection .epc-dot[aria-current="true"] { background: #0e7c86; }
-      @media (max-width: 480px) { #edutrack-promotional-collection { min-height: 116px; padding: 12px 10px; } #edutrack-promotional-collection .epc-headline { font-size: .82rem; } #edutrack-promotional-collection .epc-description { font-size: .7rem; } }
-      @media (prefers-reduced-motion: reduce) { #edutrack-promotional-collection .epc-message { transition: none; } }
-    </style>
-    <aside id="edutrack-promotional-collection" aria-label="EduTrack promotional messages" data-promotional-display-only="true">
-      <div class="epc-label">Discover EduTrack</div>
-      <div class="epc-message" id="edutrack-promotional-collection-message" aria-live="polite"></div>
-      <div class="epc-controls" aria-label="Promotional message controls">
-        <button type="button" class="epc-control" id="edutrack-promotional-collection-prev" aria-label="Previous promotional message">‹</button>
-        <div class="epc-dots" id="edutrack-promotional-collection-dots" aria-hidden="true"></div>
-        <button type="button" class="epc-control" id="edutrack-promotional-collection-next" aria-label="Next promotional message">›</button>
-      </div>
-    </aside>
-    <script>
-    /* Frontend-only promotional collection. No live count, API, storage, or account dependency. */
-    (function EduTrackPromotionalCollection() {
-      'use strict';
-      var root = document.getElementById('edutrack-promotional-collection');
-      var message = document.getElementById('edutrack-promotional-collection-message');
-      var dots = document.getElementById('edutrack-promotional-collection-dots');
-      if (!root || !message || !dots) return;
-      var promotionalMessages = [
-        { id:'growing-community', headline:'Join a growing community of schools', description:'EduTrack is helping schools simplify administration, student management, attendance, assessments, and reporting.' },
-        { id:'digital-transformation', headline:'Move your school management forward', description:'Join the growing movement toward smarter, simpler, and more organized education management with EduTrack.' },
-        { id:'schools-growing', headline:'100+ schools and growing', description:'Discover how EduTrack can help your institution manage everyday operations more efficiently.', promotional:true },
-        { id:'smarter-management', headline:'More schools. Smarter management.', description:"Bring your school's important academic and administrative activities together in one powerful system." },
-        { id:'join-movement', headline:'Join the EduTrack movement', description:'Schools are discovering easier ways to manage students, staff, attendance, assessments, and school operations.' },
-        { id:'built-for-education', headline:'Built for modern education management', description:'EduTrack provides a digital workspace designed to support schools at every level.' },
-        { id:'simplify-operations', headline:"Simplify your school's daily operations", description:'Reduce unnecessary paperwork and manage important school activities from one organized platform.' },
-        { id:'growing-with-edutrack', headline:'Growing with EduTrack', description:'Be part of a growing community exploring smarter tools for education management.' },
-        { id:'start-today', headline:'Your school can get started today', description:'Register your school and begin exploring a more organized approach to school administration.' },
-        { id:'future-ready', headline:'Prepare your school for smarter management', description:'EduTrack brings together the tools schools need to manage education in a more connected and efficient way.' }
-      ];
-      var index = 0;
-      var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      var timer = null;
-      promotionalMessages.forEach(function (_, i) { var dot = document.createElement('button'); dot.type='button'; dot.className='epc-dot'; dot.setAttribute('aria-label','Show promotional message ' + (i + 1)); dot.setAttribute('aria-current', i === 0 ? 'true' : 'false'); dot.addEventListener('click', function(){ show(i, true); }); dots.appendChild(dot); });
-      function show(nextIndex, animate) { index = (nextIndex + promotionalMessages.length) % promotionalMessages.length; var item = promotionalMessages[index]; if (animate && !reducedMotion) { message.style.opacity='0'; message.style.transform='translateY(4px)'; window.setTimeout(function(){ render(item); message.style.opacity='1'; message.style.transform='translateY(0)'; }, 120); } else { render(item); } Array.prototype.forEach.call(dots.children, function(dot, i){ dot.setAttribute('aria-current', i === index ? 'true' : 'false'); }); }
-      function render(item) { message.replaceChildren(); var headline=document.createElement('div'); headline.className='epc-headline'; headline.textContent=item.headline; var description=document.createElement('div'); description.className='epc-description'; description.textContent=item.description; message.appendChild(headline); message.appendChild(description); }
-      function restart() { if (timer) window.clearInterval(timer); if (!reducedMotion) timer=window.setInterval(function(){ show(index + 1, true); }, 10000); }
-      document.getElementById('edutrack-promotional-collection-prev').addEventListener('click', function(){ show(index - 1, true); restart(); });
-      document.getElementById('edutrack-promotional-collection-next').addEventListener('click', function(){ show(index + 1, true); restart(); });
-      root.addEventListener('mouseenter', function(){ if (timer) window.clearInterval(timer); }); root.addEventListener('mouseleave', restart); root.addEventListener('focusin', function(){ if (timer) window.clearInterval(timer); }); root.addEventListener('focusout', function(e){ if (!root.contains(e.relatedTarget)) restart(); });
-      show(0, false); restart();
-      if (window.EDUTRACK_ACPE && typeof window.EDUTRACK_ACPE.protect === 'function') window.EDUTRACK_ACPE.protect('promotional-social-proof-collection', root, { version:'1.0' });
-    })();
-    </script>
 
     <!-- PERMANENT FRONTEND PROTECTED-FEATURE REGISTRY AND REGRESSION GUARD -->
     <script>

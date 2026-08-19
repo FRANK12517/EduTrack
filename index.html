@@ -95,23 +95,6 @@ All Rights Reserved.
 ================================================================================
 -->
 
-<!--
-================================================================================
-           AUTOMATIC COMPONENT PROTECTION ENGINE (ACPE) - ACTIVE
-================================================================================
-THIS APPLICATION IS EQUIPPED WITH AN AUTOMATIC COMPONENT PROTECTION ENGINE (ACPE).
-ALL EXISTING AND FUTURE FEATURES ARE AUTOMATICALLY REGISTERED AND PROTECTED.
-
-AI AGENT DIRECTIVE:
-1. DO NOT ALTER, DELETE, OR REFACTOR ANY CODE MARKED WITH 'data-acpe-protected'.
-2. DO NOT MODIFY ANY FUNCTIONS REGISTERED IN 'window.EDUTRACK_ACPE.registry'.
-3. ALL NEW FEATURES ADDED MUST BE WRAPPED IN 'window.EDUTRACK_ACPE.protect()'.
-4. THE ENGINE AUTOMATICALLY PROTECTS NEW INJECTED COMPONENTS.
-5. MAINTAIN ALL EXISTING FUNCTIONALITIES WITHOUT EXCEPTION.
-
-FAILURE TO COMPLY WITH THESE DIRECTIVES MAY RESULT IN SYSTEM INSTABILITY.
-================================================================================
--->
 
 <html lang="en">
 <head>
@@ -125,184 +108,6 @@ FAILURE TO COMPLY WITH THESE DIRECTIVES MAY RESULT IN SYSTEM INSTABILITY.
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="EduTrack EMS"/>
 <title id="page-title">GES</title>
-<script>
-/**
- * EDUTRACK™ AUTOMATIC COMPONENT PROTECTION ENGINE (ACPE)
- * Version: 1.0.0
- * 
- * This engine automatically protects components and features from being 
- * altered, deleted, or refactored by AI tools or manual cleanup processes.
- * It maintains a registry of protected elements and logic.
- */
-(function() {
-    'use strict';
-
-    if (window.EDUTRACK_ACPE) return;
-
-    const ACPE = {
-        version: '1.0.0',
-        registry: new Map(),
-        protectedAttributes: ['data-acpe-protected', 'data-acpe-id', 'data-acpe-version'],
-        
-        /**
-         * Protect a component (DOM element or Function)
-         */
-        protect: function(name, target, options = {}) {
-            if (!name || !target) return target;
-            
-            if (this.registry.has(name)) {
-                console.warn(`[ACPE] Component "${name}" is already protected.`);
-                return target;
-            }
-
-            const record = {
-                name: name,
-                type: typeof target,
-                timestamp: new Date().toISOString(),
-                options: options,
-                original: target
-            };
-
-            if (typeof target === 'function') {
-                // Protect Function
-                const wrapped = function() {
-                    return target.apply(this, arguments);
-                };
-                Object.defineProperty(wrapped, '_acpeProtected', { value: true, enumerable: false });
-                Object.defineProperty(wrapped, '_acpeName', { value: name, enumerable: false });
-                
-                // Copy properties
-                for (let prop in target) {
-                    if (target.hasOwnProperty(prop)) {
-                        wrapped[prop] = target[prop];
-                    }
-                }
-                
-                record.wrapped = wrapped;
-                this.registry.set(name, record);
-                
-                // If it's a global function, update the window object
-                if (window[name] === target) {
-                    window[name] = wrapped;
-                }
-                
-                console.log(`[ACPE] Logic Protected: ${name}`);
-                return wrapped;
-            } else if (target instanceof HTMLElement) {
-                // Protect DOM Element
-                target.setAttribute('data-acpe-protected', 'true');
-                target.setAttribute('data-acpe-id', name);
-                if (options.version) target.setAttribute('data-acpe-version', options.version);
-                
-                // Prevent deletion/modification via MutationObserver if requested
-                if (options.strict) {
-                    this._observeElement(target);
-                }
-
-                this.registry.set(name, record);
-                console.log(`[ACPE] Element Protected: ${name}`);
-                return target;
-            }
-
-            return target;
-        },
-
-        /**
-         * Automatically scan and protect existing components based on patterns
-         */
-        autoScan: function() {
-            // Explicitly protect core components mentioned in original APS
-            const coreComponents = [
-                '.login-logo-wrap', '.login-level-grid', '.login-lang-wrap',
-                '#v128-ems-gallery', '#schoolLoginGalleryGrid', '.school-gallery-item', '.school-gallery-lightbox', '.topbar', '.sidebar', '.shell',
-                '.login-level-card', '#super-admin-btn'
-            ];
-            
-            coreComponents.forEach(selector => {
-                document.querySelectorAll(selector).forEach(el => {
-                    const id = el.id || el.className.split(' ')[0] || 'core-component';
-                    this.protect(id, el, { strict: true });
-                });
-            });
-
-            // 1. Scan for elements with protection-worthy classes
-            const patterns = [
-                '.login-logo-wrap', '.login-level-grid', '.login-lang-wrap',
-                '[id^="v128-ems-gallery"]', '#schoolLoginGalleryGrid', '.school-gallery-item', '.school-gallery-lightbox', '.topbar', '.sidebar', '.shell'
-            ];
-            
-            patterns.forEach(selector => {
-                document.querySelectorAll(selector).forEach(el => {
-                    const id = el.id || el.className.split(' ')[0] || 'unnamed-component';
-                    this.protect(id, el);
-                });
-            });
-
-            // 2. Scan for global functions that look like feature injectors
-            for (let key in window) {
-                if (typeof window[key] === 'function' && 
-                    (key.startsWith('inject') || key.startsWith('render') || key.startsWith('v43') || key.includes('ShowPage'))) {
-                    if (!window[key]._acpeProtected && !window[key]._rbacWrapped) {
-                        this.protect(key, window[key]);
-                    }
-                }
-            }
-        },
-
-        /**
-         * Hook into DOM changes to protect future features
-         */
-        initAutoProtector: function() {
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === 1) { // HTMLElement
-                            // If a new major component is added, protect it
-                            if (node.classList.contains('card') || node.classList.contains('module') || node.id) {
-                                const name = node.id || node.className.split(' ')[0];
-                                if (!node.hasAttribute('data-acpe-protected')) {
-                                    this.protect(name, node);
-                                }
-                            }
-                        }
-                    });
-                });
-            });
-
-            observer.observe(document.body, { childList: true, subtree: true });
-            
-            // Periodically re-scan for new functions
-            setInterval(() => this.autoScan(), 5000);
-        },
-
-        _observeElement: function(el) {
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'childList' || mutation.type === 'attributes') {
-                        console.warn(`[ACPE] Unauthorized attempt to modify protected component: ${el.getAttribute('data-acpe-id')}`);
-                        // In a real "engine", we might revert changes here
-                    }
-                });
-            });
-            observer.observe(el, { childList: true, attributes: true, subtree: true });
-        }
-    };
-
-    window.EDUTRACK_ACPE = ACPE;
-    
-    // Start the engine
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            ACPE.autoScan();
-            ACPE.initAutoProtector();
-        });
-    } else {
-        ACPE.autoScan();
-        ACPE.initAutoProtector();
-    }
-})();
-
-</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
   @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -25192,6 +24997,8 @@ function v43SelectLevel(level) {
   if (oldRoleEl && typeof selectRole === 'function') selectRole(oldRoleEl);
 }
 
+window.v43SelectLevel = v43SelectLevel;
+window.v43RenderFields = v43RenderFields;
 function v43SelectPmsRole(el) {
   document.querySelectorAll('#v43-pms-role-grid .role-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
@@ -25723,6 +25530,7 @@ function v43DoLogin() {
     btn.disabled = false;
   }, 300); // v314: was 900ms — authenticating state now resolves quickly
 }
+window.v43DoLogin = v43DoLogin;
 /* AI_PROTECTED_ZONE_END: LOGIN_LOGIC_FUNCTIONS */
 
 // ═══════════════════════════════════════════════════════════════
@@ -39190,6 +38998,8 @@ function fmsPrintOutstanding() {
     <tbody>${rowsHTML}</tbody></table>
 
 
+
+
 </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);
@@ -43464,11 +43274,7 @@ function tchAdminRegister() {
 (function v61PatchAdminPanel() {
   const origOpen = window.subAdminOpen;
   if (origOpen) {
-    window.subAdminOpen = function() {
-      origOpen();
-      v61InjectAdminExtensions();
-    };
-  }
+    }
 })();
 
 function v61InjectAdminExtensions() {
@@ -43821,7 +43627,6 @@ window.addEventListener('load', function v61Init() {
     ['admin-login-name','admin-login-email','admin-login-password'].forEach(function(id){var el=byId(id);if(el)el.onkeydown=function(e){if(e.key==='Enter')login();};});
     var oldOpen=window.subAdminOpen;
     if(typeof oldOpen==='function'&&!oldOpen._superAdminPasswordMenuFinal){
-      window.subAdminOpen=function(){var r=oldOpen.apply(this,arguments);setTimeout(ensurePasswordMenu,120);return r;};
       window.subAdminOpen._superAdminPasswordMenuFinal=true;
     }
     ensurePasswordMenu();
@@ -44065,7 +43870,6 @@ window.addEventListener('load', function v61Init() {
   function install(){
     if(window.EMS_SA_REBUILD&&window.EMS_SA_REBUILD._installed)return;
     var oldOpen=window.subAdminOpen;
-    window.subAdminOpen=function(){if(typeof oldOpen==='function')try{oldOpen.apply(this,arguments);}catch(e){}var ol=byId('sub-admin-overlay');if(ol){ol.style.display='flex';ol.style.alignItems='flex-start';}setTimeout(function(){ensureShell();openTab('sa-packages',byId('tab-sa-packages'));},80);};
     var oldRefresh=window.subAdminRefresh;
     window.subAdminRefresh=function(){var r;if(typeof oldRefresh==='function')try{r=oldRefresh.apply(this,arguments);}catch(e){}setTimeout(function(){ensureShell();renderAll();},80);return r;};
     window.EMS_SA_REBUILD={_installed:true,init:ensureShell,renderFinance:renderFinance,renderAudit:renderAudit,savePackage:savePackage,togglePackage:togglePackage,schedulePrice:schedulePrice,saveTerm:saveTerm,activateTerm:activateTerm,cascadePromo:cascadePromo,savePromo:savePromo,scanSubscriptions:scanSubscriptions,codeAction:codeAction,exportNotifications:exportNotifications,exportFinance:exportFinance,togglePermExpiry:togglePermExpiry,convertPermanent:convertPermanent,restoreSubscription:restoreSubscription,adjustPermanent:adjustPermanent,permStatus:permStatus,securitySweep:securitySweep,exportAudit:exportAudit,runServices:runServices,activePrice:activePrice};
@@ -44669,22 +44473,6 @@ window.addEventListener('load', function v61Init() {
     normalizeDistrictFields();
     if(window.v43DoLogin&&!window.v43DoLogin._districtAccessV135&&!window.v43DoLogin._part9Authoritative){
       var oldLogin=window.v43DoLogin;
-      window.v43DoLogin=function(){
-        var activeLevel='';try{activeLevel=window.v43CurrentLevel||v43CurrentLevel;}catch(e){}
-        if(activeLevel==='DISTRICT'){
-          var val=function(id){var el=document.getElementById(id);return el?el.value.trim():'';};
-          var role=val('v43-role'), staffId=val('v43-staffId'), region=val('v43-region'), district=val('v43-district');
-          if(!role)return deny('Please select your district role.');
-          if(!region)return deny('Please select your region.');
-          if(!district)return deny('Please select your district.');
-          var result=validateDistrictLogin({level:'DISTRICT',role:role,staffId:staffId,region:region,district:district,accessCode:val('v43-district-code'),password:val('v43-district-password'),ticketNumber:val('v43-ticket-number')});
-          if(!result.ok)return deny(result.message);
-          var sess=createSession(result.officer,role,region,district);
-          finishDistrictLogin(sess);
-          return;
-        }
-        return oldLogin.apply(this,arguments);
-      };
       window.v43DoLogin._districtAccessV135=true;
     }
   }
@@ -45305,7 +45093,6 @@ window.addEventListener('load', function v61Init() {
     ensureTabs(); wireWrappers(); processPromos(); scanSilent(); scanPackageChanges();
     var oldOpen=window.subAdminOpen;
     if(typeof oldOpen==='function'&&!oldOpen._part2Open){
-      window.subAdminOpen=function(){ var r=oldOpen.apply(this,arguments); setTimeout(ensureTabs,120); return r; };
       window.subAdminOpen._part2Open=true;
     }
   }
@@ -45598,7 +45385,7 @@ window.addEventListener('load', function v61Init() {
   }
   function boot(){
     ensureTabs();injectStaffIdField();patchTeacherLogin();patchSchoolValidation();wireAudits();processPermanent();securitySweep();refreshFinancialCache();
-    var oldOpen=window.subAdminOpen;if(typeof oldOpen==='function'&&!oldOpen._part3Open){window.subAdminOpen=function(){var r=oldOpen.apply(this,arguments);setTimeout(function(){ensureTabs();wireAudits();},160);return r;};window.subAdminOpen._part3Open=true;}
+    var oldOpen=window.subAdminOpen;if(typeof oldOpen==='function'&&!oldOpen._part3Open){window.subAdminOpen._part3Open=true;}
   }
   setInterval(function(){processPermanent();runServices(false);},60000);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(boot,1300);});else setTimeout(boot,1300);
@@ -46077,7 +45864,6 @@ window.addEventListener('load', function v61Init() {
 
   var oldAdminOpen=window.subAdminOpen;
   if(typeof oldAdminOpen==='function' && !oldAdminOpen._part1){
-    window.subAdminOpen=function(){ var r=oldAdminOpen.apply(this, arguments); setTimeout(boot,120); return r; };
     window.subAdminOpen._part1=true;
   }
   var oldAdminRefresh=window.subAdminRefresh;
@@ -51114,8 +50900,6 @@ window.addEventListener('load', function v61Init() {
   }
 
   /* Keep window.subAdminOpen in sync so other callers still work */
-  window.subAdminOpen = function() { _openAdminDashboard(); };
-
   /* ── SUBSCRIPTION MODAL: reliable opener ────────────────────── */
   function _openSubModal() {
     /* PART 2: prefer the New Registration / Renew Subscription entry choice */
@@ -52409,10 +52193,10 @@ window.GH_REGIONS_DISTRICTS = GH_REGIONS_DISTRICTS;
 //  • Audit Trail
 //  • District dropdown dependent on selected Region in ALL admin filter bars
 // ═══════════════════════════════════════════════════════════════════════════
-/* 
+/*
 ================================================================================
 PROTECTED COMPONENT: SUBSCRIPTION PRICE CONTROL ENGINE & AUTO-REGISTRATION
-THIS COMPONENT IS PROTECTED FROM ANY CHANGES, ALTERATIONS, OR DELETIONS DURING 
+THIS COMPONENT IS PROTECTED FROM ANY CHANGES, ALTERATIONS, OR DELETIONS DURING
 APP CLEANUP, CODE CLEANUP, REFACTORING, OR INTRODUCTION OF NEW FEATURES.
 ALL EXISTING FUNCTIONALITIES MUST BE MAINTAINED.
 ================================================================================
@@ -52460,11 +52244,11 @@ function v70SyncPricesToUI() {
   const p = v70GetActivePrices();
   const history = v70GetArr(V70_PRICE_HISTORY_KEY);
   const map = { full: '#pkg-full', exam: '#pkg-exam', teacher: '#pkg-teacher' };
-  
+
   Object.entries(map).forEach(([k, id]) => {
     const el = document.querySelector(`${id} .pkg-price`);
     if (el) el.textContent = `GHC ${Number(p[k]).toFixed(2)}`;
-    
+
     // V378: Show scheduled price notice in the registration modal
     const card = document.querySelector(id);
     if (card) {
@@ -52529,7 +52313,7 @@ function v70CheckScheduledPrices() {
           });
           activePrices[rec.package] = rec.newPrice;
           changed = true;
-          
+
           // V378: Automatic School Registration on Effective Date
           if (rec.targetSchoolId) {
             try {
@@ -52692,7 +52476,7 @@ window.v70ActivatePrice   = v70ActivatePrice;
     const audit        = v70GetArr(V70_AUDIT_KEY);
     const schools      = (typeof subGetArr === 'function' && typeof SUB_KEYS !== 'undefined') ? subGetArr(SUB_KEYS.schools) : [];
     const pending      = schools.filter(s => (typeof subGetSchoolStatus === 'function') ? subGetSchoolStatus(s) === 'pending' : !s.expiryDate);
-    
+
     const nowObj       = new Date();
   const todayDate    = nowObj.getFullYear() + '-' + String(nowObj.getMonth()+1).padStart(2,'0') + '-' + String(nowObj.getDate()).padStart(2,'0');
   const todayTime    = nowObj.toTimeString().slice(0,5);
@@ -52981,17 +52765,7 @@ function v70Init() {
     // Also patch subAdminOpen to trigger injection
     const _origOpen = window.subAdminOpen;
     if (typeof _origOpen === 'function') {
-      window.subAdminOpen = function() {
-        _origOpen.apply(this, arguments);
-        setTimeout(() => {
-          v70WireAdminFilterDistrict();
-          v70InjectPricePanel();
-          if (typeof v67RenderPriceControlModule === 'function') v67RenderPriceControlModule();
-          if (typeof v61InjectAdminExtensions === 'function') v61InjectAdminExtensions();
-          if (typeof renderAll === 'function') renderAll();
-        }, 600);
-      };
-    }
+      }
 
     // Patch v67AdminTab to re-render our panel when price-control tab is opened
     const _origV67Tab = window.v67AdminTab;
@@ -90124,6 +89898,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   var StudentAPI = {
+    openModal: openStudentModal,
     pickLevel: levelPick,
     login: studentLogin,
     clearInput: function(){ var i=byId('sd-id-input'); if(i){ i.value=''; i.focus(); } var e=byId('student-modal-error'); if(e){ e.style.display='none'; } },
@@ -97048,10 +96823,6 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
   function patchOpen(){
     var origOpen = window.subAdminOpen;
     if (typeof origOpen === 'function' && !origOpen._paPatched){
-      window.subAdminOpen = function(){
-        origOpen.apply(this, arguments);
-        setTimeout(function(){ ensureTab(); installTrackerHooks(); }, 60);
-      };
       window.subAdminOpen._paPatched = true;
     }
   }
@@ -135707,8 +135478,12 @@ window.SRG_ANNUAL = (function(){
     if (topbar) topbar.style.display = 'none';
     if (nav) nav.style.display = '';
     hideEngineRoomReturnButton();
-    if (typeof window.subAdminOpen === 'function') window.subAdminOpen();
-    else { var overlay = document.getElementById('sub-admin-overlay'); if (overlay) overlay.style.display = 'flex'; }
+    try {
+      if (typeof window.subAdminOpen !== 'function') throw new Error('subAdminOpen is unavailable');
+      window.subAdminOpen();
+    } catch (error) {
+      console.error('[EduTrack] Failed to open the administrator dashboard:', error);
+    }
   }
   function goToAppPage(route){
     var overlay = document.getElementById('sub-admin-overlay');
@@ -136182,14 +135957,7 @@ window.SRG_ANNUAL = (function(){
   function nowStr(){
     try { return new Date().toLocaleString('en-GH'); } catch(e) { return new Date().toString(); }
   }
-  function currentAdminName(){
-    try {
-      if (window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()) {
-        return localStorage.getItem('v43_login_name') || 'Super Administrator';
-      }
-    } catch(e) {}
-    return localStorage.getItem('v43_login_name') || 'Super Administrator';
-  }
+
   function djb2(str){
     var h = 5381;
     for (var i = 0; i < str.length; i++) { h = (((h * 33) ^ str.charCodeAt(i)) >>> 0); }
@@ -136492,7 +136260,7 @@ window.SRG_ANNUAL = (function(){
   }
   function pid(type, name){ return 'PCPR-' + djb2(type + ':' + name).toUpperCase(); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){
     return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive());
   }
@@ -136875,7 +136643,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function currentRole(){ return localStorage.getItem('v43_login_role') || localStorage.getItem('v43_login_level') || 'UNKNOWN'; }
 
   function loadState(){
@@ -137109,7 +136877,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function loadState(){
@@ -137481,7 +137249,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function loadState(){
@@ -137786,7 +137554,7 @@ window.SRG_ANNUAL = (function(){
   var STATE_KEY = 'ems_dpe_state_v1'; // same store the V352 engine already writes to — read/append only
 
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function loadDpeState(){ try { return JSON.parse(localStorage.getItem(STATE_KEY)||'null') || {}; } catch(e){ return {}; } }
   function saveDpeState(s){ try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); } catch(e){} }
@@ -138070,7 +137838,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function currentRole(){ return localStorage.getItem('v43_login_role') || localStorage.getItem('v43_login_level') || 'UNKNOWN'; }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -138521,7 +138289,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function loadState(){
@@ -139118,7 +138886,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){ return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()); }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function fpid(cls, name){ return 'FCAP-' + djb2(cls + ':' + name).toUpperCase(); }
@@ -139525,7 +139293,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){ return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()); }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function fid(name){ return 'FIF-' + djb2('feature:' + name).toUpperCase(); }
@@ -140036,7 +139804,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){ return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()); }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -140461,7 +140229,7 @@ window.SRG_ANNUAL = (function(){
 
   function djb2(str){ str = str || ''; var h=5381; for (var i=0;i<str.length;i++){ h=(((h*33)^str.charCodeAt(i))>>>0); } return h.toString(16); }
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){ return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()); }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -140879,7 +140647,7 @@ window.SRG_ANNUAL = (function(){
   var STATE_KEY = 'ems_acpr_state_v1';
 
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){ return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()); }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -141308,7 +141076,7 @@ window.SRG_ANNUAL = (function(){
 
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
   function nowIso(){ try { return new Date().toISOString(); } catch(e){ return String(Date.now()); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function isSuperAdmin(){ return !!(window.EMS_SUPER_ADMIN_ACCESS && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive && window.EMS_SUPER_ADMIN_ACCESS.isSessionActive()); }
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function djb2(str){
@@ -141875,7 +141643,7 @@ window.SRG_ANNUAL = (function(){
   var GOVERNED_GLOBALS = ['SEARCH_INDEX', 'EMS_COMING_SOON', 'EMS_PROTECTION_LEDGER'];
 
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function djb2(str){
     var h = 5381; str = str || '';
@@ -142447,7 +142215,7 @@ window.SRG_ANNUAL = (function(){
   var STATE_KEY = 'ems_aef_state_v1';
 
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || localStorage.getItem('ems_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function defaultState(){ return { history: [], auditLog: [], lastRun: null, lastVerdict: null, settings: { liveCheck:false, autoScroll:true } }; }
@@ -142985,7 +142753,7 @@ window.SRG_ANNUAL = (function(){
   var STATE_KEY = 'ems_mapf_state_v1';
 
   function nowStr(){ try { return new Date().toLocaleString('en-GH'); } catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || localStorage.getItem('ems_login_name') || 'Super Administrator'; }
+
   function escXml(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function defaultState(){ return { gateHistory: [], approvals: [], auditLog: [], lastRun: null, lastVerdict: null }; }
@@ -144962,7 +144730,7 @@ window.SRG_ANNUAL = (function(){
   function read(k,d){ try{ var raw=localStorage.getItem(k); return raw?JSON.parse(raw):d; }catch(e){ return d; } }
   function write(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
   function nowStr(){ try{ return new Date().toLocaleString('en-GH'); }catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Super Administrator'; }
+
   function val(id){ var el=document.getElementById(id); return el?String(el.value||'').trim():''; }
 
   function audit(action, detail){
@@ -145374,7 +145142,7 @@ window.SRG_ANNUAL = (function(){
   function write(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
   function val(id){ var el=document.getElementById(id); return el?String(el.value||'').trim():''; }
   function nowStr(){ try{ return new Date().toLocaleString('en-GH'); }catch(e){ return new Date().toString(); } }
-  function currentAdminName(){ return localStorage.getItem('v43_login_name') || 'Administrator'; }
+
   function currentRole(){ return localStorage.getItem('v43_login_role') || localStorage.getItem('ems_login_role') || ''; }
 
   function audit(action, detail){
@@ -147826,128 +147594,7 @@ window.SRG_ANNUAL = (function(){
   // call the original first (unchanged existing behavior), then extend.
   if (window.v43DoLogin && !window.v43DoLogin._apiBridgeV382){
     var oldLogin = window.v43DoLogin;
-    window.v43DoLogin = function(){
-      // Capture the PIN input before the original handler runs, in case
-      // fields are cleared/hidden once login succeeds.
-      var pinEl = document.getElementById('v43-login-pin');
-      var pinVal = pinEl ? pinEl.value.trim() : '';
-
-      var result = oldLogin.apply(this, arguments);
-
-      // Fire-and-forget backend sync. Reads back the same values the
-      // original function just wrote to localStorage, so this never
-      // duplicates field-reading logic and never fights the original
-      // validation (if the original returned early on a validation
-      // error, these localStorage values simply won't have changed and
-      // this call will harmlessly fail/be skipped by the backend).
-      try {
-        var staffId = localStorage.getItem('v43_login_staffid');
-        var role    = localStorage.getItem('v43_login_role');
-        var level   = localStorage.getItem('v43_login_level');
-        var region  = localStorage.getItem('ems_login_region') || '';
-        var district= localStorage.getItem('ems_login_district') || '';
-
-        if (staffId && role && level){
-          window.EDUTRACK_API.login({
-            staffId: staffId, role: role, level: level,
-            region: region, district: district, pin: pinVal
-          }).catch(function(e){
-            // Offline-first: silently continue. Existing localStorage-based
-            // session already works regardless of backend reachability.
-            console.info('[EduTrack API Bridge] backend login skipped:', e.message);
-          });
-        }
-      } catch(e){ /* never let bridge errors affect the real login flow */ }
-
-      return result;
-    };
-    window.v43DoLogin._apiBridgeV382 = true;
-  }
-})();
-</script>
-
-
-<!-- ══════════════════════════════════════════════════════════════════════
-     EDUTRACK BACKEND SYNC — V383
-     ──────────────────────────────────────────────────────────────────────
-     ADDITIVE ONLY — appended before </body></html>. Nothing above this
-     point is modified, renamed, rewritten or removed. Wraps named
-     functions directly (saveTeacherData, scSaveStore) using the same
-     idempotent guard convention as the rest of this file, rather than
-     hooking localStorage.setItem globally.
-
-     HONEST SCOPE — read before assuming everything is wired
-     ─────────────────────────────────────────────────────────────────
-     I (Claude) went looking for the real save function behind every
-     identified localStorage key before wiring anything. Several turned
-     out not to be safely wireable in one pass:
-
-       - ems_scores: no localStorage.setItem call for this key exists
-         anywhere in the file. It's read once (for autocomplete) but
-         never written — real score data must live under a different
-         key/structure. NOT wired. Needs investigation before it can be.
-       - da_revenue_records / da_expenditure_records: the only write
-         site found is the DEMO DATA SEEDER (random mock transactions),
-         not a real user entry form. Wiring it would sync fake demo
-         numbers as if they were real financial records. NOT wired.
-       - ict_officers, ems_holidays/ges_holidays: no write site found
-         for these exact keys either — likely read-only/seeded
-         elsewhere, or the real key differs from what static analysis
-         suggested. NOT wired.
-       - SMS_TEMPLATES: confirmed to be a plain object keyed by
-         template id, not the array-of-records shape the backend
-         sms_templates table assumes. Needs a dedicated mapper. NOT
-         wired this pass.
-
-     WIRED THIS PASS (verified against the actual save functions):
-       - Teachers (TEACHERS array, via saveTeacherData()) → upsert to
-         POST /api/teachers, keyed by staffId.
-       - Teacher attendance (ATTEND_DATA, an object keyed like
-         'T{idx}|{term}|{date}' or 'T|{staffId}|{term}|{date}', also
-         via saveTeacherData()) → upsert to POST /api/attendance per
-         changed entry, only syncing entries that changed since the
-         last save (cheap diff against an in-memory snapshot) so this
-         doesn't resend the entire attendance history on every keypress.
-       - Custom subjects (CUSTOM_SUBJECTS array, via scSaveStore()) →
-         upsert to POST /api/custom-subjects, keyed by the frontend's
-         own scGenId().
-
-     Every sync call is fire-and-forget, wrapped in try/catch, and never
-     blocks or alters the original save function's behavior or return
-     value — fully offline-first, exactly like the login wiring in the
-     V382 API bridge this module depends on.
-     ══════════════════════════════════════════════════════════════════════ -->
-<script>
-(function EDUTRACK_SYNC_V383(){
-  "use strict";
-  if (!window.EDUTRACK_API) return;          // V382 bridge must load first
-  if (window.EDUTRACK_SYNC_V383_LOADED) return; // idempotent guard
-  window.EDUTRACK_SYNC_V383_LOADED = true;
-
-  function safe(fn){ try { fn(); } catch(e){ console.info('[EduTrack Sync]', e.message); } }
-
-  // ── Teachers + teacher attendance (saveTeacherData) ─────────────────
-  if (window.saveTeacherData && !window.saveTeacherData._syncV383) {
-    var oldSaveTeacherData = window.saveTeacherData;
-    var lastAttendSnapshot = {}; // key -> status, last synced value
-
-    window.saveTeacherData = function(){
-      var result = oldSaveTeacherData.apply(this, arguments);
-
-      safe(function(){
-        var teachers = Array.isArray(window.TEACHERS) ? window.TEACHERS : [];
-        teachers.forEach(function(t){
-          var staffId = t.staffId || t.staffID || t.teacher_staff_id;
-          if (!staffId || !t.name) return; // matches backend's required-field check
-          window.EDUTRACK_API.call('POST', '/teachers', {
-            staffId: staffId, name: t.name, gender: t.gender || null,
-            subject: t.subject || null, classAssigned: t.class_assigned || t.subject || null,
-            schoolName: t.school || t.schoolName || null,
-            region: t.region || (window.CONFIG && CONFIG.region) || null,
-            district: t.district || (window.CONFIG && CONFIG.district) || null,
-            circuit: t.circuit || null, status: t.status || 'Active',
-          }).catch(function(e){ console.info('[EduTrack Sync] teacher skipped:', staffId, e.message); });
-        });
+    );
       });
 
       safe(function(){
@@ -148012,7 +147659,7 @@ window.SRG_ANNUAL = (function(){
 
 </body></html>
 
-<!-- 
+<!--
 ================================================================================
    FIX INTEGRITY MONITOR (V375-FIX)
    Ensures Subscription Price Sync and Teacher Signature Auto-fill
@@ -148022,16 +147669,16 @@ window.SRG_ANNUAL = (function(){
 <script>
 (function(){
   'use strict';
-  
+
   function verifySubscriptionPriceFix() {
     try {
       const sa = window.EMS_SA_REBUILD;
       if (!sa || typeof sa.activePrice !== 'function') return false;
-      
+
       // Check if v70GetActivePrices is using EMS_SA_REBUILD.activePrice
       const funcStr = v70GetActivePrices.toString();
       if (funcStr.indexOf('EMS_SA_REBUILD') === -1 || funcStr.indexOf('activePrice') === -1) return false;
-      
+
       return true;
     } catch(e) { return false; }
   }
@@ -148040,11 +147687,11 @@ window.SRG_ANNUAL = (function(){
     try {
       const ges = window.GES_TEACHER_ASSIGN;
       if (!ges || typeof ges.assign !== 'function') return false;
-      
+
       // Check if assign function contains syncSignature call
       const funcStr = ges.assign.toString();
       if (funcStr.indexOf('syncSignature') === -1) return false;
-      
+
       return true;
     } catch(e) { return false; }
   }
@@ -148052,13 +147699,13 @@ window.SRG_ANNUAL = (function(){
   window.runFixIntegrityCheck = function() {
     const p1 = verifySubscriptionPriceFix();
     const p2 = verifySignatureFix();
-    
+
     if (!p1 || !p2) {
       const msg = 'CRITICAL: EduTrack core fixes (Subscription/Signature) have been altered or removed!';
       console.error(msg);
       // Persistent warning in console
       setInterval(function(){ console.warn(msg); }, 5000);
-      
+
       if (typeof toast === 'function') {
         toast('⚠️ System Integrity Warning: Core fixes altered!', 'error');
       }
@@ -149742,56 +149389,6 @@ window.SRG_ANNUAL = (function(){
   // Preserve the existing six-card routing, but persist the strict school-scoped
   // session only after the existing login flow accepts all credentials.
   var priorDoLogin = window.v43DoLogin;
-  window.v43DoLogin = function(){
-    var isSchool = window.v43CurrentLevel === 'SCHOOL' || (typeof v43CurrentLevel !== 'undefined' && v43CurrentLevel === 'SCHOOL');
-    var get = function(id){ var el=document.getElementById(id); return el ? String(el.value||'').trim() : ''; };
-    var result = null;
-    if (isSchool) {
-      result = window.v43ValidateSchoolLogin(get('v43-region'), get('v43-district'), get('v43-school-access-code'), get('v43-staffId'));
-      if (!result.ok) {
-        try { localStorage.removeItem('edutrack_staff_v3_session'); } catch(e) {}
-        if (typeof v43ShowError === 'function') v43ShowError(GENERIC_FAIL);
-        return;
-      }
-      // Make the validated tenant context available to the existing flow, but
-      // do not create an authenticated session until v43DoLogin accepts role,
-      // PIN, and its remaining checks below.
-      window._v43SchoolLoginContext = result;
-      // School login has no visible role selector; use the already-authorized
-      // scoped staff role for the existing role gate without changing the UI.
-      var roleEl = document.getElementById('v43-role');
-      if (!roleEl) {
-        roleEl = document.createElement('input');
-        roleEl.type = 'hidden';
-        roleEl.id = 'v43-role';
-        document.body.appendChild(roleEl);
-      }
-      if (!String(roleEl.value || '').trim()) {
-        roleEl.value = String((result.teacher && result.teacher.role) || 'Headteacher');
-      }
-    }
-    var outcome = priorDoLogin.apply(this, arguments);
-    if (isSchool) {
-      // v43DoLogin sets this only after all validation succeeds. A false value
-      // means the attempt failed and must not create a session or route.
-      if (typeof v43LoginInProgress !== 'undefined' && !v43LoginInProgress) {
-        try { localStorage.removeItem('edutrack_staff_v3_session'); } catch(e) {}
-        return outcome;
-      }
-      try {
-        var role = get('v43-role') || result.teacher.role || '';
-        var session = {teacherId:result.teacher.teacherId || null, staffId:result.teacher.staffId, role:role, schoolId:result.school.id, schoolName:result.school.name, region:result.school.region, district:result.school.district, authenticated:true, loginAt:new Date().toISOString()};
-        localStorage.setItem('edutrack_staff_v3_session', JSON.stringify(session));
-        if (typeof CONFIG !== 'undefined') { CONFIG.schoolId = result.school.id; CONFIG.school = result.school.name; CONFIG.region = result.school.region; CONFIG.district = result.school.district; }
-      } catch(e) {
-        try { localStorage.removeItem('edutrack_staff_v3_session'); } catch(ignore) {}
-        if (typeof v43ShowError === 'function') v43ShowError(GENERIC_FAIL);
-        return;
-      }
-    }
-    return outcome;
-  };
-
   // Enforce expiry/code lifecycle on page load and before each login attempt.
   refreshLifecycle();
   function fieldSelect(id,label,options,disabled){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var x=document.createElement('select');x.id=id;x.className='v43-field-select';x.disabled=!!disabled;var ph=document.createElement('option');ph.value='';ph.textContent=disabled?'— Select region first —':'— Choose '+label.replace('Select Your ','')+' —';x.appendChild(ph);(options||[]).forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;x.appendChild(o);});w.appendChild(x);return w;}
@@ -149809,7 +149406,14 @@ function schoolLogin(ev){
   try{
     // Call the window-level function so all later authentication wrappers
     // (school tenancy, role handoff, session, and routing) remain authoritative.
-    var result=(typeof window.v43DoLogin === 'function' ? window.v43DoLogin() : v43DoLogin());
+    var result;
+    try {
+      if (typeof window.v43DoLogin !== 'function') throw new Error('v43DoLogin is unavailable');
+      result = window.v43DoLogin();
+    } catch (error) {
+      console.error('[EduTrack] Login handoff failed:', error);
+      throw error;
+    }
     // Validation failures leave the button enabled, so release immediately.
     // Successful authentication disables it; hold the lock until the existing
     // login flow restores the control after routing completes.
@@ -150061,6 +149665,120 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
 
 
 
+<script id="edutrack-six-login-card-controller">
+(function(){
+  'use strict';
+  var LEVELS = {NATIONAL:1, REGIONAL:1, DISTRICT:1, SCHOOL:1, PARENT:1, STUDENT:1};
+  var lastActivation = 0, lastCard = null;
+
+  function cardFrom(target){
+    var node = target && target.closest ? target.closest('.login-level-btn') : null;
+    return node && LEVELS[node.getAttribute('data-level')] ? node : null;
+  }
+  function setState(card){
+    document.querySelectorAll('.login-level-btn').forEach(function(btn){
+      var active = btn === card;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+  function waitFor(fn, label){
+    var tries = 0;
+    (function attempt(){
+      try {
+        if (fn()) return;
+      } catch (error) {
+        console.error('[EduTrack] ' + label + ' failed:', error);
+        return;
+      }
+      if (++tries < 40) setTimeout(attempt, 100);
+      else console.error('[EduTrack] ' + label + ' is unavailable');
+    })();
+  }
+  function activate(card){
+    var level = card.getAttribute('data-level');
+    setState(card);
+    if (level === 'PARENT') {
+      waitFor(function(){
+        if (!window.EMS_PARENT_PORTAL || typeof window.EMS_PARENT_PORTAL.openModal !== 'function') return false;
+        window.EMS_PARENT_PORTAL.openModal();
+        return true;
+      }, 'Parent login');
+      return;
+    }
+    if (level === 'STUDENT') {
+      waitFor(function(){
+        if (!window.EMS_LMS || !window.EMS_LMS.Student || typeof window.EMS_LMS.Student.openModal !== 'function') return false;
+        window.EMS_LMS.Student.openModal();
+        return true;
+      }, 'Student login');
+      return;
+    }
+    try {
+      if (level === 'SCHOOL' && window.EDUTRACK_ENHANCEMENT_PART1 && typeof window.EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel === 'function') {
+        window.EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel({preventDefault:function(){}, stopPropagation:function(){}});
+      } else if (typeof window.v43SelectLevel === 'function') {
+        window.v43SelectLevel(level);
+      } else if (typeof v43SelectLevel === 'function') {
+        v43SelectLevel(level);
+      } else {
+        throw new Error('v43SelectLevel is unavailable');
+      }
+    } catch (error) {
+      console.error('[EduTrack] ' + level + ' login selection failed:', error);
+      var dynamic = document.getElementById('v43DynamicFields');
+      if (dynamic) dynamic.textContent = 'Unable to load this login form. Please try again.';
+    }
+    setState(card);
+  }
+  function handleClick(event){
+    var card = cardFrom(event.target);
+    if (!card) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    var now = Date.now();
+    if (card === lastCard && now - lastActivation < 250) return;
+    lastCard = card;
+    lastActivation = now;
+    activate(card);
+  }
+  function handleKey(event){
+    var card = cardFrom(event.target);
+    if (!card || (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    activate(card);
+  }
+  document.addEventListener('click', handleClick, true);
+  document.addEventListener('keydown', handleKey, true);
+  window.EDUTRACK_LOGIN_CARD_CONTROLLER = {activate: activate};
+})();
+</script>
+<script id="edutrack-global-admin-name-fallback">
+(function(){
+  if (typeof window.currentAdminName !== "function") {
+    window.currentAdminName = function(){ return localStorage.getItem("v43_login_name") || localStorage.getItem("ems_login_name") || "Super Administrator"; };
+  }
+})();
+</script>
+<script id="edutrack-fresh-login-session-cleanup">
+(function(){
+  function clearStaleLoginFlags(){
+    var login = document.getElementById('login-screen');
+    if (!login) return;
+    var visible = getComputedStyle(login).display !== 'none' && !login.classList.contains('fade-out');
+    if (!visible) return;
+    try {
+      localStorage.removeItem('ems_super_admin_session_v1');
+      localStorage.removeItem('v43_login_role');
+    } catch (error) {
+      console.error('[EduTrack] Failed to clear stale login flags:', error);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', clearStaleLoginFlags);
+  else clearStaleLoginFlags();
+})();
+</script>
 <script src="/privileged-auth.js"></script></body></html>
 
 <!-- EDUTRACK_STAFF_MANAGEMENT_PART3 -->
@@ -150251,10 +149969,6 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
     },300);
     return true;
   }
-  window.v43DoLogin=function(){
-    if(level()==='SCHOOL')return runSchool();
-    return typeof previous==='function'?previous.apply(this,arguments):undefined;
-  };
   window.v43DoLogin._part9Authoritative=true;
   window.__EDUTRACK_PART9_AUTHORITY__=true;
 })();

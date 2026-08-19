@@ -4836,6 +4836,7 @@ td input, td select, td textarea, td button {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.1/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+<style id="edutrack-v43-eye-toggle-style">.v43-input-toggle-wrap{display:flex;align-items:stretch;gap:.35rem;width:100%}.v43-input-toggle-wrap .v43-field-input{flex:1;min-width:0}.v43-eye-toggle{border:1px solid rgba(13,27,62,.22);background:#fff;border-radius:8px;min-width:2.75rem;padding:0 .65rem;cursor:pointer;font-size:1rem;touch-action:manipulation}.v43-eye-toggle:focus-visible{outline:3px solid #4dd0e1;outline-offset:2px}@media (max-width:520px){.v43-input-toggle-wrap{gap:.25rem}.v43-eye-toggle{min-width:2.6rem;padding:0 .5rem}}</style>
 </head>
 <body>
 
@@ -5053,24 +5054,13 @@ td input, td select, td textarea, td button {
     <div class="v43-fields-section" id="v43DynamicFields" data-ai-protected="true"></div>
 
     <!-- PMS Roles Section removed from login UI (v74) -->
-
-    <!-- Access PIN -->
-    <div id="v43-pin-section" data-ai-protected="true" data-ai-protected="true" style="display:none">
-      <div class="login-section-label" style="margin-top:.5rem">ACCESS PIN (OPTIONAL — FOR DATA SECURITY)</div>
-      <div class="login-group">
-        <input id="v43-login-pin" type="password" maxlength="4" placeholder="Enter 4-digit PIN or leave blank"
-          oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-          onkeydown="if(event.key==='Enter')EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)"/>
-      </div>
-    </div>
-
     <!-- Error message -->
     <div class="login-error" id="v43LoginError" data-ai-protected="true"></div>
     <!-- AI_PROTECTED_ZONE_END: LOGIN_PAGE_COMPONENTS -->
 
     <!-- Login Button -->
     <button class="login-enter-btn" data-ai-protected="true" data-ai-protected="true" id="v43LoginBtn" type="button" onclick="EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)">
-      🔐 Enter System
+      Enter System
     </button>
 
     <!-- Trial / Subscription Status Banner -->
@@ -24984,7 +24974,6 @@ function v43SelectLevel(level) {
   // Show PMS section and PIN
   // v43-pms-section removed from login UI (v74) — null-guarded
   const _pmsSec = document.getElementById('v43-pms-section'); if (_pmsSec) _pmsSec.style.display = '';
-  document.getElementById('v43-pin-section').style.display = '';
 
   // Render dynamic fields
   v43RenderFields(level);
@@ -25031,6 +25020,7 @@ function v43RenderFields(level) {
     rg.id = 'v43RoleGroup';
     container.appendChild(rg);
     container.appendChild(v43MakeInput('v43-staffId', 'Staff ID', 'Enter your Staff ID'));
+    container.appendChild(v43MakeInput('v43-access-code', 'Access Code', 'Enter your District Access Code'));
   } else if (level === 'SCHOOL') {
     container.appendChild(v43MakeSelect('v43-region', 'Select Your Region', V43_CONFIG.regions, v43OnRegionChange));
     const dg = v43MakeSelect('v43-district', 'Select Your District', [], null, true);
@@ -25091,24 +25081,25 @@ function v43MakeSelect(id, label, options, onChange, disabled) {
 function v43MakeInput(id, label, placeholder) {
   const group = document.createElement('div');
   group.className = 'v43-field-group';
-
   const lbl = document.createElement('label');
   lbl.className = 'v43-field-label';
   lbl.setAttribute('for', id);
   lbl.textContent = label;
-
+  const wrap = document.createElement('div');
+  wrap.className = 'v43-input-toggle-wrap';
   const input = document.createElement('input');
-  input.type = 'text'; input.id = id; input.name = id;
-  input.className = 'v43-field-input';
-  input.placeholder = placeholder;
-  input.autocomplete = 'off';
-  input.addEventListener('input', v43HideError);
-
-  group.appendChild(lbl);
-  group.appendChild(input);
-  return group;
+  const hasEye = id === 'v43-staffId' || id === 'v43-access-code' || id === 'v43-school-access-code';
+  input.type = hasEye ? 'password' : 'text'; input.id = id; input.name = id;
+  input.className = 'v43-field-input'; input.placeholder = placeholder; input.autocomplete = 'off';
+  input.addEventListener('input', v43HideError); wrap.appendChild(input);
+  if (hasEye) {
+    const eye = document.createElement('button'); eye.type = 'button'; eye.className = 'v43-eye-toggle'; eye.textContent = '◉';
+    eye.setAttribute('aria-label', 'Show ' + label); eye.setAttribute('aria-controls', id);
+    eye.addEventListener('click', function(){ const showing=input.type==='text'; input.type=showing?'password':'text'; eye.textContent=showing?'◉':'◌'; eye.setAttribute('aria-label',(showing?'Show ':'Hide ')+label); });
+    wrap.appendChild(eye);
+  }
+  group.appendChild(lbl); group.appendChild(wrap); return group;
 }
-
 function v43OnRegionChange(e) {
   const region = e.target.value;
   const dg = document.getElementById('v43DistrictGroup');
@@ -25414,10 +25405,18 @@ function v43DoLogin() {
   }
   if (!staffId) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
 
+  // DISTRICT level: validate Staff ID + Access Code against the existing
+  // district officer registry and create the authoritative role session.
+  if (v43CurrentLevel === 'DISTRICT') {
+    const districtCode = val('v43-access-code');
+    const districtApi = window.EMS_DISTRICT_ACCESS_V135 || window.EMS_DISTRICT_OFFICERS;
+    const districtResult = districtApi && typeof districtApi.validateLogin === 'function' ? districtApi.validateLogin({staffId, accessCode:districtCode, region, district, role}) : null;
+    if (!districtResult || !districtResult.ok) { v43ShowError((districtResult && districtResult.message) || V43_GENERIC_LOGIN_ERROR); return; }
+    if (districtApi && typeof districtApi.createSession === 'function') districtApi.createSession(districtResult.officer, role, region, district);
+    window._v43DistrictLoginContext = districtResult;
+  }
   // PART 6 — SCHOOL level only: Region + District + School Access Code +
-  // Staff ID must all validate before the existing login flow below is
-  // allowed to proceed. Every other level (National/Regional/District/
-  // Parent/Student) is completely untouched by this block.
+  // Staff ID must all validate before the existing login flow below is allowed.
   if (v43CurrentLevel === 'SCHOOL') {
     const schoolAccessCode = val('v43-school-access-code');
     if (!schoolAccessCode) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
@@ -25428,15 +25427,6 @@ function v43DoLogin() {
     window._v43SchoolLoginContext = schoolAuth;
   }
 
-  // Handle PIN validation (reuse existing logic)
-  const pin = val('v43-login-pin');
-  const savedPin = localStorage.getItem('ems_access_pin');
-  if (savedPin && pin !== savedPin) {
-    v43ShowError(V43_GENERIC_LOGIN_ERROR); return;
-  }
-  if (!savedPin && pin.length === 4) {
-    localStorage.setItem('ems_access_pin', pin);
-  }
 
   if (v43LoginInProgress) return;
   v43LoginInProgress = true;
@@ -25526,7 +25516,7 @@ function v43DoLogin() {
       }, 250); // v314: was 600ms — trimmed to match global-standard transition speed
     }, 500); // v314: was 1400ms — Access Granted now shows briefly instead of lingering
 
-    btn.textContent = '🔐 Enter System';
+    btn.textContent = 'Enter System';
     btn.disabled = false;
   }, 300); // v314: was 900ms — authenticating state now resolves quickly
 }
@@ -25966,7 +25956,6 @@ function emsDoLogout() {
   document.querySelectorAll('#v43-pms-role-grid .role-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('v43DynamicFields').innerHTML = '';
   const _pmsSec2 = document.getElementById('v43-pms-section'); if (_pmsSec2) _pmsSec2.style.display = 'none';
-  document.getElementById('v43-pin-section').style.display = 'none';
   const errEl = document.getElementById('v43LoginError');
   if (errEl) { errEl.textContent = ''; errEl.classList.remove('show'); }
   // Show login screen
@@ -26134,17 +26123,7 @@ function doLogin() {
     return;
   }
 
-  // EMS login (original logic preserved)
-  const pin = document.getElementById('login-pin').value;
-  const savedPin = localStorage.getItem('ems_access_pin');
-  if (savedPin && pin !== savedPin) {
-    errEl.textContent = '⚠️ Incorrect PIN. Please try again.';
-    errEl.classList.add('show');
-    return;
-  }
-  if (!savedPin && pin.length === 4) {
-    localStorage.setItem('ems_access_pin', pin);
-  }
+  // EMS login continues without a separate access PIN.
   const region   = document.getElementById('login-region').value;
   const district = document.getElementById('login-district').value;
   localStorage.setItem('ems_login_role', selectedRole);
@@ -44036,7 +44015,7 @@ window.addEventListener('load', function v61Init() {
     // by v43RenderFields — it only ever adds the District Access Code field.
     ['v43-district-password'].forEach(function(id){var el=document.getElementById(id);if(el&&el.parentNode)el.parentNode.remove();});
     var note=document.getElementById('v136-district-role-note');if(note&&note.parentNode)note.parentNode.removeChild(note);
-    if(!document.getElementById('v43-district-code'))wrap.appendChild(field('v43-district-code','Access Code','password','Enter your access code'));
+    var legacyCode=document.getElementById('v43-district-code');if(legacyCode&&legacyCode.parentNode)legacyCode.parentNode.remove();
   }
   function finishLogin(sess){
     var btn=document.getElementById('v43LoginBtn'), login=document.getElementById('login-screen'), msg=document.getElementById('loginSuccessMsg'), ov=document.getElementById('loginSuccessOverlay');
@@ -44440,9 +44419,10 @@ window.addEventListener('load', function v61Init() {
     if(!wrap)return;
     var password=document.getElementById('v43-district-password');
     if(password&&password.parentNode)password.parentNode.remove();
-    var code=document.getElementById('v43-district-code');
-    if(!code){wrap.appendChild(makeField('v43-district-code','Access Code','password','Enter your access code'));code=document.getElementById('v43-district-code');}
-    if(code){code.type='password';code.placeholder='Enter your access code';var label=code.parentNode&&code.parentNode.querySelector('label');if(label)label.textContent='Access Code';}
+    var legacy=document.getElementById('v43-district-code');
+    if(legacy&&legacy.parentNode)legacy.parentNode.remove();
+    var code=document.getElementById('v43-access-code');
+    if(code){code.type='password';code.placeholder='Enter your District Access Code';var label=code.parentNode&&code.parentNode.querySelector('label');if(label)label.textContent='Access Code';}
   }
   function finishDistrictLogin(sess){
     var btn=document.getElementById('v43LoginBtn'), loginEl=document.getElementById('login-screen'), overlay=document.getElementById('loginSuccessOverlay'), msg=document.getElementById('loginSuccessMsg');
@@ -44524,7 +44504,7 @@ window.addEventListener('load', function v61Init() {
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(boot,4700);setTimeout(boot,6200);});
   else {setTimeout(boot,4700);setTimeout(boot,6200);}
-  window.EMS_DISTRICT_ACCESS_V135 = {validateLogin:validateDistrictLogin,validSessionFor:validSessionFor,getSystemMode:mode,setSystemMode:function(m){localStorage.setItem(KEYS.systemMode,String(m||'').toUpperCase()==='DEVELOPMENT'?'DEVELOPMENT':'PRODUCTION');},sanitize:sanitizeStoredAccessCodes,reinstall:boot};
+  window.EMS_DISTRICT_ACCESS_V135 = {validateLogin:validateDistrictLogin,createSession:createSession,validSessionFor:validSessionFor,getSystemMode:mode,setSystemMode:function(m){localStorage.setItem(KEYS.systemMode,String(m||'').toUpperCase()==='DEVELOPMENT'?'DEVELOPMENT':'PRODUCTION');},sanitize:sanitizeStoredAccessCodes,reinstall:boot};
 })();
 </script>
 
@@ -82665,6 +82645,7 @@ function initPasswordToggles() {
     const passwordInputs = document.querySelectorAll('input[type="password"]');
     passwordInputs.forEach(input => {
         if (input.parentElement.classList.contains('password-wrapper')) return;
+        if (input.closest && input.closest('.v43-input-toggle-wrap')) return;
 
         // Create wrapper
         const wrapper = document.createElement('div');
@@ -149392,8 +149373,14 @@ window.SRG_ANNUAL = (function(){
   // Enforce expiry/code lifecycle on page load and before each login attempt.
   refreshLifecycle();
   function fieldSelect(id,label,options,disabled){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var x=document.createElement('select');x.id=id;x.className='v43-field-select';x.disabled=!!disabled;var ph=document.createElement('option');ph.value='';ph.textContent=disabled?'— Select region first —':'— Choose '+label.replace('Select Your ','')+' —';x.appendChild(ph);(options||[]).forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;x.appendChild(o);});w.appendChild(x);return w;}
-function fieldInput(id,label,placeholder,type){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var i=document.createElement('input');i.id=id;i.type=type||'text';i.className='v43-field-input';i.placeholder=placeholder;i.autocomplete='off';w.appendChild(i);return w;}
-function selectSchoolLevel(ev){if(ev){ev.preventDefault();ev.stopPropagation();}document.querySelectorAll('.login-level-btn').forEach(function(b){var a=b.dataset.level==='SCHOOL';b.classList.toggle('active',a);b.setAttribute('aria-pressed',a?'true':'false');});var c=document.getElementById('v43DynamicFields');if(!c)return;c.innerHTML='';var rg=fieldSelect('v43-region','Select Your Region',Object.keys(window.GH_REGIONS_DISTRICTS||{}),false),rs=rg.querySelector('select'),dg=fieldSelect('v43-district','Select Your District',[],true),ds=dg.querySelector('select');rs.addEventListener('change',function(){ds.innerHTML='';var p=document.createElement('option');p.value='';p.textContent=this.value?'— Choose District —':'— Select region first —';ds.appendChild(p);(window.GH_REGIONS_DISTRICTS[this.value]||[]).slice().sort().forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;ds.appendChild(o);});ds.disabled=!this.value;});c.appendChild(rg);c.appendChild(dg);c.appendChild(fieldInput('v43-school-access-code','School Access Code',"Enter your school's Access Code"));c.appendChild(fieldInput('v43-staffId','Staff ID','Enter your Staff ID'));var pin=document.getElementById('v43-pin-section');if(pin)pin.style.display='';}
+function fieldInput(id,label,placeholder,type){var w=document.createElement('div');w.className='v43-field-group';var l=document.createElement('label');l.className='v43-field-label';l.htmlFor=id;l.textContent=label;w.appendChild(l);var wrap=document.createElement('div');wrap.className='v43-input-toggle-wrap';var i=document.createElement('input');var hasEye=id==='v43-staffId'||id==='v43-school-access-code'||id==='v43-access-code';i.id=id;i.type=hasEye? 'password' : (type||'text');i.className='v43-field-input';i.placeholder=placeholder;i.autocomplete='off';wrap.appendChild(i);if(hasEye){var eye=document.createElement('button');eye.type='button';eye.className='v43-eye-toggle';eye.textContent='◉';eye.setAttribute('aria-label', 'Show '+label);eye.setAttribute('aria-controls',id);eye.addEventListener('click',function(){var showing=i.type==='text';i.type=showing?'password':'text';eye.textContent=showing?'◉':'◌';eye.setAttribute('aria-label',(showing?'Show ':'Hide ')+label);});wrap.appendChild(eye);}w.appendChild(wrap);return w;}
+function edutrackDedupeLoginField(id){
+  var fields=document.querySelectorAll('#'+id);
+  for(var i=0;i<fields.length-1;i++){
+    if(fields[i]&&fields[i].parentNode)fields[i].parentNode.removeChild(fields[i]);
+  }
+}
+function selectSchoolLevel(ev){if(ev){ev.preventDefault();ev.stopPropagation();}document.querySelectorAll('.login-level-btn').forEach(function(b){var a=b.dataset.level==='SCHOOL';b.classList.toggle('active',a);b.setAttribute('aria-pressed',a?'true':'false');});var c=document.getElementById('v43DynamicFields');if(!c)return;c.innerHTML='';var rg=fieldSelect('v43-region','Select Your Region',Object.keys(window.GH_REGIONS_DISTRICTS||{}),false),rs=rg.querySelector('select'),dg=fieldSelect('v43-district','Select Your District',[],true),ds=dg.querySelector('select');rs.addEventListener('change',function(){ds.innerHTML='';var p=document.createElement('option');p.value='';p.textContent=this.value?'— Choose District —':'— Select region first —';ds.appendChild(p);(window.GH_REGIONS_DISTRICTS[this.value]||[]).slice().sort().forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;ds.appendChild(o);});ds.disabled=!this.value;});c.appendChild(rg);c.appendChild(dg);c.appendChild(fieldInput('v43-school-access-code','School Access Code',"Enter your school's Access Code"));c.appendChild(fieldInput('v43-staffId','Staff ID','Enter your Staff ID'));edutrackDedupeLoginField('v43-school-access-code');}
 function schoolLogin(ev){
   // One authoritative action for mouse, touch, and keyboard activation.
   // The button is type=button, so only cancel a real cancellable event.
@@ -149754,6 +149741,14 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   window.EDUTRACK_LOGIN_CARD_CONTROLLER = {activate: activate};
 })();
 </script>
+<script id="edutrack-retired-login-credential-cleanup">
+(function(){
+  function clearRetiredPin(){
+    try{ localStorage.removeItem('ems_access_pin'); }catch(error){ console.error('[EduTrack] Failed to clear retired PIN state:',error); }
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',clearRetiredPin);else clearRetiredPin();
+})();
+</script>
 <script id="edutrack-global-admin-name-fallback">
 (function(){
   if (typeof window.currentAdminName !== "function") {
@@ -149936,10 +149931,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
     try{
       if(typeof window.v43IsAuthorizedLoginRole==='function'&&!window.v43IsAuthorizedLoginRole('SCHOOL',role,region,district))return fail();
     }catch(e){return fail();}
-    var pin=value('v43-login-pin'),savedPin=localStorage.getItem('ems_access_pin');
-    if(savedPin&&pin!==savedPin)return fail();
-    if(!savedPin&&pin.length===4)localStorage.setItem('ems_access_pin',pin);
-    var session={teacherId:teacher.teacherId||null,staffId:String(teacher.staffId||staffId).trim(),role:role,schoolId:school.id,schoolName:school.name,region:school.region,district:school.district,authenticated:true,loginAt:new Date().toISOString()};
+        var session={teacherId:teacher.teacherId||null,staffId:String(teacher.staffId||staffId).trim(),role:role,schoolId:school.id,schoolName:school.name,region:school.region,district:school.district,authenticated:true,loginAt:new Date().toISOString()};
     try{
       localStorage.setItem('edutrack_staff_v3_session',JSON.stringify(session));
       localStorage.setItem('ems_login_role','school');
@@ -149963,7 +149955,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
         if(login)login.style.display='none';
         if(typeof liveUpdateTopbar==='function')liveUpdateTopbar();
         if(typeof showPageById==='function')showPageById('dashboard');
-        if(btn){btn.textContent='🔐 Enter System';btn.disabled=false;}
+        if(btn){btn.textContent='Enter System';btn.disabled=false;}
         try{v43LoginInProgress=false;}catch(ignore){}
       },250);
     },300);

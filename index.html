@@ -15077,7 +15077,7 @@ function computePositions(cls, form) {
   }
   // V76: Compute per-subject positions after class positions
   computeSubjectPositions(cls, form);
-}
+};
 
 // ═══════════════════════════════════════════════════════════════
 //  V76 — SUBJECT POSITION ENGINE
@@ -25509,6 +25509,8 @@ function v43DoLogin() {
           // Navigate to dashboard or PMS
           if (v43SelectedPmsRole && typeof showPmsPage === 'function') {
             showPmsPage('pms-dashboard', null);
+          } else if (typeof emsRouteAfterLogin === 'function') {
+            emsRouteAfterLogin(v43CurrentLevel, role, region, district);
           } else if (typeof showPageById === 'function') {
             showPageById('dashboard');
           }
@@ -25523,6 +25525,35 @@ function v43DoLogin() {
 }
 window.v43DoLogin = v43DoLogin;
 /* AI_PROTECTED_ZONE_END: LOGIN_LOGIC_FUNCTIONS */
+/* Minimal post-login route dispatcher: preserve existing guards and module routers. */
+window.emsRouteAfterLogin = function(level, role, region, district) {
+  var lv = String(level || '').trim().toUpperCase();
+  try {
+    if (lv === 'SCHOOL') {
+      localStorage.setItem('v43_login_level', 'SCHOOL');
+      if (role) localStorage.setItem('v43_login_role', role);
+      if (region) localStorage.setItem('ems_login_region', region);
+      if (district) localStorage.setItem('ems_login_district', district);
+      var uld = document.getElementById('upper-level-dashboard');
+      var top = document.querySelector('.topbar');
+      var shell = document.querySelector('.shell');
+      if (uld) uld.style.display = 'none';
+      if (top) top.style.display = '';
+      if (shell) shell.style.display = '';
+      if (typeof showPageById === 'function') { showPageById('dashboard'); return true; }
+      if (typeof showPage === 'function') { showPage('dashboard'); return true; }
+      return false;
+    }
+    if (lv === 'NATIONAL' || lv === 'REGIONAL' || lv === 'DISTRICT') {
+      if (typeof emsShowUpperLevelDashboard === 'function') {
+        return emsShowUpperLevelDashboard(lv, role, region, district);
+      }
+    }
+  } catch (e) {
+    console.error('[EduTrack] post-login routing failed:', e);
+  }
+  return false;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  UPPER-LEVEL DASHBOARD ROUTING  (NATIONAL / REGIONAL / DISTRICT)
@@ -38980,6 +39011,7 @@ function fmsPrintOutstanding() {
 
 
 
+
 </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);
@@ -48528,7 +48560,7 @@ window.addEventListener('load', function v61Init() {
   function money(rows){return rows.reduce(function(s,r){return s+(parseFloat(r.amount||r.paid||r.totalPaid||r.actualCost||r.estimatedCost||r.value||0)||0);},0);}
   function pct(a,b){return b?Math.round((a/b)*100):0;}
   function ghRegions(){return (window.GH_REGIONS_LIST&&GH_REGIONS_LIST.length?GH_REGIONS_LIST:Object.keys(window.GH_REGIONS_DISTRICTS||{})).slice().sort();}
-  function ghDistricts(r){return window.GH_REGIONS_DISTRICTS&&window.GH_REGIONS_DISTRICTS[r]?GH_REGIONS_DISTRICTS[r].slice().sort():[];}
+  function ghDistricts(r){var v=window.GH_REGIONS_DISTRICTS&&window.GH_REGIONS_DISTRICTS[r];return Array.isArray(v)?v.slice().sort():[];}
   function chip(x,type){return'<span class="std-chip '+(type||(/approved|synced|complete|valid|good|active/i.test(x)?'ok':/risk|missing|error|flag|query|hold/i.test(x)?'bad':'warn'))+'">'+esc(x)+'</span>';}
   function ensureStyle(){
     if(document.getElementById('ems-v133-style'))return;
@@ -149775,7 +149807,38 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   else clearStaleLoginFlags();
 })();
 </script>
-<script src="/privileged-auth.js"></script></body></html>
+<script src="/privileged-auth.js"></script><script id="edutrack-final-dashboard-routing-guard">
+(function EDUTRACK_FINAL_DASHBOARD_ROUTING_GUARD(){
+  if (window.__EDUTRACK_FINAL_DASHBOARD_ROUTING_GUARD__) return;
+  window.__EDUTRACK_FINAL_DASHBOARD_ROUTING_GUARD__ = true;
+  function route(level, role, region, district){
+    var lv = String(level || '').trim().toUpperCase();
+    if (lv === 'NATIONAL' && window.EMS_STD_DASH && typeof window.EMS_STD_DASH.render === 'function') {
+      try {
+        localStorage.setItem('v43_login_level', lv);
+        if (role) localStorage.setItem('v43_login_role', role);
+        if (region) localStorage.setItem('ems_login_region', region);
+        if (district) localStorage.setItem('ems_login_district', district);
+      } catch (e) {}
+      return window.EMS_STD_DASH.render();
+    }
+    return null;
+  }
+  var priorUpper = window.emsShowUpperLevelDashboard;
+  window.emsShowUpperLevelDashboard = function(level, role, region, district){
+    var exact = route(level, role, region, district);
+    return exact !== null ? exact : (priorUpper ? priorUpper.apply(this, arguments) : false);
+  };
+  window.emsShowUpperLevelDashboard._edutrackFinalRoutingGuard = true;
+  var priorLoginRoute = window.emsRouteAfterLogin;
+  window.emsRouteAfterLogin = function(level, role, region, district){
+    var exact = route(level, role, region, district);
+    if (exact !== null) return exact;
+    return priorLoginRoute ? priorLoginRoute.apply(this, arguments) : false;
+  };
+})();
+</script>
+</body></html>
 
 <!-- EDUTRACK_STAFF_MANAGEMENT_PART3 -->
 <script id="edutrack-staff-management-part3">
@@ -149955,7 +150018,8 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
       setTimeout(function(){
         if(login)login.style.display='none';
         if(typeof liveUpdateTopbar==='function')liveUpdateTopbar();
-        if(typeof showPageById==='function')showPageById('dashboard');
+        if(typeof emsRouteAfterLogin==='function')emsRouteAfterLogin('SCHOOL',role,region,district);
+        else if(typeof showPageById==='function')showPageById('dashboard');
         if(btn){btn.textContent='Enter System';btn.disabled=false;}
         try{v43LoginInProgress=false;}catch(ignore){}
       },250);

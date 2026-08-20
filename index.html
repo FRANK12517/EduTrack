@@ -4836,7 +4836,8 @@ td input, td select, td textarea, td button {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.1/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<style id="edutrack-v43-eye-toggle-style">.v43-input-toggle-wrap{display:flex;align-items:stretch;gap:.35rem;width:100%}.v43-input-toggle-wrap .v43-field-input{flex:1;min-width:0}.v43-eye-toggle{border:1px solid rgba(13,27,62,.22);background:#fff;border-radius:8px;min-width:2.75rem;padding:0 .65rem;cursor:pointer;font-size:1rem;touch-action:manipulation}.v43-eye-toggle:focus-visible{outline:3px solid #4dd0e1;outline-offset:2px}@media (max-width:520px){.v43-input-toggle-wrap{gap:.25rem}.v43-eye-toggle{min-width:2.6rem;padding:0 .5rem}}</style>
+<style id="edutrack-v43-eye-toggle-style">.v43-input-toggle-wrap{position:relative;width:100%}.v43-input-toggle-wrap .v43-field-input{width:100%;padding-right:2.75rem}.v43-eye-toggle{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);border:0;background:transparent;border-radius:50%;width:2rem;height:2rem;padding:0;cursor:pointer;font-size:1rem;line-height:1;touch-action:manipulation;color:#6b4b78}.v43-eye-toggle:focus-visible{outline:3px solid #4dd0e1;outline-offset:2px}@media (max-width:520px){.v43-eye-toggle{right:.35rem;width:2.1rem;height:2.1rem}}</style>
+<style id="edutrack-sync-switch-style">.ems-sync-switch{position:relative;display:inline-block;width:3.1rem;height:1.7rem;flex:0 0 auto}.ems-sync-switch input{position:absolute;opacity:0;width:0;height:0}.ems-sync-slider{position:absolute;inset:0;background:#cbd5e1;border-radius:999px;cursor:pointer;transition:.2s}.ems-sync-slider:before{content:"";position:absolute;width:1.25rem;height:1.25rem;left:.22rem;top:.22rem;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s}.ems-sync-switch input:checked + .ems-sync-slider{background:#0e7c86}.ems-sync-switch input:checked + .ems-sync-slider:before{transform:translateX(1.4rem)}.ems-sync-switch input:focus-visible + .ems-sync-slider{outline:3px solid #4dd0e1;outline-offset:2px}.ems-sync-switch input:disabled + .ems-sync-slider{opacity:.55;cursor:not-allowed}@media(max-width:520px){.ems-sync-switch{width:3.25rem;height:1.8rem}}</style>
 </head>
 <body>
 
@@ -7180,7 +7181,7 @@ td input, td select, td textarea, td button {
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end">
-            <button class="btn btn-primary btn-sm" id="ems-sync-toggle-btn" onclick="EMS_SYNC.openToggleConfirm()">Enable Synchronization</button>
+            <label class="ems-sync-switch" title="Headteacher-only synchronization control"><input type="checkbox" id="ems-sync-toggle-btn" aria-label="Enable school data synchronization" onchange="EMS_SYNC.openToggleConfirm(this.checked)"><span class="ems-sync-slider" aria-hidden="true"></span></label>
             <span id="ems-sync-last-run" style="font-size:.65rem;color:var(--muted)">Never synchronized</span>
           </div>
         </div>
@@ -79953,7 +79954,7 @@ var seedData = {};
 
     if (banner) banner.style.display = ht ? 'none' : (viewer ? 'block' : 'block');
 
-    if (toggleBtn) toggleBtn.disabled = !ht;
+    if (toggleBtn) { toggleBtn.disabled = !ht; toggleBtn.setAttribute('aria-disabled', ht ? 'false' : 'true'); }
     if (actionsBar) {
       var btns = actionsBar.querySelectorAll('button');
       for (var i = 0; i < btns.length; i++) btns[i].disabled = !ht;
@@ -79978,14 +79979,12 @@ var seedData = {};
     var settings = getSettings();
     if (!pill) return;
 
-    if (settings.enabled) {
-      pill.style.background = '#d1fae5'; pill.style.color = '#065f46';
+    if (toggleBtn) toggleBtn.checked = !!settings.enabled;
+    if (settings.enabled) { pill.style.background = '#d1fae5'; pill.style.color = '#065f46';
       pill.innerHTML = '🟢 ON';
-      if (toggleBtn) { toggleBtn.textContent = 'Disable Synchronization'; toggleBtn.className = 'btn btn-ghost btn-sm'; }
     } else {
       pill.style.background = '#e5e7eb'; pill.style.color = '#555';
       pill.innerHTML = '⚪ DISABLED';
-      if (toggleBtn) { toggleBtn.textContent = 'Enable Synchronization'; toggleBtn.className = 'btn btn-primary btn-sm'; }
     }
     if (lastRun) {
       lastRun.textContent = settings.lastSyncDate
@@ -80088,14 +80087,14 @@ var seedData = {};
   /* ── TOGGLE ENABLE / DISABLE (confirmation-gated, Headteacher-only) ───── */
   var pendingToggleTarget = null; // boolean the user is about to confirm
 
-  function openToggleConfirm() {
-    if (!isHeadteacher()) { toastSafe('⚠️ Only the Headteacher may change synchronization status.', 'error'); return; }
+  function openToggleConfirm(requestedState) {
+    if (!isHeadteacher()) { var deniedToggle = document.getElementById('ems-sync-toggle-btn'); var deniedSettings = getSettings(); if (deniedToggle) deniedToggle.checked = !!deniedSettings.enabled; toastSafe('⚠️ Only the Headteacher may change synchronization status.', 'error'); return; }
     if (!isIdentityComplete()) {
       toastSafe('⚠️ Complete School Identity (Region, District, School Name, School Number) in Setup before enabling synchronization.', 'error');
       return;
     }
     var settings = getSettings();
-    pendingToggleTarget = !settings.enabled;
+    pendingToggleTarget = typeof requestedState === 'boolean' ? requestedState : !settings.enabled;
     var titleEl = document.getElementById('ems-sync-toggle-title');
     var msgEl = document.getElementById('ems-sync-toggle-msg');
     var confirmBtn = document.getElementById('ems-sync-toggle-confirm-btn');
@@ -80144,7 +80143,7 @@ var seedData = {};
 
     closeToggleConfirm();
     renderAll();
-    toastSafe(settings.enabled ? '✅ Synchronization enabled.' : 'Synchronization disabled.', 'success');
+    toastSafe(settings.enabled ? '✅ Data synchronized successfully' : 'Synchronization disabled.', 'success');
   }
 
   /* ── APPROVE & SELECT RECORDS MODAL ───────────────────────────────────── */
@@ -98517,7 +98516,9 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         .then(() => {
           console.log('✅ Synchronization completed successfully');
           this.lastSyncTime = Date.now();
-          toast('✅ Data synchronized successfully', 'success');
+          // Automatic background reconciliation must never announce success. The
+          // Headteacher-controlled School Data Synchronization flow owns this toast.
+
           OfflineStorage.logSyncHistory({
             recordsCount: 'auto',
             status: 'completed',

@@ -25003,10 +25003,12 @@ function v43RenderFields(level) {
 
   if (level === 'NATIONAL') {
     container.appendChild(v43MakeSelect('v43-role', 'Select Your Role', V43_CONFIG.roles.NATIONAL));
+    container.appendChild(v43MakeInput('v43-developer-access-code', 'Access Code', 'Enter your access code'));
     container.appendChild(v43MakeInput('v43-staffId', 'Staff ID', 'Enter your Staff ID'));
   } else if (level === 'REGIONAL') {
     container.appendChild(v43MakeSelect('v43-region', 'Select Your Region', V43_CONFIG.regions, v43OnRegionChange));
     container.appendChild(v43MakeSelect('v43-role', 'Select Your Role', V43_CONFIG.roles.REGIONAL));
+    container.appendChild(v43MakeInput('v43-developer-access-code', 'Access Code', 'Enter your access code'));
     container.appendChild(v43MakeInput('v43-staffId', 'Staff ID', 'Enter your Staff ID'));
   } else if (level === 'DISTRICT') {
     container.appendChild(v43MakeSelect('v43-region', 'Select Your Region', V43_CONFIG.regions, v43OnRegionChange));
@@ -25089,7 +25091,7 @@ function v43MakeInput(id, label, placeholder) {
   const wrap = document.createElement('div');
   wrap.className = 'v43-input-toggle-wrap';
   const input = document.createElement('input');
-  const hasEye = id === 'v43-staffId' || id === 'v43-access-code' || id === 'v43-school-access-code';
+  const hasEye = id === 'v43-staffId' || id === 'v43-access-code' || id === 'v43-school-access-code' || id === 'v43-developer-access-code';
   input.type = hasEye ? 'password' : 'text'; input.id = id; input.name = id;
   input.className = 'v43-field-input'; input.placeholder = placeholder; input.autocomplete = 'off';
   input.addEventListener('input', v43HideError); wrap.appendChild(input);
@@ -25235,7 +25237,7 @@ function v43GetActiveDistrictRoles(region, district) {
   //    officer has ever been registered in ems_district_officer_registry_v134
   //    for this district, so steps (1) and (2) above return an empty set.
   //    That used to leave the Role dropdown empty/disabled, which silently
-  //    blocked the default Staff ID/Access Code (12345/12345) bootstrap
+  //    blocked the default developer bootstrap credential
   //    login from ever being submitted — even though the login-validation
   //    layer (validateDistrictLogin) already explicitly allows that default
   //    credential pair whenever no officer is registered yet. The dropdown
@@ -25306,14 +25308,6 @@ function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
   try {
     const code = String(accessCode || '').trim();
     const sid  = String(staffId || '').trim();
-
-    // DEFAULT DEVELOPMENT LOGIN — isolated bootstrap credential. Checked
-    // first and resolved WITHOUT touching the school/access-code/teacher
-    // registries at all, so it can never collide with (or be confused
-    // for) a production school's real Access Code or Staff ID.
-    if (code === '12345' && sid === '12345') {
-      return { ok: true, isDevDefault: true, school: null, teacher: null };
-    }
 
     // Rule 1 — Resolve the selected cascade label to the canonical dataset
     // key. The login UI uses labels such as “Ahafo”, while registration and
@@ -25968,6 +25962,8 @@ document.addEventListener('keydown', function(e) {
 // ═══════════════════════════════════════════════════════════════
 function emsDoLogout() {
   if (!confirm('Are you sure you want to log out?')) return;
+  try { if (typeof window.EDUTRACK_DEVELOPER_LOGOUT === 'function') window.EDUTRACK_DEVELOPER_LOGOUT(); } catch (e) {}
+  try { ['v43_login_level','v43_login_role','v43_login_staffid','ems_login_role','ems_login_region','ems_login_district','uld_active_level'].forEach(function (key) { localStorage.removeItem(key); }); } catch (e) {}
   // Hide upper-level dashboard if active, restore shell
   emsHideUpperLevelDashboard();
   // Clear any PMS session
@@ -40570,7 +40566,7 @@ function subGenSchoolCode(schoolName, region, schoolCode) {
 // ═══════════════════════════════════════════════════════════════════
 const SAC_REGISTRY_KEY = 'ems_school_access_code_registry_v1';
 const SAC_SYMBOLS = ['@','#','$','%','&','*','!'];
-const SAC_DEV_DEFAULT = '12345'; // reserved — never issued as a generated code
+// No client-side developer default is reserved; server authentication owns that path.
 
 function sacReadRegistry() {
   try {
@@ -40640,7 +40636,7 @@ function generateSchoolAccessCode(schoolName) {
     else if (pos === 1) code = letters + symbol + digits;         // DUN#156
     else code = base + symbol;                                    // DUN156#
     tries++;
-  } while ((activeCodes.has(code) || code === SAC_DEV_DEFAULT) && tries < 200);
+  } while ((activeCodes.has(code)) && tries < 200);
 
   return code;
 }
@@ -43905,7 +43901,7 @@ window.addEventListener('load', function v61Init() {
     seq:'ems_district_officer_ref_seq_v134',
     systemMode:'ems_system_mode'
   };
-  var DEFAULT_ID='12345', DEFAULT_CODE='12345', OVERRIDE='87615', SESSION_MS=8*60*60*1000;
+  var SESSION_MS=8*60*60*1000;
   var OFFICIAL_ADMIN='District Administrator';
   var ROLE_ALIAS={
     'District Administration Officer':OFFICIAL_ADMIN,
@@ -43988,12 +43984,6 @@ window.addEventListener('load', function v61Init() {
   }
   function validateDistrictLogin(staff,code,reg,dist,selectedRole){
     sanitizeRoles();
-    if([staff,code].some(function(v){return clean(v)===OVERRIDE;})){
-      if(mode()!=='DEVELOPMENT')return{ok:false,message:'ACCESS DENIED\n\nDEVELOPMENT OVERRIDE IS DISABLED IN PRODUCTION MODE.'};
-      return{ok:true,officer:{fullName:'Development Override Officer',staffId:clean(staff)||OVERRIDE,officerRole:selectedRole||OFFICIAL_ADMIN,region:reg,district:dist,status:'ACTIVE',devOverride:true}};
-    }
-    if(clean(staff)===DEFAULT_ID&&clean(code)===DEFAULT_CODE&&!hasRegistered(reg,dist)){
-      return{ok:true,officer:{fullName:'Development Setup Officer',staffId:DEFAULT_ID,officerRole:selectedRole||OFFICIAL_ADMIN,region:reg,district:dist,status:'ACTIVE',developmentDefault:true}};
     }
     if(!clean(staff)||!clean(code))return{ok:false,message:'ACCESS DENIED\n\nSTAFF ID AND ACCESS CODE ARE REQUIRED.'};
     var off=byStaff(staff,reg,dist);
@@ -44282,8 +44272,6 @@ window.addEventListener('load', function v61Init() {
     systemMode: 'ems_system_mode',
     session: 'ems_district_auth_session_v135'
   };
-  var DEV_OVERRIDE = '87615';
-  var DEV_DEFAULT = '12345';
   var SESSION_MS = 8 * 60 * 60 * 1000;
 
   var ROLE_ALIASES = {
@@ -44346,9 +44334,6 @@ window.addEventListener('load', function v61Init() {
     a.unshift({id:'DO-AUD-'+Date.now(),action:action,details:detail||'',loginDate:t.toLocaleDateString(),loginTime:t.toLocaleTimeString(),logoutTime:action==='LOGOUT'?t.toLocaleTimeString():'',officerName:(off&&off.fullName)||'',staffId:(off&&off.staffId)||'',role:(off&&(off.officerRole||off.role))||'',district:(off&&off.district)||'',ipAddress:'client',device:navigator.platform||'Device',browser:(navigator.userAgent||'Browser').slice(0,80),status:status||'',ts:t.toISOString()});
     write(KEYS.audit,a.slice(0,1800));
   }
-  function hasOverride(payload){
-    return [payload.staffId,payload.password,payload.accessCode,payload.ticketNumber].some(function(v){return clean(v)===DEV_OVERRIDE;});
-  }
   function migrateAccessCode(off,plainCode){
     if(!off||!plainCode)return;
     off.accessCodeHash = accessHash(plainCode, off.salt||off.securityIdentifier||off.staffId);
@@ -44368,17 +44353,8 @@ window.addEventListener('load', function v61Init() {
   function validateDistrictLogin(payload){
     sanitizeStoredAccessCodes();
     var role = canonRole(payload.role), staffId = clean(payload.staffId), code = clean(payload.accessCode);
-    if(hasOverride(payload)){
-      if(mode()!=='DEVELOPMENT')return {ok:false,message:'ACCESS DENIED\n\nDEVELOPMENT OVERRIDE IS DISABLED IN PRODUCTION MODE.'};
-      var overrideOfficer = {fullName:'Development Override Officer',staffId:staffId||DEV_OVERRIDE,officerRole:role||'District Administrator',region:payload.region,district:payload.district,status:'ACTIVE',devOverride:true};
-      audit('DEV_OVERRIDE_LOGIN','Development override credential accepted',overrideOfficer,'Granted');
-      return {ok:true,officer:overrideOfficer,override:true};
     }
     if(!staffId||!code)return {ok:false,message:'ACCESS DENIED\n\nSTAFF ID AND ACCESS CODE ARE REQUIRED.'};
-    if(staffId===DEV_DEFAULT&&code===DEV_DEFAULT&&!districtHasRegisteredOfficer(payload.region,payload.district)){
-      var devOfficer = {fullName:'Development Setup Officer',staffId:DEV_DEFAULT,officerRole:role||'District Administrator',region:payload.region,district:payload.district,status:'ACTIVE',developmentDefault:true};
-      audit('DEV_DEFAULT_LOGIN','Default setup credential accepted before officer registration',devOfficer,'Granted');
-      return {ok:true,officer:devOfficer,developmentDefault:true};
     }
     var matches = findByStaff(staffId,payload.region,payload.district);
     if(!matches.length){audit('LOGIN_DENIED','Staff ID is not registered for this district',{staffId:staffId,officerRole:role,district:payload.district},'Denied');return {ok:false,message:'ACCESS DENIED\n\nSTAFF ID IS NOT REGISTERED.'};}
@@ -148793,7 +148769,7 @@ window.SRG_ANNUAL = (function(){
           record — completely separate storage key from the production
           SCHOOL ACCESS CODE ENGINE registry (sacReadRegistry) — so a
           Super Administrator can REVOKE or EXTEND/REGENERATE the shared
-          bootstrap 12345/12345 pair without ever touching a real
+          bootstrap developer credential pair without ever touching a real
           school's registered Access Code.
        2. Wraps v43ValidateSchoolLogin (function composition — the
           original PART 6 implementation is called unchanged for every
@@ -148877,262 +148853,18 @@ window.SRG_ANNUAL = (function(){
 </style>
 
 <script>
-(function EDUTRACK_PART7_SUPERADMIN_ACCESS_CODE_V1() {
+(function EDUTRACK_SERVER_MANAGED_DEFAULT_ACCESS_V1(){
   "use strict";
-  if (window.EDUTRACK_PART7_LOADED) return; // idempotent guard
-  window.EDUTRACK_PART7_LOADED = true;
-
-  // ── Storage (isolated from every production key: SCHOOL ACCESS CODE
-  //    ENGINE, SUB_KEYS.schools/subscriptions, TEACHERS, etc. are never
-  //    read or written by this module) ─────────────────────────────────
-  var DEFAULT_KEY = 'ems_sac_default_credential_v1';
-  var AUDIT_KEY   = 'ems_sac_default_audit_v1';
-
-  function nowISO() { return new Date().toISOString(); }
-  function readJSON(key, fallback) {
-    try { var raw = localStorage.getItem(key); if (raw == null) return fallback; var v = JSON.parse(raw); return v == null ? fallback : v; }
-    catch (e) { return fallback; }
-  }
-  function writeJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
-  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function genDigits(len) { var out = ''; for (var i = 0; i < len; i++) out += Math.floor(Math.random() * 10); return out; }
-
-  function getDefaultRecord() {
-    var rec = readJSON(DEFAULT_KEY, null);
-    if (!rec || !rec.code) {
-      rec = {
-        code: '12345', staffId: '12345', status: 'ACTIVE',
-        createdAt: nowISO(), revokedAt: null, regeneratedAt: null,
-        history: [{ ts: nowISO(), action: 'BOOTSTRAP', details: 'Reserved development/default access credential (12345 / 12345) initialised.' }]
-      };
-      writeJSON(DEFAULT_KEY, rec);
-    }
-    return rec;
-  }
-  function saveDefaultRecord(rec) { writeJSON(DEFAULT_KEY, rec); }
-  function pushAudit(action, details) {
-    var log = readJSON(AUDIT_KEY, []);
-    log.unshift({ ts: nowISO(), action: action, actor: 'Super Administrator', details: details });
-    writeJSON(AUDIT_KEY, log.slice(0, 200));
-  }
-
-  // ── Public engine ─────────────────────────────────────────────────
-  var SAC_DEFAULT_ENGINE = {
-    get: getDefaultRecord,
-    auditLog: function () { return readJSON(AUDIT_KEY, []); },
-
-    // Whether (code, staffId) matches the CURRENT active default pair.
-    matchesActive: function (code, staffId) {
-      var rec = getDefaultRecord();
-      if (rec.status !== 'ACTIVE') return false;
-      return String(code || '').trim() === String(rec.code) && String(staffId || '').trim() === String(rec.staffId);
-    },
-
-    // REVOKE DEFAULT — disables 12345 (or whatever the default has since
-    // been regenerated to). Never reads or writes sacReadRegistry / the
-    // Subscription engine / TEACHERS, so every existing production
-    // school and its own registered Access Code is entirely unaffected.
-    revoke: function () {
-      var rec = getDefaultRecord();
-      if (rec.status === 'REVOKED') return rec;
-      rec.status = 'REVOKED';
-      rec.revokedAt = nowISO();
-      rec.history = rec.history || [];
-      rec.history.unshift({ ts: nowISO(), action: 'REVOKE_DEFAULT', details: 'Default access credential (' + rec.code + ') revoked by Super Administrator.' });
-      saveDefaultRecord(rec);
-      pushAudit('REVOKE_DEFAULT', 'Default development access credential ' + rec.code + ' revoked. Registered school Access Codes were not read or modified.');
-      return rec;
-    },
-
-    // EXTEND / REGENERATE DEFAULT — issues a new development/default
-    // credential and (re)activates it. Only ever mutates this single
-    // isolated record; never overwrites a registered school's Access
-    // Code, which lives in a completely separate store.
-    extend: function () {
-      var rec = getDefaultRecord();
-      var oldCode = rec.code;
-      var newCode = genDigits(5);
-      rec.code = newCode;
-      rec.staffId = newCode;
-      rec.status = 'ACTIVE';
-      rec.revokedAt = null;
-      rec.regeneratedAt = nowISO();
-      rec.history = rec.history || [];
-      rec.history.unshift({ ts: nowISO(), action: 'EXTEND_DEFAULT', details: 'New default access credential generated (' + oldCode + ' \u2192 ' + newCode + ').' });
-      saveDefaultRecord(rec);
-      pushAudit('EXTEND_DEFAULT', 'New default development access credential generated: ' + newCode + ' (previous: ' + oldCode + ').');
-      return rec;
-    }
+  // Legacy modules may still reference this symbol, but credentials are now
+  // validated only by POST /api/auth/developer-login on the server.
+  var disabled = function(){ return { status: "DISABLED" }; };
+  window.SAC_DEFAULT_ENGINE = {
+    get: disabled,
+    auditLog: function(){ return []; },
+    matchesActive: function(){ return false; },
+    revoke: disabled,
+    extend: disabled
   };
-  window.SAC_DEFAULT_ENGINE = SAC_DEFAULT_ENGINE;
-
-  // ── Wrap v43ValidateSchoolLogin (additive — PART 6 untouched) ───────
-  if (typeof window.v43ValidateSchoolLogin === 'function' && !window.v43ValidateSchoolLogin._sacDefaultWrapped) {
-    var __origV43ValidateSchoolLogin = window.v43ValidateSchoolLogin;
-    var wrappedValidate = function (region, district, accessCode, staffId) {
-      var code = String(accessCode || '').trim();
-      var sid  = String(staffId || '').trim();
-      var rec  = SAC_DEFAULT_ENGINE.get();
-
-      // Exact match against whatever the CURRENT default pair is.
-      if (code === rec.code && sid === rec.staffId) {
-        return SAC_DEFAULT_ENGINE.matchesActive(code, sid)
-          ? { ok: true, isDevDefault: true, school: null, teacher: null }
-          : { ok: false, message: 'Incorrect Staff ID or Access Code' };
-      }
-
-      // Once the default has been revoked, or regenerated away from
-      // 12345, the ORIGINAL hardcoded 12345/12345 short-circuit inside
-      // PART 6 must stop succeeding — even though that code path itself
-      // is left completely untouched below.
-      if (code === '12345' && sid === '12345' && (rec.code !== '12345' || rec.status !== 'ACTIVE')) {
-        return { ok: false, message: 'Incorrect Staff ID or Access Code' };
-      }
-
-      return __origV43ValidateSchoolLogin(region, district, accessCode, staffId);
-    };
-    wrappedValidate._sacDefaultWrapped = true;
-    window.v43ValidateSchoolLogin = wrappedValidate;
-  }
-
-  // ── DATABASE RELATIONSHIPS ───────────────────────────────────────────
-  //   Schools  1 → Many  Teachers            (TEACHERS[].school)
-  //   Schools  1 → Many  Access Codes         (sacReadRegistry()[].schoolId)
-  //   Schools  1 → Many  Subscriptions        (subGetArr(SUB_KEYS.schools/*))
-  //   Teachers → Class Assignment             (teacher.assignedClass / class_assigned)
-  //   Teachers → Role Assignment              (teacher.role / officerRole)
-  // Every school-related record already carries, or can be resolved to,
-  // a schoolId via the existing engines. This helper is additive: it
-  // does not change how any existing module stores or reads schoolId —
-  // it only gives any new code a single, safe resolution path instead
-  // of re-implementing the lookup.
-  window.EMS_RESOLVE_SCHOOL_ID = function (record) {
-    if (!record) return null;
-    if (record.schoolId) return record.schoolId;
-    if (record.school_id) return record.school_id;
-    try {
-      var schools = (typeof subGetArr === 'function' && typeof SUB_KEYS !== 'undefined') ? subGetArr(SUB_KEYS.schools) : [];
-      var name = String(record.school || record.schoolName || '').trim().toLowerCase();
-      if (!name) return null;
-      var match = schools.find(function (s) { return s && String(s.name || '').trim().toLowerCase() === name; });
-      return match ? match.id : null;
-    } catch (e) { return null; }
-  };
-
-  // ── Super Admin UI: "Default Access Code" tab ────────────────────────
-  function renderPanel() {
-    var host = document.getElementById('admin-panel-defaultcode');
-    if (!host) return;
-    var rec = SAC_DEFAULT_ENGINE.get();
-    var log = SAC_DEFAULT_ENGINE.auditLog();
-    var statusBadge = rec.status === 'ACTIVE'
-      ? '<span style="background:#e6f7ec;color:#1a7a3f;padding:.2rem .6rem;border-radius:20px;font-weight:800;font-size:.72rem">ACTIVE</span>'
-      : '<span style="background:#fde8e8;color:#c0392b;padding:.2rem .6rem;border-radius:20px;font-weight:800;font-size:.72rem">REVOKED</span>';
-
-    host.innerHTML =
-      '<div class="et-center-flex" style="flex-direction:column;align-items:stretch;gap:1rem">' +
-        '<div class="card" style="padding:1rem;border:1.5px solid var(--border,#eee);border-radius:12px">' +
-          '<h3 style="margin:0 0 .5rem;font-size:.95rem;color:#0d1b3e">🔑 Default / Development Access Credential</h3>' +
-          '<p style="font-size:.78rem;color:#555;margin:0 0 .75rem">This is the reserved bootstrap Staff ID + Access Code pair used only when no production school data exists yet. It is entirely separate from every registered school\u2019s own Access Code — revoking or regenerating it never touches production schools.</p>' +
-          '<div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin-bottom:.75rem">' +
-            '<div><strong>Status:</strong> ' + statusBadge + '</div>' +
-            '<div><strong>Current Code:</strong> <span style="font-family:\'JetBrains Mono\',monospace;font-weight:800">' + esc(rec.code) + '</span></div>' +
-            '<div><strong>Staff ID:</strong> <span style="font-family:\'JetBrains Mono\',monospace;font-weight:800">' + esc(rec.staffId) + '</span></div>' +
-          '</div>' +
-          '<div style="display:flex;flex-wrap:wrap;gap:.6rem">' +
-            '<button class="btn btn-danger btn-sm" onclick="EDUTRACK_PART7.confirmRevoke()">🚫 Revoke Default Access Code</button>' +
-            '<button class="btn btn-gold btn-sm" onclick="EDUTRACK_PART7.confirmExtend()">🔄 Extend / Regenerate Default Access Code</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="card" style="padding:1rem;border:1.5px solid var(--border,#eee);border-radius:12px">' +
-          '<h3 style="margin:0 0 .5rem;font-size:.95rem;color:#0d1b3e">\ud83d\udcdc Action Log</h3>' +
-          '<div class="tbl-wrap"><table><thead><tr><th class="left">Timestamp</th><th class="left">Action</th><th class="left">Details</th></tr></thead><tbody>' +
-            (log.length ? log.map(function (e) {
-              return '<tr><td class="left" style="font-size:.72rem">' + esc(new Date(e.ts).toLocaleString()) + '</td>' +
-                     '<td class="left" style="font-size:.72rem;font-weight:700">' + esc(e.action) + '</td>' +
-                     '<td class="left" style="font-size:.72rem">' + esc(e.details) + '</td></tr>';
-            }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--muted,#888);padding:.75rem">No actions recorded yet.</td></tr>') +
-          '</tbody></table></div>' +
-        '</div>' +
-      '</div>';
-  }
-
-  function confirmRevoke() {
-    var rec = SAC_DEFAULT_ENGINE.get();
-    if (rec.status !== 'ACTIVE') {
-      if (window.toast) toast('Default access code is already revoked.'); else alert('Default access code is already revoked.');
-      return;
-    }
-    var ok = confirm(
-      'Revoke the default access code (' + rec.code + ')?\n\n' +
-      '\u2022 This disables ONLY the shared development/default Staff ID + Access Code pair.\n' +
-      '\u2022 Every existing production school keeps its own registered Access Code and login and is NOT affected.\n' +
-      '\u2022 This action is recorded with a timestamp in the Action Log below.\n\nProceed?'
-    );
-    if (!ok) return;
-    SAC_DEFAULT_ENGINE.revoke();
-    renderPanel();
-    if (window.toast) toast('Default access code revoked'); else alert('Default access code revoked.');
-  }
-
-  function confirmExtend() {
-    var ok = confirm(
-      'Generate a new default/development access credential?\n\n' +
-      '\u2022 This replaces ONLY the shared bootstrap Staff ID + Access Code pair.\n' +
-      '\u2022 No registered school\u2019s Access Code is changed or overwritten.\n' +
-      '\u2022 This action is recorded with a timestamp in the Action Log below.\n\nProceed?'
-    );
-    if (!ok) return;
-    var newRec = SAC_DEFAULT_ENGINE.extend();
-    renderPanel();
-    alert('New default access credential generated.\n\nStaff ID: ' + newRec.staffId + '\nAccess Code: ' + newRec.code);
-  }
-
-  window.EDUTRACK_PART7 = { renderPanel: renderPanel, confirmRevoke: confirmRevoke, confirmExtend: confirmExtend, engine: SAC_DEFAULT_ENGINE };
-
-  // ── Inject the new tab + panel into the EXISTING Super Admin Control
-  //    Engine Room (additive DOM insertion; every existing tab/panel —
-  //    All Schools, Payments, Pending Approval, Locked, Expired — is
-  //    left exactly as-is) and wrap subAdminTab (additive) ─────────────
-  function ensureTabInjected() {
-    var tabBar = document.querySelector('#sub-admin-overlay .admin-tabs');
-    var expiredPanel = document.getElementById('admin-panel-expired');
-    if (!tabBar || !expiredPanel) return false;
-    if (!document.getElementById('admin-tab-defaultcode-btn')) {
-      var btn = document.createElement('button');
-      btn.className = 'admin-tab';
-      btn.id = 'admin-tab-defaultcode-btn';
-      btn.type = 'button';
-      btn.textContent = '\ud83d\udd11 Default Access Code';
-      btn.setAttribute('onclick', "subAdminTab('defaultcode',this)");
-      tabBar.appendChild(btn);
-    }
-    if (!document.getElementById('admin-panel-defaultcode')) {
-      var panel = document.createElement('div');
-      panel.className = 'admin-panel';
-      panel.id = 'admin-panel-defaultcode';
-      expiredPanel.parentNode.insertBefore(panel, expiredPanel.nextSibling);
-    }
-    return true;
-  }
-
-  if (typeof window.subAdminTab === 'function' && !window.subAdminTab._part7Wrapped) {
-    var __origSubAdminTab = window.subAdminTab;
-    var wrappedTab = function (tab, btn) {
-      ensureTabInjected();
-      __origSubAdminTab(tab, btn);
-      if (tab === 'defaultcode') renderPanel();
-    };
-    wrappedTab._part7Wrapped = true;
-    window.subAdminTab = wrappedTab;
-  }
-
-  function boot() { ensureTabInjected(); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  // Retry shortly after in case the Super Admin overlay markup is mounted
-  // slightly after DOMContentLoaded by another module.
-  setTimeout(boot, 800);
 })();
 </script>
 
@@ -149894,7 +149626,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   function refresh(){try{if(typeof window.ctRegRefreshAllAutofill==='function')window.ctRegRefreshAllAutofill()}catch(e){}}
   function validator(region,district,code,staffId){try{
     code=String(code||'').trim();staffId=String(staffId||'').trim();
-    if(code==='12345'&&staffId==='12345'){var de=window.SAC_DEFAULT_ENGINE;if(de&&typeof de.matchesActive==='function'&&de.matchesActive(code,staffId))return {ok:true,isDevDefault:true,school:null,teacher:null};return FAIL}
+
     var keys=Object.keys(window.GH_REGIONS_DISTRICTS||{}),key=keys.find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key)return FAIL;var ds=window.GH_REGIONS_DISTRICTS[key]||[];if(!ds.some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;
     if(typeof window.sacRefreshExpiry==='function')window.sacRefreshExpiry();var ar=read('ems_school_access_code_registry_v1').find(function(x){return String(x.accessCode||'').trim()===code});if(!ar||String(ar.status).toUpperCase()!=='ACTIVE')return FAIL;
     var schools=read('sub_v60_schools'),school=schools.find(function(x){return x&&String(x.id)===String(ar.schoolId)});if(!school)return FAIL;
@@ -149960,7 +149692,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   function normDistrict(v){return String(v||'').trim().toLowerCase().replace(/[\/]+/g,' ').replace(/\s+/g,' ')}
   function schools(){try{if(typeof subGetArr==='function'&&typeof SUB_KEYS!=='undefined')return subGetArr(SUB_KEYS.schools)||[]}catch(e){}return arr('sub_v60_schools')}
   function registry(){try{if(typeof sacRefreshExpiry==='function')sacRefreshExpiry();if(typeof sacReadRegistry==='function')return sacReadRegistry()||[]}catch(e){}return arr('ems_school_access_code_registry_v1')}
-  function validate(region,district,code,staffId){try{var c=String(code||'').trim(),sid=String(staffId||'').trim();if(c==='12345'&&sid==='12345'){var d=window.SAC_DEFAULT_ENGINE;if(d&&d.matchesActive(c,sid))return {ok:true,isDevDefault:true,school:null,teacher:null};return FAIL}var key=Object.keys(window.GH_REGIONS_DISTRICTS||{}).find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key||!(window.GH_REGIONS_DISTRICTS[key]||[]).some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;var ar=registry().find(function(x){return String(x.accessCode||'').trim()===c&&String(x.status||'').toUpperCase()==='ACTIVE'});if(!ar)return FAIL;var school=schools().find(function(x){return String(x.id)===String(ar.schoolId)});if(!school)return FAIL;if(typeof subIsLocked==='function'&&subIsLocked(school))return FAIL;if(school.expiryDate&&new Date(school.expiryDate).getTime()<=Date.now())return FAIL;if(['expired','locked','inactive'].includes(norm(school.status)))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||normDistrict(school.district)!==normDistrict(district))return FAIL;var pool=arr('ems_teachers').concat(arr('edutrack_staff_v3_teachers'));var t=pool.find(function(x){return String(x.staffId||x.teacher_staff_id).trim()===sid&&String(x.schoolId||'')===String(school.id)&&String(x.status||'ACTIVE').toUpperCase()==='ACTIVE'&&!x.revoked});var initial=String(school.registrantStaffId||'').trim()===sid;if(!t&&!initial)return FAIL;var teacher=t||{teacherId:'registration-'+school.id,schoolId:school.id,schoolName:school.name,staffId:sid,name:school.registrantName||'School Registrant',role:school.registrantRole||'Headteacher',status:'ACTIVE'};return {ok:true,isDevDefault:false,school:school,teacher:teacher,accessRecord:ar}}catch(e){return FAIL}}
+  function validate(region,district,code,staffId){try{var c=String(code||'').trim(),sid=String(staffId||'').trim();var key=Object.keys(window.GH_REGIONS_DISTRICTS||{}).find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key||!(window.GH_REGIONS_DISTRICTS[key]||[]).some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;var ar=registry().find(function(x){return String(x.accessCode||'').trim()===c&&String(x.status||'').toUpperCase()==='ACTIVE'});if(!ar)return FAIL;var school=schools().find(function(x){return String(x.id)===String(ar.schoolId)});if(!school)return FAIL;if(typeof subIsLocked==='function'&&subIsLocked(school))return FAIL;if(school.expiryDate&&new Date(school.expiryDate).getTime()<=Date.now())return FAIL;if(['expired','locked','inactive'].includes(norm(school.status)))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||normDistrict(school.district)!==normDistrict(district))return FAIL;var pool=arr('ems_teachers').concat(arr('edutrack_staff_v3_teachers'));var t=pool.find(function(x){return String(x.staffId||x.teacher_staff_id).trim()===sid&&String(x.schoolId||'')===String(school.id)&&String(x.status||'ACTIVE').toUpperCase()==='ACTIVE'&&!x.revoked});var initial=String(school.registrantStaffId||'').trim()===sid;if(!t&&!initial)return FAIL;var teacher=t||{teacherId:'registration-'+school.id,schoolId:school.id,schoolName:school.name,staffId:sid,name:school.registrantName||'School Registrant',role:school.registrantRole||'Headteacher',status:'ACTIVE'};return {ok:true,isDevDefault:false,school:school,teacher:teacher,accessRecord:ar}}catch(e){return FAIL}}
   validate._part6Final=true;window.v43ValidateSchoolLogin=validate;
   window.subv2RenewPayWithPaystack=function(){return window.subv2RenewSubmit()};window.__EDUTRACK_PAYMENT_FREE_FINAL=true;
   window.EDUTRACK_FINAL_PART6_CORRECTION={validate:validate,paymentFree:true};

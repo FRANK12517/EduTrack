@@ -12,6 +12,20 @@ Required variables are `EDUTRACK_DEVELOPER_EMAIL`, `EDUTRACK_DEVELOPER_PASSWORD`
 
 Run `npm run reset` only as an intentional administrative operation. It removes registered schools, staff, subscriptions, transactions, sessions, and dependent application data from the server store while retaining only `DEVELOPER_ROOT` and `SUPER_ADMIN` users. The reset does not create sample schools or staff.
 
+## Developer Access Mode
+
+Developer Access Mode is an additive, server-authorized authentication path for privileged testing across the existing School, District, Regional, and National dashboards. It does not create a user, school, staff record, subscription, or other application data. The browser submits the selected level, role, region, and district to `POST /api/auth/developer-login`; only the server can validate the developer Staff ID and access-code hash and issue the `HttpOnly` session cookie.
+
+Configure the developer identity in the deployment secret manager using `EDUTRACK_DEVELOPER_STAFF_ID` and `EDUTRACK_DEVELOPER_ACCESS_CODE_HASH`. The hash uses the same salted `scrypt` encoding as ordinary access codes. For example, generate a hash outside the repository with a secure secret prompt, then set the resulting `salt:digest` value in the secret manager:
+
+```sh
+read -r -s DEVELOPER_ACCESS_CODE
+node -e "const crypto=require('node:crypto'); const salt=crypto.randomBytes(16).toString('hex'); console.log(salt+':'+crypto.scryptSync(process.argv[1],salt,64).toString('hex'))" "$DEVELOPER_ACCESS_CODE"
+unset DEVELOPER_ACCESS_CODE
+```
+
+The public `privileged-auth.js` bridge contains no developer credential and never authenticates locally. A failed developer match falls through to the pre-existing ordinary login flow. Successful developer sessions expose only non-secret identity metadata, reuse the existing role-aware dashboard routing, are recognized by protected server APIs, and are invalidated by the existing logout endpoint. Page refresh restores a developer session only when the server confirms the `HttpOnly` cookie; stale browser routing flags are cleared when the session is missing.
+
 ## Run
 
 Use `npm start` and open `http://localhost:3000`. The existing **Enter System** button now accepts the secure account fields when they are filled, submits credentials to `/api/auth/login`, and routes only after the server returns an authoritative role. The session is an `HttpOnly` cookie, so privileged tokens and credentials are not placed in browser storage or API responses. Refreshing the page restores the session through `/api/auth/session`.
@@ -26,4 +40,4 @@ Browser state-changing authentication requests are protected by same-origin vali
 
 Password-reset requests always return the same generic response for known and unknown accounts. Reset records contain only a hashed token, expire after fifteen minutes, are single-use, and are invalidated after successful use. The repository does not yet include an email or SMS delivery adapter; integrating one is intentionally left for a later security-hardening part so reset tokens are not exposed through the API or logs.
 
-Run the complete validation workflow with `npm test`. The protected frontend regression suite remains in `test/protected-features.spec.js`, and the new server-side security coverage is in `test/security.spec.js`. Security tests use an isolated temporary data fixture and restore the repository data file after completion.
+Run the complete validation workflow with `npm test`. The protected frontend regression suite remains in `test/protected-features.spec.js`, the general server-side security coverage is in `test/security.spec.js`, and Developer Access Mode coverage is in `test/developer-access.spec.js`. Security tests use isolated temporary data fixtures and restore the repository data file after completion.

@@ -18,6 +18,11 @@ const GENERIC_AUTH_ERROR = 'Authentication failed';
 const GENERIC_RESET_MESSAGE = 'If the account is eligible, reset instructions will be sent.';
 const LOGIN_LIMIT = { windowMs: 15 * 60 * 1000, maxFailures: 8, blockMs: 15 * 60 * 1000 };
 const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60 * 1000 };
+const DEVELOPER_LEVELS = new Set(['SCHOOL', 'DISTRICT', 'REGIONAL', 'NATIONAL']);
+const DEVELOPER_DASHBOARDS = new Set(['school', 'district', 'regional', 'national', 'developer-root', 'super-admin']);
+const DEVELOPER_AUTH_ERROR = 'Authentication failed';
+const DEVELOPER_STAFF_ID_ENV_NAMES = ['EDUTRACK_DEVELOPER_STAFF_ID', 'DEVELOPER_STAFF_ID'];
+const DEVELOPER_ACCESS_CODE_HASH_ENV_NAMES = ['EDUTRACK_DEVELOPER_ACCESS_CODE_HASH', 'DEVELOPER_ACCESS_CODE_HASH'];
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'OPTIONS']);
@@ -111,12 +116,54 @@ function resetRegisteredData() {
 function parseCookies(req) {
   return Object.fromEntries(String(req.headers.cookie || '').split(';').filter(Boolean).map(v => { const i = v.indexOf('='); return [v.slice(0, i).trim(), decodeURIComponent(v.slice(i + 1))]; }));
 }
+function developerConfig() {
+  const staffId = DEVELOPER_STAFF_ID_ENV_NAMES.map(name => process.env[name]).find(Boolean) || '';
+  const accessCodeHash = DEVELOPER_ACCESS_CODE_HASH_ENV_NAMES.map(name => process.env[name]).find(Boolean) || '';
+  return { staffId: String(staffId).trim(), accessCodeHash: String(accessCodeHash).trim() };
+}
+function normalizeDeveloperLevel(value) {
+  const normalized = String(value || '').trim().toUpperCase().replace(/[ _-]+/g, ' ');
+  const aliases = { 'SCHOOL LEVEL': 'SCHOOL', 'DISTRICT LEVEL': 'DISTRICT', 'REGIONAL LEVEL': 'REGIONAL', 'NATIONAL LEVEL': 'NATIONAL' };
+  const level = aliases[normalized] || normalized;
+  return DEVELOPER_LEVELS.has(level) ? level : null;
+}
+function developerDashboard(level) { return String(level || '').toLowerCase(); }
+function developerRoleMatchesLevel(level, role) {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (level === 'SCHOOL') return ['headteacher', 'assistant headteacher', 'classroom teacher', 'school proprietor', 'school ict coordinator', 'school property management officer'].includes(normalized);
+  if (level === 'DISTRICT') return normalized.startsWith('district ') || normalized === 'school improvement support officer (siso)';
+  if (level === 'REGIONAL') return normalized.startsWith('regional ');
+  if (level === 'NATIONAL') return normalized.startsWith('national ') || normalized === 'director-general' || normalized === 'deputy director-general';
+  return false;
+}
+function developerPrincipal(session) {
+  const level = normalizeDeveloperLevel(session.developerLevel) || 'SCHOOL';
+  return {
+    id: session.developerId,
+    email: null,
+    role: 'DEVELOPER_ROOT',
+    hierarchy: level,
+    scope: ['NATIONAL', 'REGIONAL', 'DISTRICT', 'SCHOOL'],
+    active: true,
+    authMode: 'developer',
+    isDeveloper: true,
+    developerRole: session.developerRole,
+    developerLevel: level,
+    developerStaffId: session.developerStaffId,
+    region: session.region || '',
+    district: session.district || ''
+  };
+}
 function authUser(req, db) {
   const token = parseCookies(req)[COOKIE_NAME];
   if (!token) return null;
   const hash = tokenHash(token);
   const session = db.sessions.find(s => s.tokenHash === hash && new Date(s.expiresAt) > new Date());
   if (!session) return null;
+  if (session.authMode === 'developer' && session.isDeveloper === true && session.developerId) {
+    return { user: developerPrincipal(session), session };
+  }
   const user = db.users.find(u => u.id === session.userId && u.active);
   return user ? { user, session } : null;
 }
@@ -141,10 +188,33 @@ async function body(req, limit = MAX_BODY_BYTES) {
   const raw = await rawBody(req, limit);
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Invalid JSON'); }
 }
-function publicUser(user) { return { id: user.id, email: user.email, role: user.role, hierarchy: user.hierarchy, scope: user.scope }; }
-function roleContext(user) { return { role: user.role, hierarchy: user.hierarchy, scope: user.scope, dashboard: user.role === 'DEVELOPER_ROOT' ? 'developer-root' : user.role === 'SUPER_ADMIN' ? 'super-admin' : 'school' }; }
+function publicUser(user) {
+  const result = { id: user.id, email: user.email, role: user.role, hierarchy: user.hierarchy, scope: user.scope };
+  if (user.isDeveloper === true && user.authMode === 'developer') {
+    result.authMode = 'developer';
+    result.isDeveloper = true;
+    result.developerRole = user.developerRole;
+    result.developerLevel = user.developerLevel;
+    result.developerStaffId = user.developerStaffId;
+    result.region = user.region;
+    result.district = user.district;
+  }
+  return result;
+}
+function roleContext(user) {
+  if (user.isDeveloper === true && user.authMode === 'developer') {
+    return {
+      role: 'DEVELOPER_ROOT', hierarchy: user.hierarchy, scope: user.scope,
+      dashboard: developerDashboard(user.developerLevel), authMode: 'developer',
+      isDeveloper: true, developerRole: user.developerRole, developerLevel: user.developerLevel,
+      region: user.region, district: user.district
+    };
+  }
+  return { role: user.role, hierarchy: user.hierarchy, scope: user.scope, dashboard: user.role === 'DEVELOPER_ROOT' ? 'developer-root' : user.role === 'SUPER_ADMIN' ? 'super-admin' : 'school' };
+}
 function dashboardAllowed(user, dashboard) {
   if (!user || !user.active) return false;
+  if (user.isDeveloper === true && user.authMode === 'developer') return DEVELOPER_DASHBOARDS.has(String(dashboard || '').toLowerCase());
   if (user.role === 'DEVELOPER_ROOT') return ['developer-root', 'super-admin'].includes(dashboard);
   return user.role === 'SUPER_ADMIN' && dashboard === 'super-admin';
 }
@@ -291,6 +361,53 @@ async function handler(req, res) {
   if (!applyCors(req, res)) { auditSecurityEvent(db, 'CORS_REJECTED', req, { endpoint: req.url }); saveDb(db); return json(res, 403, { error: 'Origin not allowed' }); }
   if (req.method === 'OPTIONS') { res.writeHead(204, securityHeaders()); return res.end(); }
   if (req.method === 'GET' && req.url === '/api/health') return json(res, 200, { ok: true });
+  if (req.method === 'POST' && req.url === '/api/auth/developer-login') {
+    if (!requireSameOrigin(req, res)) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: DEVELOPER_AUTH_ERROR }); }
+    const allowedKeys = new Set(['staffId', 'accessCode', 'level', 'role', 'region', 'district']);
+    if (Object.keys(input || {}).some(key => !allowedKeys.has(key))) return json(res, 400, { error: DEVELOPER_AUTH_ERROR });
+    const staffId = validateText(input.staffId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
+    const accessCode = validateText(input.accessCode, { required: true, max: 256 });
+    const level = normalizeDeveloperLevel(input.level);
+    const role = validateText(input.role, { required: true, max: 120, pattern: /^[A-Za-z][A-Za-z0-9 ()/&.'-]*$/ });
+    const region = validateText(input.region, { max: 160 });
+    const district = validateText(input.district, { max: 160 });
+    const ipKey = limitKey(req, 'developer-login');
+    const accountKey = limitKey(req, `developer-account:${staffId || 'unknown'}`);
+    const ipState = checkLimit(ipKey, LOGIN_LIMIT); const accountState = checkLimit(accountKey, LOGIN_LIMIT);
+    if (ipState.blocked || accountState.blocked) {
+      const retryAfter = Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0);
+      return json(res, 429, { error: DEVELOPER_AUTH_ERROR, retryAfter }, { 'Retry-After': String(Math.max(retryAfter, 1)) });
+    }
+    const config = developerConfig();
+    // Region and district are optional developer context. They are preserved in
+    // the session for dashboard filtering, but never become registration or
+    // tenant-membership requirements for the developer principal.
+    const jurisdictionValid = !!level && developerRoleMatchesLevel(level, role);
+    const valid = !!staffId && !!accessCode && jurisdictionValid && !!config.staffId && !!config.accessCodeHash
+      && staffId === config.staffId && verifyPassword(accessCode, config.accessCodeHash);
+    if (!valid) {
+      registerFailure(ipKey, LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT);
+      auditSecurityEvent(db, 'DEVELOPER_LOGIN_REJECTED', req, { severity: 'high', result: 'failure' }); saveDb(db);
+      return json(res, 401, { error: DEVELOPER_AUTH_ERROR });
+    }
+    clearLimit(ipKey); clearLimit(accountKey);
+    const now = new Date(); const sessionId = id('ses'); const rawToken = randomToken();
+    const session = {
+      id: sessionId, tokenHash: tokenHash(rawToken), userId: null, authMode: 'developer', isDeveloper: true,
+      developerId: id('dev'), developerStaffId: staffId, developerLevel: level, developerRole: role,
+      region: region || '', district: district || '', createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString()
+    };
+    db.sessions.push(session);
+    const principal = developerPrincipal(session);
+    auditSecurityEvent(db, 'developer_login', req, {
+      severity: 'high', result: 'success', authMode: 'developer', sessionId,
+      developerLevel: level, developerRole: role, region: region || null, district: district || null
+    });
+    saveDb(db);
+    return json(res, 200, { user: publicUser(principal), authorization: roleContext(principal) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
+  }
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
     if (Object.keys(input || {}).some(key => !['email', 'staffId', 'password', 'pin', 'accessCode', 'schoolAccessCode'].includes(key))) return json(res, 400, { error: GENERIC_AUTH_ERROR });

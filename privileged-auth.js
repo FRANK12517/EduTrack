@@ -1,51 +1,199 @@
 (function () {
   'use strict';
+
+  // This file is intentionally public. It contains no developer secret and never
+  // decides whether a credential is privileged; the server does that exclusively.
   var API = '/api';
   var submitting = false;
+  var DEV_MODE_KEY = 'edutrack_auth_mode';
+  var DEV_FLAG_KEY = 'edutrack_is_developer';
+  var DEV_SESSION_KEYS = [
+    DEV_MODE_KEY,
+    DEV_FLAG_KEY,
+    'edutrack_developer_role',
+    'edutrack_developer_level',
+    'edutrack_developer_region',
+    'edutrack_developer_district',
+    'v43_login_level',
+    'v43_login_role',
+    'v43_login_staffid',
+    'ems_login_role',
+    'ems_login_region',
+    'ems_login_district',
+    'uld_active_level'
+  ];
+
   function el(id) { return document.getElementById(id); }
-  function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-  function request(path, options) {
-    options = options || {}; options.credentials = 'same-origin';
-    options.headers = Object.assign({'Content-Type':'application/json'}, options.headers || {});
-    return fetch(API + path, options).then(function (r) { return r.json().catch(function(){ return {}; }).then(function (data) { if (!r.ok) { var e = new Error(data.error || 'Request failed'); e.status = r.status; throw e; } return data; }); });
+  function value(id) {
+    var node = el(id);
+    return node && typeof node.value === 'string' ? node.value.trim() : '';
+  }
+  function activeLevel() {
+    var card = document.querySelector('.login-level-btn.active');
+    return card && card.dataset ? String(card.dataset.level || '').toUpperCase() : '';
+  }
+  function accessCode() {
+    return value('v43-developer-access-code') || value('v43-access-code') || value('v43-school-access-code');
   }
   function showError(message) {
-    var node = el('v43LoginError'); if (node) { node.textContent = message; node.style.display = 'block'; }
+    var node = el('v43LoginError');
+    if (node) {
+      node.textContent = message || 'Authentication failed';
+      node.classList.add('show');
+      node.style.display = 'block';
+    }
   }
-  function installFields() {
-    if (el('edutrack-secure-admin-fields')) return;
-    var container = document.createElement('div'); container.id = 'edutrack-secure-admin-fields';
-    container.innerHTML = '<div class="login-section-label" style="margin-top:.75rem">SECURE ACCOUNT SIGN-IN (OPTIONAL)</div>' +
-      '<div class="login-group"><input id="edutrack-auth-email" type="email" autocomplete="username" placeholder="Account email"></div>' +
-      '<div class="login-group"><input id="edutrack-auth-password" type="password" autocomplete="current-password" placeholder="Password"></div>' +
-      '<div class="login-group"><input id="edutrack-auth-code" type="password" autocomplete="one-time-code" placeholder="Access code"></div>';
-    var pin = el('v43-pin-section'); if (pin && pin.parentNode) pin.parentNode.insertBefore(container, pin);
-    var style = document.createElement('style'); style.textContent = '#edutrack-secure-admin-fields .login-group{margin:.35rem 0}#edutrack-secure-admin-fields input{width:100%;box-sizing:border-box}@media(max-width:480px){#v43LoginBtn{min-height:48px;touch-action:manipulation;cursor:pointer}}'; document.head.appendChild(style);
+  function request(path, options) {
+    options = options || {};
+    options.credentials = 'same-origin';
+    options.headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+    return fetch(API + path, options).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (!response.ok) {
+          var error = new Error(data.error || 'Request failed');
+          error.status = response.status;
+          error.data = data;
+          throw error;
+        }
+        return data;
+      });
+    });
   }
-  function hideLogin() { var login = el('login-screen'); if (login) { login.classList.remove('show'); login.classList.add('fade-out'); setTimeout(function(){ login.style.display = 'none'; }, 350); } }
-  function renderDashboard(data) {
-    var auth = data.authorization || {}; var isDev = auth.role === 'DEVELOPER_ROOT';
-    var root = el('edutrack-privileged-dashboard'); if (!root) { root = document.createElement('main'); root.id = 'edutrack-privileged-dashboard'; document.body.appendChild(root); }
-    root.style.display = 'block'; root.style.position = 'fixed'; root.style.inset = '0'; root.style.zIndex = '100000'; root.style.overflow = 'auto'; root.innerHTML = '<section class="epd-shell"><header class="epd-header"><div><div class="epd-kicker">EDUTRACK ADMINISTRATION</div><h1>' + (isDev ? 'Developer Root Dashboard' : 'Super Administrator Dashboard') + '</h1><p>Authenticated server-side as <strong>' + esc(auth.role) + '</strong>.</p></div><button id="epd-logout" type="button">Log out</button></header><div class="epd-grid"><article><span>Registered Schools</span><strong id="epd-schools">0</strong></article><article><span>Registered Staff</span><strong id="epd-staff">0</strong></article><article><span>Students</span><strong id="epd-students">0</strong></article><article><span>Transactions</span><strong id="epd-transactions">0</strong></article></div><section class="epd-panel"><h2>Authorized administration</h2><div class="epd-actions">' + (isDev ? '<button data-level="NATIONAL">National administration</button><button data-level="REGIONAL">Regional administration</button><button data-level="DISTRICT">District administration</button><button data-level="SCHOOL">School administration</button>' : '<button data-action="users">User management</button><button data-action="schools">School management</button><button data-action="subscriptions">Subscription management</button><button data-action="reports">Reports</button>') + '</div><p class="epd-empty">The registered-data store is currently empty. Create the first real records through the existing administration workflows.</p></section></section>';
-    var css = document.getElementById('epd-style'); if (!css) { css = document.createElement('style'); css.id = 'epd-style'; css.textContent = '#edutrack-privileged-dashboard{display:none;min-height:100vh;background:#f4f7fb;color:#102a43;font-family:inherit}.epd-shell{max-width:1180px;margin:0 auto;padding:clamp(1rem,3vw,2.5rem)}.epd-header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;background:#0b3954;color:#fff;border-radius:20px;padding:clamp(1.25rem,3vw,2.25rem);box-shadow:0 14px 35px #0b395433}.epd-kicker{font-size:.72rem;letter-spacing:.14em;opacity:.75;font-weight:800}.epd-header h1{margin:.35rem 0;font-size:clamp(1.5rem,4vw,2.4rem)}.epd-header p{margin:0;opacity:.85}.epd-header button,.epd-actions button{border:0;border-radius:10px;padding:.75rem 1rem;font-weight:800;cursor:pointer;touch-action:manipulation}.epd-header button{background:#fff;color:#0b3954}.epd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin:1.25rem 0}.epd-grid article,.epd-panel{background:#fff;border-radius:16px;padding:1.25rem;box-shadow:0 8px 24px #102a4312}.epd-grid span{display:block;color:#627d98;font-size:.85rem}.epd-grid strong{display:block;font-size:2rem;margin-top:.35rem}.epd-panel h2{margin-top:0}.epd-actions{display:flex;flex-wrap:wrap;gap:.75rem}.epd-actions button{background:#147d92;color:white}.epd-empty{margin:1.25rem 0 0;padding:1rem;border:1px dashed #9fb3c8;border-radius:10px;color:#486581;background:#f8fbff}@media(max-width:700px){.epd-header{flex-direction:column}.epd-header button{width:100%}.epd-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:390px){.epd-grid{grid-template-columns:1fr}.epd-actions button{width:100%}}'; document.head.appendChild(css); }
-    request('/admin/summary').then(function (s) { ['schools','staff','students','transactions'].forEach(function (k) { var n = el('epd-' + k); if (n) n.textContent = String(s[k] || 0); }); }).catch(function () {});
-    el('epd-logout').onclick = function () { request('/auth/logout', {method:'POST'}).finally(function(){ location.reload(); }); };
-    root.querySelectorAll('[data-level]').forEach(function(btn){ btn.onclick = function(){ if (typeof emsShowUpperLevelDashboard === 'function') emsShowUpperLevelDashboard(btn.dataset.level, auth.role, '', ''); }; });
-    root.querySelectorAll('[data-action]').forEach(function(btn){ btn.onclick = function(){ if (typeof subAdminOpen === 'function') subAdminOpen(); else alert('This administration module is available from the existing system navigation.'); }; });
+  function setDeveloperState(data) {
+    var authorization = data && data.authorization || {};
+    var user = data && data.user || {};
+    try {
+      localStorage.setItem(DEV_MODE_KEY, 'developer');
+      localStorage.setItem(DEV_FLAG_KEY, 'true');
+      localStorage.setItem('edutrack_developer_role', String(authorization.developerRole || user.developerRole || ''));
+      localStorage.setItem('edutrack_developer_level', String(authorization.developerLevel || user.developerLevel || ''));
+      localStorage.setItem('edutrack_developer_region', String(authorization.region || user.region || ''));
+      localStorage.setItem('edutrack_developer_district', String(authorization.district || user.district || ''));
+      localStorage.setItem('v43_login_level', String(authorization.developerLevel || user.developerLevel || '').toUpperCase());
+      localStorage.setItem('v43_login_role', String(authorization.developerRole || user.developerRole || ''));
+      localStorage.setItem('v43_login_staffid', String(user.developerStaffId || ''));
+      localStorage.setItem('ems_login_role', String(authorization.dashboard || '').toLowerCase());
+      if (authorization.region || user.region) localStorage.setItem('ems_login_region', String(authorization.region || user.region));
+      if (authorization.district || user.district) localStorage.setItem('ems_login_district', String(authorization.district || user.district));
+    } catch (error) {
+      throw new Error('Unable to establish the authenticated session');
+    }
+    window.__EDUTRACK_DEVELOPER_SERVER_SESSION__ = true;
+    window.__EDUTRACK_DEVELOPER_SESSION_PENDING__ = false;
   }
-  function privilegedLogin() {
-    var email = el('edutrack-auth-email'), password = el('edutrack-auth-password'), code = el('edutrack-auth-code');
-    if (!email || !password || !code || !email.value.trim() || !password.value || !code.value) return false;
-    if (submitting) return true; submitting = true;
-    var btn = el('v43LoginBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Authenticating…'; }
-    request('/auth/login', {method:'POST', body:JSON.stringify({email:email.value.trim(), password:password.value, accessCode:code.value})}).then(function(data){
-      var role = data.authorization && data.authorization.role;
-      if (role !== 'DEVELOPER_ROOT' && role !== 'SUPER_ADMIN') throw new Error('This account is not a privileged administrator.');
-      hideLogin(); renderDashboard(data);
-    }).catch(function(err){ showError(err.status === 401 ? 'Authentication failed.' : (err.message || 'Authentication failed.')); if (btn) { btn.disabled = false; btn.textContent = '🔐 Enter System'; } submitting = false; });
+  function clearDeveloperState() {
+    try { DEV_SESSION_KEYS.forEach(function (key) { localStorage.removeItem(key); }); } catch (error) {}
+    window.__EDUTRACK_DEVELOPER_SERVER_SESSION__ = false;
+    window.__EDUTRACK_DEVELOPER_SESSION_PENDING__ = false;
+  }
+  function hideLogin() {
+    var login = el('login-screen');
+    if (!login) return;
+    login.classList.remove('show');
+    login.classList.add('fade-out');
+    setTimeout(function () { login.style.display = 'none'; }, 350);
+  }
+  function routeDeveloper(data) {
+    var authorization = data && data.authorization || {};
+    var level = String(authorization.developerLevel || '').toUpperCase();
+    var role = String(authorization.developerRole || '');
+    var region = String(authorization.region || '');
+    var district = String(authorization.district || '');
+    hideLogin();
+    if (typeof window.emsRouteAfterLogin === 'function') {
+      window.emsRouteAfterLogin(level, role, region, district);
+    } else if (level === 'SCHOOL' && typeof window.showPageById === 'function') {
+      window.showPageById('dashboard');
+    }
+  }
+  function developerFields() {
+    var level = activeLevel();
+    return {
+      staffId: value('v43-staffId'),
+      accessCode: accessCode(),
+      level: level,
+      role: value('v43-role'),
+      region: value('v43-region'),
+      district: value('v43-district')
+    };
+  }
+  function isDeveloperResponse(data) {
+    var auth = data && data.authorization || {};
+    return auth.authMode === 'developer' && auth.isDeveloper === true && !!auth.developerLevel;
+  }
+  function fallbackToExistingLogin() {
+    submitting = false;
+    window.__EDUTRACK_DEVELOPER_SESSION_PENDING__ = false;
+    if (typeof window.v43DoLogin === 'function') window.v43DoLogin();
+  }
+  function tryDeveloperLogin(event) {
+    var fields = developerFields();
+    if (!fields.level || !fields.staffId || !fields.accessCode || !fields.role) return false;
+    if (submitting) return true;
+    submitting = true;
+    window.__EDUTRACK_DEVELOPER_SESSION_PENDING__ = true;
+    if (event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    var button = el('v43LoginBtn');
+    if (button) { button.disabled = true; button.textContent = 'Authenticating…'; }
+    request('/auth/developer-login', { method: 'POST', body: JSON.stringify(fields) }).then(function (data) {
+      if (!isDeveloperResponse(data)) throw new Error('Authentication failed');
+      setDeveloperState(data);
+      routeDeveloper(data);
+      submitting = false;
+      if (button) { button.disabled = false; button.textContent = 'Enter System'; }
+    }).catch(function (error) {
+      clearDeveloperState();
+      if (error && error.status === 401) {
+        // A failed developer match is not a failed ordinary login. Preserve the
+        // original role/staff validation and all of its existing UI behavior.
+        fallbackToExistingLogin();
+        return;
+      }
+      // If the optional backend is unavailable, preserve the existing offline
+      // login flow. Server-side developer credentials never fall back locally.
+      if (!error || !error.status || error.status >= 500) {
+        fallbackToExistingLogin();
+        return;
+      }
+      submitting = false;
+      if (button) { button.disabled = false; button.textContent = 'Enter System'; }
+      showError('Authentication failed');
+    });
     return true;
   }
-  function bind() { installFields(); var btn = el('v43LoginBtn'); if (!btn || btn.dataset.secureBound) return; btn.dataset.secureBound = 'true'; btn.addEventListener('click', function (event) { if (privilegedLogin()) { event.preventDefault(); event.stopImmediatePropagation(); } }, true); ['edutrack-auth-email','edutrack-auth-password','edutrack-auth-code'].forEach(function(id){ var e=el(id); if(e) e.addEventListener('keydown', function(ev){ if(ev.key==='Enter' && privilegedLogin()) ev.preventDefault(); }); }); }
-  function restore() { request('/auth/session').then(function(data){ if (data.authorization && ['DEVELOPER_ROOT','SUPER_ADMIN'].indexOf(data.authorization.role) >= 0) { hideLogin(); renderDashboard(data); } }).catch(function(){}); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ bind(); restore(); }); else { bind(); restore(); }
+  function bind() {
+    var button = el('v43LoginBtn');
+    if (!button || button.dataset.developerAuthBound) return;
+    button.dataset.developerAuthBound = 'true';
+    button.addEventListener('click', function (event) { tryDeveloperLogin(event); }, true);
+  }
+  function restoreDeveloperSession() {
+    var mode = '';
+    try { mode = localStorage.getItem(DEV_MODE_KEY) || ''; } catch (error) {}
+    if (mode !== 'developer') return;
+    window.__EDUTRACK_DEVELOPER_SESSION_PENDING__ = true;
+    request('/auth/session').then(function (data) {
+      if (!isDeveloperResponse(data)) throw new Error('Not a developer session');
+      setDeveloperState(data);
+      routeDeveloper(data);
+    }).catch(function () {
+      clearDeveloperState();
+      var login = el('login-screen');
+      if (login) { login.style.display = 'flex'; login.classList.remove('fade-out'); }
+    });
+  }
+  window.EDUTRACK_DEVELOPER_LOGOUT = function () {
+    clearDeveloperState();
+    return request('/auth/logout', { method: 'POST' }).catch(function () {});
+  };
+  window.EDUTRACK_DEVELOPER_AUTH = { clear: clearDeveloperState, login: tryDeveloperLogin };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { bind(); restoreDeveloperSession(); });
+  } else {
+    bind();
+    restoreDeveloperSession();
+  }
 })();

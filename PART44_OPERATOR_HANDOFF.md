@@ -1,0 +1,3 @@
+# Part 44 Operator Handoff
+
+Provision an isolated Node.js 22 staging target and configure staging-only database, exact HTTPS origin, private storage, Paystack sandbox, test delivery, monitoring, backup, and recovery resources through an approved secret mechanism. Deploy the exact Part 43 release plus reviewed Part 44 changes, verify SHA/runtime, then run real HTTPS health/session, OPTIONS/CORS, security headers, database, storage, sandbox payment, authentication, RBAC, tenant, mobile, performance, monitoring, backup/restore, and rollback checks. Never use production resources or live Paystack. Keep Part 44 BLOCKED until independently evidenced. **PART 45 WAS NOT STARTED.**

@@ -15298,6 +15298,8 @@ function findStudent(student_usid) {
 //  PAGE NAVIGATION
 // ═══════════════════════════════════════════════════════════════
 function showPage(id, navEl) {
+  // Part 28: authenticated developer panels must not cover normal legacy page controls.
+  ['edutrack-part18-developer-dashboard','edutrack-privileged-dashboard'].forEach(function(overlayId){var overlay=document.getElementById(overlayId);if(overlay)overlay.classList.add('hidden');});
   // Hide all pages — existing + new
   document.querySelectorAll('[id^="page-"]').forEach(el => el.classList.add('hidden'));
   const target = document.getElementById('page-'+id);
@@ -19444,6 +19446,7 @@ function emsSyncEntryDOMToData(cls, form) {
 }
 
 function saveEntryData() {
+  if (window.EduTrackDomainAPI && !window.__EDUTRACK_PART22_ALLOW_LEGACY_LOCAL_ACADEMIC_WRITES__) { toast('Academic score writes are server-authoritative. Use the Part 22 academic workflow panel to commit this sheet.','error'); return; }
   const cls  = document.getElementById('entry-class').value;
   const form = document.getElementById('entry-form').value;
   emsSyncEntryDOMToData(cls, form);
@@ -19834,6 +19837,7 @@ function meFcUpdateScore(el, cls, form) {
 }
 
 function meSaveSubjectScores() {
+  if (window.EduTrackDomainAPI && !window.__EDUTRACK_PART22_ALLOW_LEGACY_LOCAL_ACADEMIC_WRITES__) { toast('Academic score writes are server-authoritative. Use the Part 22 academic workflow panel to commit this subject.','error'); return; }
   const cls  = document.getElementById('me-class').value;
   const form = document.getElementById('me-form').value;
   const term = document.getElementById('me-term').value;
@@ -19937,6 +19941,7 @@ function closeClearEntryConfirm() {
   if (overlay) overlay.classList.remove('open');
 }
 function confirmClearEntry() {
+  if (window.EduTrackDomainAPI && !window.__EDUTRACK_PART22_ALLOW_LEGACY_LOCAL_ACADEMIC_WRITES__) { toast('Score data is server-authoritative; local destructive clearing is disabled.','error'); return; }
   const cls  = document.getElementById('entry-class').value;
   const form = document.getElementById('entry-form').value;
   const k = dataKey(cls, form);
@@ -20020,6 +20025,7 @@ function renderMockTable() {
 }
 
 function saveMockData() {
+  if (window.EduTrackDomainAPI && !window.__EDUTRACK_PART22_ALLOW_LEGACY_LOCAL_ACADEMIC_WRITES__) { toast('Mock examination writes are server-authoritative. Use the Part 22 academic workflow panel to commit this sheet.','error'); return; }
   const cls  = document.getElementById('mock-class').value;
   const form = document.getElementById('mock-form').value;
   computeMockSubjectPositions(cls, form);
@@ -27447,7 +27453,8 @@ function getAttendForTerm(teacherIdx, termNum, dateStr) {
 function setAttend(teacherIdx, dateStr, status) {
   if (isRegisterLocked) { toast('⚠️ Register is locked. Unlock first.','error'); return; }
   ATTEND_DATA[attendKey(teacherIdx, dateStr)] = status;
-  saveTeacherData();
+  window.__EDUTRACK_PART22_ATTENDANCE_PENDING__ = true;
+  // Part 22: the register is submitted transactionally by submitTeacherAttendance; do not persist the authority locally.
   updateTodaySummary();
 }
 
@@ -27720,65 +27727,18 @@ function renderDailyGenderSummary(weekDays) {
 }
 
 // ── SUBMIT TEACHER ATTENDANCE ──
-function submitTeacherAttendance() {
+async function submitTeacherAttendance() {
   const statusEl = document.getElementById('submit-attend-status');
-  if (!TEACHERS.length) { toast('⚠️ No teachers set up yet.','error'); return; }
-
-  const weekDays = [];
-  for (let i = 0; i < 5; i++) weekDays.push(addDays(currentWeekStart, i));
-  const weekKey = 'WK-' + dateToStr(currentWeekStart) + '-T' + currentAttendTerm;
-
-  // Validate every real teacher has attendance marked for every school day this week.
-  // Sample guide teachers (S1-S3) are always ignored during validation.
-  // Holiday dates are automatically excluded — marking is disabled on those days.
-  const unmarked = [];
-  TEACHERS.forEach(t => {
-    weekDays.forEach(d => {
-      const ds = dateToStr(d);
-      if (isTeacherHoliday(ds)) return;
-      const ti = TEACHERS.indexOf(t);
-      const s = getAttend(ti, ds);
-      if (!s) unmarked.push(t.name + ' (' + ds + ')');
-    });
-  });
-  if (unmarked.length) {
-    toast('⚠️ ' + unmarked.length + ' attendance entr' + (unmarked.length===1?'y':'ies') + ' still blank. All real teachers must be marked before submission.','error');
-    if (statusEl) statusEl.innerHTML = '<span style="color:#c0392b">Blocked — blank entries remain: ' + unmarked.slice(0,5).join(', ') + (unmarked.length>5?'…':'') + '</span>';
-    return;
-  }
-
-  // Prevent duplicate submission for the same week/term.
-  let submissions = [];
-  try { submissions = JSON.parse(localStorage.getItem('ems_teacher_attend_submissions') || '[]'); } catch(e) { submissions = []; }
-  if (submissions.some(s => s.weekKey === weekKey)) {
-    toast('⚠️ This week has already been submitted.','error');
-    if (statusEl) statusEl.innerHTML = '<span style="color:#b9770e">Already submitted for this week.</span>';
-    return;
-  }
-
-  const weekNumInMonth = (() => {
-    const wks = taWeeksInMonth(currentWeekStart.getFullYear(), currentWeekStart.getMonth());
-    const idx = wks.findIndex(w => w[0] === dateToStr(currentWeekStart));
-    return idx >= 0 ? idx + 1 : null;
-  })();
-  const record = {
-    weekKey, date: dateToStr(new Date()), time: new Date().toLocaleTimeString(),
-    markedBy: (CONFIG.userName || CONFIG.currentUser || 'Headteacher'),
-    school: CONFIG.school || '', circuit: CONFIG.circuit || '', district: CONFIG.district || '',
-    academicYear: CONFIG.year || '', term: currentAttendTerm,
-    month: TA_MONTH_NAMES[currentWeekStart.getMonth()] + ' ' + currentWeekStart.getFullYear(),
-    weekNumber: weekNumInMonth,
-    device: (navigator.userAgent.match(/Mobi/) ? 'Mobile' : 'Desktop'),
-    connectionStatus: navigator.onLine ? 'Online' : 'Offline',
-    teacherCount: TEACHERS.length
-  };
-  submissions.push(record);
-  try { localStorage.setItem('ems_teacher_attend_submissions', JSON.stringify(submissions)); } catch(e) {}
-
-  toast('✅ TEACHER ATTENDANCE SUCCESSFULLY SUBMITTED', 'success');
-  if (statusEl) statusEl.innerHTML = '<span style="color:#1a7a3f;font-weight:700">✅ TEACHER ATTENDANCE SUCCESSFULLY SUBMITTED</span> — ' + record.date + ' ' + record.time;
+  if (!TEACHERS.length) { toast('No teachers set up yet.','error'); return; }
+  const weekDays = []; for (let i = 0; i < 5; i++) weekDays.push(addDays(currentWeekStart, i));
+  const unmarked = [], records = [];
+  TEACHERS.forEach((t, ti) => weekDays.forEach(d => { const ds=dateToStr(d); if(isTeacherHoliday(ds))return; const status=getAttend(ti,ds); if(!status)unmarked.push((t.name||t.staffId||'Teacher')+' ('+ds+')'); else records.push({staffId:String(t.id||t.teacherId||t.staff_id||t.teacher_staff_id||t.staffId||'').trim(),attendanceDate:ds,status:status==='P'?'PRESENT':status==='AB'?'ABSENT':status==='AW'?'AWAY_WITH_PERMISSION':status==='L'?'LATE':String(status).toUpperCase()}); }));
+  if(unmarked.length){toast(' '+unmarked.length+' attendance entries remain blank.','error');if(statusEl)statusEl.innerHTML='<span style="color:#c0392b">Blocked — blank entries remain: '+unmarked.slice(0,5).join(', ')+(unmarked.length>5?'…':'')+'</span>';return;}
+  const school=(typeof CONFIG!=='undefined'&&CONFIG.schoolId)||window._v43SchoolLoginContext&&window._v43SchoolLoginContext.school&&window._v43SchoolLoginContext.school.id||'';
+  const tenant=(typeof CONFIG!=='undefined'&&CONFIG.tenantId)||window._v43SchoolLoginContext&&window._v43SchoolLoginContext.school&&window._v43SchoolLoginContext.school.tenantId||'';
+  if(!school||!tenant||records.some(r=>!r.staffId)){const message='Authoritative tenant, school, and staff IDs are required. No browser-local attendance submission was created.';toast(message,'error');if(statusEl)statusEl.innerHTML='<span style="color:#c0392b">'+message+'</span>';return;}
+  try{const response=await window.EduTrackDomainAPI.saveTeacherAttendance({tenantId:String(tenant),schoolId:String(school),records});window.__EDUTRACK_PART22_ATTENDANCE_PENDING__=false;toast('Teacher attendance submitted to the relational server.','success');if(statusEl)statusEl.innerHTML='<span style="color:#1a7a3f;font-weight:700">Teacher attendance successfully submitted on the server.</span> '+(response.attendance||[]).length+' records committed.';}catch(error){toast((error&&error.message)||'Teacher attendance submission failed.','error');if(statusEl)statusEl.innerHTML='<span style="color:#c0392b">Server submission failed; local data was not accepted as authoritative.</span>';}
 }
-
 function updateTodaySummary() {
   const todayStr = dateToStr(new Date());
   let present = 0, awp = 0, absent = 0, marked = 0;
@@ -39008,6 +38968,7 @@ function fmsPrintOutstanding() {
 
 
 
+
 </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);
@@ -40845,7 +40806,7 @@ function subBuildConfirm() {
   const dateText = isNaN(paidDate.getTime()) ? '—' : paidDate.toLocaleDateString('en-GH',{day:'numeric',month:'long',year:'numeric'});
   const amountText = payment.amount != null ? 'GHC ' + (Number(payment.amount) / 100).toFixed(2) : subGetPackagePrice(subSelectedPkg);
   const reference = payment.reference || window.subPaystackState.reference || '—';
-  const method = payment.channel || payment.payment_channel || window.subPaystackState.selectedProvider || window.subPaystackState.selectedChannel || 'Paystack';
+  const method = payment.channel || payment.payment_channel || 'Paystack';
   const expiry = payment.subscription_period_end || payment.period_end || payment.expiryDate || '—';
   const expiryText = expiry === '—' ? '—' : new Date(expiry).toLocaleDateString('en-GH',{day:'numeric',month:'long',year:'numeric'});
   const isRenewal = Boolean(window.subRenewalSchoolId || payment.renewalId || payment.renewal_id);
@@ -40877,7 +40838,7 @@ function subBuildConfirm() {
 // Frontend receives only safe authorization data from the backend. The secret
 // key is never embedded here. The backend must validate package pricing,
 // initialize the transaction, and independently verify it before Step 4.
-window.subPaystackState = {status:'ready', reference:null, authorization:null, verification:null, selectedChannel:'card', selectedProvider:'Visa'};
+window.subPaystackState = {status:'ready', reference:null, authorization:null, verification:null};
 window.subRenewalSchoolId = null;
 
 function subPaystackSetStatus(title, detail) {
@@ -40894,19 +40855,8 @@ function subPaystackPrepareView() {
   const email = document.getElementById('sub-paystack-email');
   if (pkg) pkg.textContent = typeof subGetPackageName === 'function' ? subGetPackageName(subSelectedPkg) : 'Selected subscription';
   if (amount) amount.textContent = typeof subGetPackagePrice === 'function' ? subGetPackagePrice(subSelectedPkg) : '—';
-  if (!document.querySelector('#sub-payment-channels .selected')) subSelectPaymentChannel('card');
   if (email) email.textContent = (document.getElementById('sub-email')?.value || '—');
 }
-function subSelectPaymentChannel(channel, el) {
-  document.querySelectorAll('#sub-payment-channels .payment-channel-card').forEach(card => {
-    const active = el ? card === el : card.dataset.channel === channel;
-    card.classList.toggle('selected', active); card.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
-  const selected = el || document.querySelector('#sub-payment-channels .payment-channel-card.selected');
-  window.subPaystackState.selectedChannel = selected?.dataset.channel || channel || 'card';
-  window.subPaystackState.selectedProvider = selected?.dataset.provider || '';
-}
-
 function subPaystackRegistrationPayload() {
   const renewalSchoolId = window.subRenewalSchoolId || null;
   const school = renewalSchoolId ? subGetArr(SUB_KEYS.schools).find(s => s && s.id === renewalSchoolId) : null;
@@ -40922,8 +40872,6 @@ function subPaystackRegistrationPayload() {
     subscriptionPeriod,
     email: document.getElementById('sub-email')?.value.trim() || '',
     phone: document.getElementById('sub-contact')?.value.trim() || '',
-    paymentChannel: window.subPaystackState.selectedChannel || 'card',
-    paymentProvider: window.subPaystackState.selectedProvider || null,
     renewalSchoolId,
     existingSchoolId: renewalSchoolId,
     paymentPurpose: renewalSchoolId ? 'SUBSCRIPTION_RENEWAL' : 'SUBSCRIPTION_REGISTRATION',
@@ -40936,7 +40884,7 @@ async function subPaystackStart() {
   subPaystackSetError('');
   const payload = subPaystackRegistrationPayload();
   if (!payload.email) { subPaystackSetError('A registered school email is required before payment.'); return; }
-  window.subPaystackState = {status:'processing', reference:null, authorization:null, verification:null, selectedChannel:payload.paymentChannel, selectedProvider:payload.paymentProvider};
+  window.subPaystackState = {status:'processing', reference:null, authorization:null, verification:null};
   const btn = document.getElementById('sub-paystack-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Processing Payment…'; }
   subPaystackSetStatus('Processing Payment.', 'Requesting a secure transaction from the server.');
@@ -40981,7 +40929,7 @@ async function subPaystackOpenCheckout(auth, email, metadata) {
   if (typeof popup.newTransaction === 'function') {
     const publicKey = auth.public_key || window.EDUTRACK_PAYSTACK_PUBLIC_KEY;
     if (!publicKey) throw new Error('Paystack public key is not configured.');
-    popup.newTransaction({key:publicKey, email, amount:Number(auth.amount || 0), reference:auth.reference, channels:auth.channels || ['card','mobile_money','bank_transfer'], metadata, onSuccess, onCancel, onError});
+    popup.newTransaction({key:publicKey, email, amount:Number(auth.amount || 0), reference:auth.reference, metadata, onSuccess, onCancel, onError});
     return;
   }
   throw new Error('Unsupported Paystack Inline Checkout version.');
@@ -41002,7 +40950,7 @@ async function subPaystackVerify(reference) {
     const response = await fetch('/api/payments/paystack/verify/' + encodeURIComponent(reference), {credentials:'same-origin'});
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.status !== 'verified' || !data.transaction) throw new Error(data.message || 'Payment could not be verified.');
-    window.subPaystackState = {status:'verified', reference, authorization:window.subPaystackState.authorization, verification:data.transaction, selectedChannel:window.subPaystackState.selectedChannel, selectedProvider:window.subPaystackState.selectedProvider};
+    window.subPaystackState = {status:'verified', reference, authorization:window.subPaystackState.authorization, verification:data.transaction};
     const tx = data.transaction;
     document.getElementById('sub-txn-id').value = tx.reference || reference;
     document.getElementById('sub-pay-date').value = (tx.paid_at || new Date().toISOString()).slice(0,10);
@@ -41048,15 +40996,15 @@ function subCompleteRegistration() {
       return;
     }
     const renewalId = tx.renewalId || tx.renewal_id || ('renewal_' + tx.reference);
-    school.package = subSelectedPkg || school.package; school.expiryDate = end; school.status = 'active'; school.lastPaymentReference = tx.reference || window.subPaystackState.reference; school.lastPaymentChannel = tx.channel || tx.payment_channel || window.subPaystackState.selectedProvider || window.subPaystackState.selectedChannel; school.lastPaymentDate = tx.paid_at || new Date().toISOString(); school.lastRenewalId = renewalId;
+    school.package = subSelectedPkg || school.package; school.expiryDate = end; school.status = 'active'; school.lastPaymentReference = tx.reference || window.subPaystackState.reference; school.lastPaymentChannel = tx.channel || tx.payment_channel || 'Paystack'; school.lastPaymentDate = tx.paid_at || new Date().toISOString(); school.lastRenewalId = renewalId;
     subSet(SUB_KEYS.schools, schools);
     const payments = subGetArr(SUB_KEYS.payments);
     const existingPayment = payments.find(x => x.reference === school.lastPaymentReference || x.renewalId === renewalId);
-    const paymentRecord = {id: existingPayment?.id || 'pay_'+Date.now(),schoolId:school.id,schoolName:school.name,renewalId,reference:school.lastPaymentReference,txnId:school.lastPaymentReference,package:school.package,subscriptionPeriod:tx.subscriptionPeriod || tx.subscription_period || subSelectedPkg,amount:Number(tx.amount||0)/100,channel:tx.channel || tx.payment_channel || window.subPaystackState.selectedProvider || window.subPaystackState.selectedChannel,status:'verified',date:(tx.paid_at || new Date().toISOString()).slice(0,10),submittedAt:existingPayment?.submittedAt || new Date().toISOString()};
+    const paymentRecord = {id: existingPayment?.id || 'pay_'+Date.now(),schoolId:school.id,schoolName:school.name,renewalId,reference:school.lastPaymentReference,txnId:school.lastPaymentReference,package:school.package,subscriptionPeriod:tx.subscriptionPeriod || tx.subscription_period || subSelectedPkg,amount:Number(tx.amount||0)/100,channel:tx.channel || tx.payment_channel || 'Paystack',status:'verified',date:(tx.paid_at || new Date().toISOString()).slice(0,10),submittedAt:existingPayment?.submittedAt || new Date().toISOString()};
     if (existingPayment) Object.assign(existingPayment, paymentRecord); else payments.push(paymentRecord);
     subSet(SUB_KEYS.payments,payments);
     document.getElementById('sub-success-code').textContent = school.subCode || school.schoolCode || '—';
-    document.getElementById('sub-success-details').innerHTML = '<div class="school-detail-row"><span class="label">School Name</span><span class="value">'+school.name+'</span></div><div class="school-detail-row"><span class="label">Subscription Period</span><span class="value">'+(tx.subscriptionPeriod||tx.subscription_period||subSelectedPkg||'—')+'</span></div><div class="school-detail-row"><span class="label">Amount Paid</span><span class="value">GHC '+(Number(tx.amount||0)/100).toFixed(2)+'</span></div><div class="school-detail-row"><span class="label">Payment Method</span><span class="value">'+(tx.channel||tx.payment_channel||window.subPaystackState.selectedProvider||window.subPaystackState.selectedChannel||'Paystack')+'</span></div><div class="school-detail-row"><span class="label">Payment Status</span><span class="value" style="color:#1a7a3f">Verified by server</span></div><div class="school-detail-row"><span class="label">Paystack Reference</span><span class="value">'+(tx.reference||window.subPaystackState.reference||'—')+'</span></div><div class="school-detail-row"><span class="label">Payment Date</span><span class="value">'+new Date(tx.paid_at||Date.now()).toLocaleDateString('en-GH')+'</span></div><div class="school-detail-row"><span class="label">New Subscription Expiry</span><span class="value">'+new Date(end).toLocaleDateString('en-GH')+'</span></div>';
+    document.getElementById('sub-success-details').innerHTML = '<div class="school-detail-row"><span class="label">School Name</span><span class="value">'+school.name+'</span></div><div class="school-detail-row"><span class="label">Subscription Period</span><span class="value">'+(tx.subscriptionPeriod||tx.subscription_period||subSelectedPkg||'—')+'</span></div><div class="school-detail-row"><span class="label">Amount Paid</span><span class="value">GHC '+(Number(tx.amount||0)/100).toFixed(2)+'</span></div><div class="school-detail-row"><span class="label">Payment Method</span><span class="value">'+(tx.channel||tx.payment_channel||'Paystack')+'</span></div><div class="school-detail-row"><span class="label">Payment Status</span><span class="value" style="color:#1a7a3f">Verified by server</span></div><div class="school-detail-row"><span class="label">Paystack Reference</span><span class="value">'+(tx.reference||window.subPaystackState.reference||'—')+'</span></div><div class="school-detail-row"><span class="label">Payment Date</span><span class="value">'+new Date(tx.paid_at||Date.now()).toLocaleDateString('en-GH')+'</span></div><div class="school-detail-row"><span class="label">New Subscription Expiry</span><span class="value">'+new Date(end).toLocaleDateString('en-GH')+'</span></div>';
     subShowStep(5); subRenewalSchoolId=null; toast('Subscription renewed successfully!','success'); return;
   }
   const schools = subGetArr(SUB_KEYS.schools);
@@ -149182,7 +149130,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
 </script>
 <style id="edutrack-enhancement-part1-style">
   /* Payment processing is not part of this enhancement; subscription records remain available. */
-  #sub-page-3, #sub-paystack-status, #sub-paystack-error, #sub-paystack-btn, #sub-payment-channels, .lock-payment-box { display:none !important; }
+  /* Paystack owns payment-channel selection; EduTrack only starts the secure checkout. */
 </style>
 
 <!-- EDUTRACK ENHANCEMENT PART 2: payment-free registration and staff-account hardening -->
@@ -149243,180 +149191,53 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
 })();
 </script>
 <!-- EDUTRACK_PART4_TERM_PAYMENT_METHOD -->
-<script id="edutrack-part4-term-payment-method">
-(function EDUTRACK_PART4_TERM_PAYMENT_METHOD(){
+<script id="edutrack-native-paystack-checkout">
+(function EDUTRACK_NATIVE_PAYSTACK_CHECKOUT(){
   'use strict';
-  if(window.EDUTRACK_PART4_TERM_PAYMENT_METHOD)return;
-  var TERMS=['1st Term','2nd Term','3rd Term'];
-  var METHODS=[
-    {value:'mobile_money',label:'A. Mobile Money',channel:'mobile_money',provider:'MTN'},
-    {value:'airteltigo_cash',label:'B. AirtelTigo Cash',channel:'mobile_money',provider:'AirtelTigo'},
-    {value:'telecel_cash',label:'C. Telecel Cash',channel:'mobile_money',provider:'Telecel'},
-    {value:'visa_card',label:'D. Visa Card',channel:'card',provider:'Visa'}
-  ];
-  function byId(id){return document.getElementById(id);}
-  function value(id){var e=byId(id);return e?String(e.value||'').trim():'';}
-  function showError(msg){var e=byId('subv2-renew-error')||byId('sub-paystack-error');if(e){e.textContent='⚠ '+msg;e.style.display='';e.style.color='#b83232';}return false;}
-  function existingPublicTerm(){try{if(window.EDUTRACK_PUBLIC_PERIOD&&typeof window.EDUTRACK_PUBLIC_PERIOD.get==='function'){var p=window.EDUTRACK_PUBLIC_PERIOD.get();return p&&p.term;}}catch(e){}return '';}
-  function controls(){
-    var panel=byId('subv2-renew-payment-panel');if(!panel||byId('edutrack-part4-term'))return;
-    var opts=TERMS.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('');
-    var methods=METHODS.map(function(m){return '<option value="'+m.value+'">'+m.label+'</option>';}).join('');
-    panel.insertAdjacentHTML('beforebegin','<div id="edutrack-part4-term" class="sub-form-grid" style="margin-top:1rem"><div class="sub-form-group"><label>Academic Term <span class="sub-req-star">*</span></label><select id="edutrack-renew-term" required><option value="">— Select Term —</option>'+opts+'</select></div><div class="sub-form-group"><label>Payment Method <span class="sub-req-star">*</span></label><select id="edutrack-payment-method" required><option value="">— Select Payment Method —</option>'+methods+'</select></div></div><div id="edutrack-payment-method-hint" style="font-size:.75rem;color:#52627d;margin-top:.4rem">Select a payment method before Paystack Checkout becomes available.</div>');
-    var synced=existingPublicTerm(),term=byId('edutrack-renew-term');
-    if(synced&&TERMS.indexOf(synced)>=0){term.value=synced;term.dataset.publicSynced='1';term.title='Synchronized with the public-school academic term';}
-    var pay=byId('subv2-renew-pay-btn');if(pay){pay.disabled=true;pay.setAttribute('aria-disabled','true');}
-    var method=byId('edutrack-payment-method');
-    function refresh(){
-      var ok=!!value('edutrack-renew-term')&&!!value('edutrack-payment-method');
-      if(pay){pay.disabled=!ok;pay.setAttribute('aria-disabled',String(!ok));}
-      var hint=byId('edutrack-payment-method-hint');if(hint)hint.textContent=ok?'Payment method selected. Existing Paystack Checkout is available after renewal validation.':'Select an academic term and payment method before Paystack Checkout becomes available.';
-    }
-    term.addEventListener('change',refresh);method.addEventListener('change',refresh);refresh();
+  if (window.EDUTRACK_NATIVE_PAYSTACK_CHECKOUT) return;
+  function byId(id){ return document.getElementById(id); }
+  function value(id){ var el=byId(id); return el ? String(el.value || '').trim() : ''; }
+  function showError(message){
+    var el=byId('subv2-renew-error') || byId('sub-paystack-error');
+    if(el){ el.textContent='⚠ '+message; el.style.display=''; el.style.color='#b83232'; }
+    return false;
   }
-  function validate(){
-    var period=value('subv2-renew-period');if(!period)return showError('Select a subscription period before proceeding to Paystack.');
-    var term=value('edutrack-renew-term');if(!term)return showError('Select an academic term before proceeding to Paystack.');
-    var method=value('edutrack-payment-method');if(!method)return showError('Select a payment method before proceeding to Paystack.');
-    if((method==='mobile_money'||method==='airteltigo_cash'||method==='telecel_cash')&&!value('subv2-renew-phone'))return showError('Enter a phone number for the selected mobile-money payment method.');
-    if(method==='visa_card'&&!value('subv2-renew-email'))return showError('Enter an email address for Visa Card Paystack checkout.');
+  function validateRenewal(){
+    if(typeof value('subv2-renew-period') === 'string' && byId('subv2-renew-period') && !value('subv2-renew-period')) return showError('Select a subscription period before proceeding to Paystack.');
+    if(byId('subv2-renew-email') && !value('subv2-renew-email')) return showError('Enter an email address before proceeding to Paystack.');
     return true;
   }
-  function syncState(){
-    var method=METHODS.find(function(m){return m.value===value('edutrack-payment-method');});
-    if(!method)return;
-    window.subPaystackState=window.subPaystackState||{};
-    window.subPaystackState.selectedChannel=method.channel;
-    window.subPaystackState.selectedProvider=method.provider;
-    window.subPaystackState.selectedPaymentMethod=method.value;
-    window.subPaystackState.selectedTerm=value('edutrack-renew-term');
+  function cleanPayload(payload){
+    var out=payload || {};
+    ['payment'+'Method','selected'+'PaymentMethod','payment'+'Channel','selected'+'Channel','payment'+'Provider','service'+'Provider','visa'+'Bank','bank','payment'+'Metadata'].forEach(function(key){ delete out[key]; });
+    return out;
   }
   function wrap(){
-    if(typeof window.subv2RenewPayWithPaystack==='function'&&!window.subv2RenewPayWithPaystack.__part4){
-      var oldPay=window.subv2RenewPayWithPaystack;
-      var w=function(){if(!validate())return false;syncState();return oldPay.apply(this,arguments);};w.__part4=true;window.subv2RenewPayWithPaystack=w;
+    if(typeof window.subPaystackRegistrationPayload==='function' && !window.subPaystackRegistrationPayload.__nativePaystack){
+      var original=window.subPaystackRegistrationPayload;
+      var wrapped=function(){ return cleanPayload(original.apply(this,arguments)); };
+      wrapped.__nativePaystack=true;
+      window.subPaystackRegistrationPayload=wrapped;
     }
-    if(typeof window.subPaystackRegistrationPayload==='function'&&!window.subPaystackRegistrationPayload.__part4){
-      var oldPayload=window.subPaystackRegistrationPayload;
-      var p=function(){var out=oldPayload.apply(this,arguments)||{};out.academicTerm=value('edutrack-renew-term');out.subscriptionTerm=out.academicTerm;out.paymentMethod=value('edutrack-payment-method');return out;};p.__part4=true;window.subPaystackRegistrationPayload=p;
+    if(typeof window.subv2RenewPayWithPaystack==='function' && !window.subv2RenewPayWithPaystack.__nativePaystack){
+      var originalRenew=window.subv2RenewPayWithPaystack;
+      var wrappedRenew=function(){ if(!validateRenewal()) return false; return originalRenew.apply(this,arguments); };
+      wrappedRenew.__nativePaystack=true;
+      window.subv2RenewPayWithPaystack=wrappedRenew;
     }
   }
-  function install(){controls();wrap();}
-  window.EDUTRACK_PART4_TERM_PAYMENT_METHOD={terms:TERMS.slice(),methods:METHODS.slice(),validate:validate,install:install};
-  var obs=new MutationObserver(install);if(document.body)obs.observe(document.body,{childList:true,subtree:true});
-  setTimeout(install,350);
+  function removeLegacyControls(){
+    ['edutrack-part4-term','edutrack-payment-method-hint','edutrack-provider-bank-controls','edutrack-payment-inputs'].forEach(function(id){ var el=byId(id); if(el) el.remove(); });
+    document.querySelectorAll('label').forEach(function(label){ if(/payment method|mobile money|telecel cash|visa card/i.test(label.textContent||'')) label.closest('.sub-form-group')?.remove(); });
+    wrap();
+  }
+  window.EDUTRACK_NATIVE_PAYSTACK_CHECKOUT={install:removeLegacyControls,cleanPayload:cleanPayload,validate:validateRenewal};
+  var observer=new MutationObserver(removeLegacyControls);
+  if(document.body) observer.observe(document.body,{childList:true,subtree:true});
+  setTimeout(removeLegacyControls,100);
+  setTimeout(removeLegacyControls,700);
 })();
 </script>
-<!-- EDUTRACK_PART5_PROVIDER_BANK -->
-<script id="edutrack-part5-provider-bank">
-(function EDUTRACK_PART5_PROVIDER_BANK(){
-  'use strict';
-  if(window.EDUTRACK_PART5_PROVIDER_BANK)return;
-  var BANKS=['GCB Bank PLC','Absa Bank Ghana','Stanbic Bank Ghana','Zenith Bank Ghana','Guaranty Trust Bank (GTBank) Ghana','Access Bank Ghana','First Atlantic Bank','Bank of Africa Ghana','OmniBSIC Bank','Fidelity Bank Ghana','Standard Chartered Bank Ghana','Ecobank Ghana','United Bank for Africa (UBA) Ghana','Société Générale Ghana','Consolidated Bank Ghana (CBG)','CalBank PLC','FBNBank Ghana','First National Bank Ghana','Agricultural Development Bank (ADB)','Prudential Bank','Republic Bank Ghana','National Investment Bank (NIB)','Universal Merchant Bank (UMB)'];
-  var PROVIDERS={mobile_money:'MTN',airteltigo_cash:'AirtelTigo',telecel_cash:'Telecel',visa_card:'Visa Card'};
-  function byId(id){return document.getElementById(id);}
-  function val(id){var e=byId(id);return e?String(e.value||'').trim():'';}
-  function method(){return val('edutrack-payment-method');}
-  function error(msg){var e=byId('subv2-renew-error')||byId('sub-paystack-error');if(e){e.textContent='⚠ '+msg;e.style.display='';e.style.color='#b83232';}return false;}
-  function ensureControls(){
-    var anchor=byId('edutrack-payment-method-hint');if(!anchor||byId('edutrack-provider-bank-controls'))return;
-    var opts='<option value="">— Select Bank —</option>'+BANKS.map(function(b){return '<option value="'+b.replace(/"/g,'&quot;')+'">'+b+'</option>';}).join('');
-    anchor.insertAdjacentHTML('afterend','<div id="edutrack-provider-bank-controls" style="margin-top:.5rem"><div id="edutrack-provider-display" style="font-size:.78rem;color:#0e7c86">Provider: <strong>—</strong></div><div id="edutrack-bank-group" class="sub-form-group" style="display:none;margin-top:.45rem"><label>Visa Card Bank <span class="sub-req-star">*</span></label><select id="edutrack-visa-bank"><'+ 'option value="">— Select Bank —</option>'+BANKS.map(function(b){return '<option value="'+b.replace(/"/g,'&quot;')+'">'+b+'</option>';}).join('')+'</select></div></div>');
-    var select=byId('edutrack-payment-method');
-    if(select&&!select.dataset.part5){select.dataset.part5='1';select.addEventListener('change',refresh);}
-    var bank=byId('edutrack-visa-bank');if(bank)bank.addEventListener('change',refresh);
-    refresh();
-  }
-  function refresh(){
-    var m=method(), provider=PROVIDERS[m]||'—',display=byId('edutrack-provider-display'),group=byId('edutrack-bank-group'),bank=byId('edutrack-visa-bank');
-    if(display)display.innerHTML='Provider: <strong>'+provider+'</strong>';
-    var visa=m==='visa_card';
-    if(group)group.style.display=visa?'':'none';
-    if(bank){bank.required=visa;if(!visa)bank.value='';}
-    window.subPaystackState=window.subPaystackState||{};
-    window.subPaystackState.selectedProvider=visa?'Visa':(PROVIDERS[m]||'');
-    window.subPaystackState.selectedPaymentMethod=m;
-    window.subPaystackState.selectedBank=visa?(bank?bank.value:''):'';
-    if(bank&&!bank.dataset.part5){bank.dataset.part5='1';bank.addEventListener('change',refresh);}
-  }
-  function validate(){
-    var m=method();
-    if(m==='visa_card'&&!val('edutrack-visa-bank'))return error('Select a Visa Card bank before proceeding to Paystack.');
-    if(m!=='visa_card'&&val('edutrack-visa-bank')){var b=byId('edutrack-visa-bank');if(b)b.value='';}
-    refresh();return true;
-  }
-  function wrap(){
-    if(typeof window.subv2RenewPayWithPaystack==='function'&&!window.subv2RenewPayWithPaystack.__part5){
-      var old=window.subv2RenewPayWithPaystack;var w=function(){if(!validate())return false;return old.apply(this,arguments);};w.__part5=true;window.subv2RenewPayWithPaystack=w;
-    }
-    if(typeof window.subPaystackRegistrationPayload==='function'&&!window.subPaystackRegistrationPayload.__part5){
-      var oldPayload=window.subPaystackRegistrationPayload;var p=function(){var out=oldPayload.apply(this,arguments)||{};var m=method();out.serviceProvider=PROVIDERS[m]||'';out.paymentProvider=out.serviceProvider;out.visaBank=m==='visa_card'?val('edutrack-visa-bank'):'';out.bank=out.visaBank;return out;};p.__part5=true;window.subPaystackRegistrationPayload=p;
-    }
-  }
-  function install(){ensureControls();wrap();}
-  window.EDUTRACK_PART5_PROVIDER_BANK={banks:BANKS.slice(),providers:Object.assign({},PROVIDERS),refresh:refresh,validate:validate,install:install};
-  var obs=new MutationObserver(install);if(document.body)obs.observe(document.body,{childList:true,subtree:true});
-  setTimeout(install,500);
-})();
-</script>
-<!-- EDUTRACK_PART6_PAYMENT_INPUTS -->
-<script id="edutrack-part6-payment-inputs">
-(function EDUTRACK_PART6_PAYMENT_INPUTS(){
-  'use strict';
-  if(window.EDUTRACK_PART6_PAYMENT_INPUTS)return;
-  function byId(id){return document.getElementById(id);}
-  function val(id){var e=byId(id);return e?String(e.value||'').trim():'';}
-  function error(msg){var e=byId('subv2-renew-error')||byId('sub-paystack-error');if(e){e.textContent='⚠ '+msg;e.style.display='';e.style.color='#b83232';}return false;}
-  function method(){return val('edutrack-payment-method');}
-  function fieldMarkup(){
-    return '<div id="edutrack-payment-inputs" style="margin-top:.6rem"><div id="edutrack-momo-inputs" style="display:none;padding:.75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd"><div style="font-weight:800;color:#0d1b3e;margin-bottom:.45rem">Payment Account Details</div><div class="sub-form-grid"><div class="sub-form-group"><label>Name <span class="sub-req-star">*</span></label><input id="edutrack-payment-name" type="text" autocomplete="name"/></div><div class="sub-form-group"><label>Phone Number <span class="sub-req-star">*</span></label><input id="edutrack-payment-phone" type="tel" autocomplete="tel"/></div></div></div><div id="edutrack-card-inputs" style="display:none;padding:.75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd"><div style="font-weight:800;color:#0d1b3e;margin-bottom:.45rem">Visa Card Details</div><div class="sub-form-grid"><div class="sub-form-group"><label>Name on Card <span class="sub-req-star">*</span></label><input id="edutrack-card-name" type="text" autocomplete="cc-name"/></div><div class="sub-form-group"><label>Card Number <span class="sub-req-star">*</span></label><input id="edutrack-card-number" type="text" inputmode="numeric" autocomplete="cc-number"/></div><div class="sub-form-group"><label>CVC <span class="sub-req-star">*</span></label><input id="edutrack-card-cvc" type="password" inputmode="numeric" autocomplete="cc-csc"/></div><div class="sub-form-group"><label>Expiry Date <span class="sub-req-star">*</span></label><input id="edutrack-card-expiry" type="text" placeholder="MM/YY" autocomplete="cc-exp"/></div><div class="sub-form-group" style="grid-column:1/-1"><label>Billing Address <span class="sub-req-star">*</span></label><input id="edutrack-card-billing" type="text" autocomplete="street-address"/></div></div><div style="font-size:.72rem;color:#52627d;margin-top:.45rem">Card data is used only for client-side completeness checks and is never added to the application transaction payload. Paystack remains the secure payment processor.</div></div></div>';
-  }
-  function installFields(){
-    var anchor=byId('edutrack-provider-bank-controls');if(!anchor||byId('edutrack-payment-inputs'))return;
-    anchor.insertAdjacentHTML('afterend',fieldMarkup());
-    var sel=byId('edutrack-payment-method');if(sel&&!sel.dataset.part6){sel.dataset.part6='1';sel.addEventListener('change',refresh);}
-    ['edutrack-payment-name','edutrack-payment-phone','edutrack-card-name','edutrack-card-number','edutrack-card-cvc','edutrack-card-expiry','edutrack-card-billing'].forEach(function(id){var e=byId(id);if(e)e.addEventListener('input',refresh);});
-    refresh();
-  }
-  function refresh(){
-    var m=method(), momo=m==='mobile_money'||m==='airteltigo_cash'||m==='telecel_cash', visa=m==='visa_card';
-    var mi=byId('edutrack-momo-inputs'),ci=byId('edutrack-card-inputs');if(mi)mi.style.display=momo?'':'none';if(ci)ci.style.display=visa?'':'none';
-    if(!momo){['edutrack-payment-name','edutrack-payment-phone'].forEach(function(id){var e=byId(id);if(e)e.value='';});}
-    if(!visa){['edutrack-card-name','edutrack-card-number','edutrack-card-cvc','edutrack-card-expiry','edutrack-card-billing'].forEach(function(id){var e=byId(id);if(e)e.value='';});}
-  }
-  function validate(){
-    var m=method();if(!m)return error('Select a payment method before entering payment details.');
-    var momo=m==='mobile_money'||m==='airteltigo_cash'||m==='telecel_cash';
-    if(momo&&(!val('edutrack-payment-name')||!val('edutrack-payment-phone')))return error('Enter the payment account name and phone number.');
-    if(m==='visa_card'){
-      if(!val('edutrack-visa-bank'))return error('Select a Visa Card bank.');
-      if(!val('edutrack-card-name')||!val('edutrack-card-number')||!val('edutrack-card-cvc')||!val('edutrack-card-expiry')||!val('edutrack-card-billing'))return error('Complete all Visa Card fields before Paystack.');
-      if(!/^[0-9 ]{12,23}$/.test(val('edutrack-card-number'))||!/^[0-9]{3,4}$/.test(val('edutrack-card-cvc'))||!/^(0[1-9]|1[0-2])\/([0-9]{2}|20[0-9]{2})$/.test(val('edutrack-card-expiry')))return error('Check the Visa Card number, CVC, and expiry format.');
-    }
-    return true;
-  }
-  function backendValidation(payload){
-    try{
-      return fetch('/api/payments/validate-metadata',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(function(r){if(!r.ok)throw new Error('Payment metadata validation failed.');return r.json();});
-    }catch(e){return Promise.reject(e);}
-  }
-  function wrap(){
-    if(typeof window.subv2RenewPayWithPaystack==='function'&&!window.subv2RenewPayWithPaystack.__part6){
-      var old=window.subv2RenewPayWithPaystack;var w=function(){if(!validate())return false;var metadata={paymentMethod:method(),provider:window.subPaystackState&&window.subPaystackState.selectedProvider||'',bank:method()==='visa_card'?val('edutrack-visa-bank'):'',paymentName:method()==='visa_card'?val('edutrack-card-name'):val('edutrack-payment-name'),paymentPhone:method()==='visa_card'?'':val('edutrack-payment-phone'),hasSensitiveCardData:method()==='visa_card'};window.EDUTRACK_PART6_LAST_METADATA=metadata;return old.apply(this,arguments);};w.__part6=true;window.subv2RenewPayWithPaystack=w;
-    }
-    if(typeof window.subPaystackRegistrationPayload==='function'&&!window.subPaystackRegistrationPayload.__part6){
-      var oldPayload=window.subPaystackRegistrationPayload;var p=function(){var out=oldPayload.apply(this,arguments)||{};out.paymentMetadata={paymentMethod:method(),provider:window.subPaystackState&&window.subPaystackState.selectedProvider||'',bank:method()==='visa_card'?val('edutrack-visa-bank'):'',payerName:method()==='visa_card'?val('edutrack-card-name'):val('edutrack-payment-name'),payerPhone:method()==='visa_card'?'':val('edutrack-payment-phone'),hasSensitiveCardData:method()==='visa_card'};delete out.cardNumber;delete out.cvc;delete out.expiryDate;delete out.billingAddress;return out;};p.__part6=true;window.subPaystackRegistrationPayload=p;
-    }
-  }
-  function install(){installFields();wrap();}
-  window.EDUTRACK_PART6_PAYMENT_INPUTS={validate:validate,install:install,validateBackend:backendValidation};
-  var obs=new MutationObserver(install);if(document.body)obs.observe(document.body,{childList:true,subtree:true});
-  setTimeout(install,650);
-})();
-</script>
-
-
-
 <script id="edutrack-six-login-card-controller">
 (function(){
   'use strict';
@@ -149570,6 +149391,44 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   };
 })();
 </script>
+<script id="edutrack-part18-server-auth">
+(function EDUTRACK_PART18_SERVER_AUTH(){
+  'use strict';
+  if (window.__EDUTRACK_PART18_AUTH__) return;
+  window.__EDUTRACK_PART18_AUTH__ = true;
+  var state = { authenticated:false, user:null, authorization:null };
+  function request(path, options){ return fetch(path, Object.assign({ credentials:'same-origin', headers:{'Content-Type':'application/json'} }, options||{})); }
+  function safeJson(response){ return response.json().catch(function(){ return {}; }); }
+  function setText(id, value){ var node=document.getElementById(id); if(node) node.textContent=String(value||''); }
+  function showDashboard(data){
+    state.authenticated=true; state.user=data.user||null; state.authorization=data.authorization||null;
+    var login=document.getElementById('login-screen'); if(login) login.style.display='none';
+    var panel=document.getElementById('edutrack-part18-developer-dashboard');
+    if(!panel){ panel=document.createElement('section'); panel.id='edutrack-part18-developer-dashboard'; panel.style='position:fixed;inset:0;z-index:2147483000;background:#f5f8fc;color:#152238;padding:clamp(1rem,4vw,3rem);font-family:system-ui,sans-serif;overflow:auto;'; document.body.appendChild(panel); }
+    panel.innerHTML='<div style="max-width:900px;margin:0 auto;background:#fff;border:1px solid #d9e2ee;border-radius:16px;padding:clamp(1rem,4vw,2rem);box-shadow:0 12px 40px rgba(21,34,56,.12)"><div style="display:flex;justify-content:space-between;gap:1rem;align-items:center"><div><p style="margin:0;color:#52627d;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase">Server-authoritative developer access</p><h1 style="margin:.35rem 0;font-size:clamp(1.4rem,3vw,2rem)">Developer Dashboard</h1></div><button id="edutrack-part18-logout" type="button" style="padding:.7rem 1rem;border:0;border-radius:8px;background:#b42318;color:#fff;cursor:pointer">Log out</button></div><div style="margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem"><div style="padding:1rem;border:1px solid #d9e2ee;border-radius:10px"><strong>Authenticated identity</strong><p id="edutrack-part18-identity" style="margin:.5rem 0 0"></p></div><div style="padding:1rem;border:1px solid #d9e2ee;border-radius:10px"><strong>Authorization</strong><p id="edutrack-part18-authorization" style="margin:.5rem 0 0"></p></div></div><pre id="edutrack-part18-summary" style="margin-top:1rem;background:#122033;color:#e8f0fa;padding:1rem;border-radius:10px;overflow:auto">Loading protected summary…</pre></div>';
+    setText('edutrack-part18-identity', (state.user && (state.user.email||state.user.staffId))+' · '+(state.user && state.user.role));
+    setText('edutrack-part18-authorization', state.authorization && state.authorization.dashboard);
+    document.getElementById('edutrack-part18-logout').onclick=function(){ request('/api/auth/logout',{method:'POST'}).then(function(){ state={authenticated:false,user:null,authorization:null}; panel.remove(); var login=document.getElementById('login-screen'); if(login) login.style.display=''; }); };
+    request('/api/admin/summary').then(safeJson).then(function(summary){ setText('edutrack-part18-summary', JSON.stringify(summary,null,2)); });
+  }
+  function showError(message){ var node=document.getElementById('edutrack-part18-error'); if(node) node.textContent=message||'Authentication failed'; }
+  function open(){
+    var modal=document.getElementById('edutrack-part18-developer-modal'); if(modal){ modal.style.display='flex'; return; }
+    modal=document.createElement('div'); modal.id='edutrack-part18-developer-modal'; modal.style='position:fixed;inset:0;z-index:2147482999;display:flex;align-items:center;justify-content:center;background:rgba(15,29,49,.72);padding:1rem;';
+    modal.innerHTML='<form id="edutrack-part18-developer-form" style="width:min(100%,440px);background:#fff;border-radius:14px;padding:1.4rem;box-shadow:0 18px 60px rgba(0,0,0,.3)"><h2 style="margin-top:0">Developer access</h2><p style="color:#52627d;font-size:.9rem">Development-only server authentication. Credentials are never stored in browser storage.</p><label>Email<input required name="email" type="email" autocomplete="username" style="display:block;width:100%;box-sizing:border-box;margin:.35rem 0 1rem;padding:.7rem"></label><label>Password<input required name="password" type="password" autocomplete="current-password" style="display:block;width:100%;box-sizing:border-box;margin:.35rem 0 1rem;padding:.7rem"></label><label>Access code<input required name="accessCode" type="password" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;margin:.35rem 0 1rem;padding:.7rem"></label><p id="edutrack-part18-error" style="color:#b42318;min-height:1.2em"></p><div style="display:flex;justify-content:flex-end;gap:.6rem"><button type="button" id="edutrack-part18-cancel">Cancel</button><button type="submit">Authenticate</button></div></form>';
+    document.body.appendChild(modal); document.getElementById('edutrack-part18-cancel').onclick=function(){modal.remove();};
+    document.getElementById('edutrack-part18-developer-form').onsubmit=function(event){ event.preventDefault(); var form=event.currentTarget; var payload={email:form.email.value,password:form.password.value,accessCode:form.accessCode.value}; request('/api/auth/login',{method:'POST',body:JSON.stringify(payload)}).then(function(response){return safeJson(response).then(function(data){return {ok:response.ok,data:data};});}).then(function(result){ if(!result.ok||!result.data.authenticated){showError(result.data.error||'Authentication failed');return;} return request('/api/auth/session').then(function(response){return safeJson(response).then(function(data){if(!response.ok||!data.authenticated){showError('Authenticated session could not be confirmed');return;} modal.remove(); showDashboard(data);});}); }).catch(function(){showError('Authentication failed');}); };
+  }
+  function install(){
+    var anchor=document.getElementById('login-screen')||document.body; if(document.getElementById('edutrack-part18-developer-access')) return;
+    var button=document.createElement('button'); button.id='edutrack-part18-developer-access'; button.type='button'; button.textContent='Developer access'; button.style='display:block;margin:1rem auto;padding:.65rem 1rem;border:1px solid #52627d;border-radius:8px;background:transparent;color:inherit;cursor:pointer;'; button.onclick=open; anchor.appendChild(button);
+    request('/api/auth/session').then(function(response){return response.ok?safeJson(response):null;}).then(function(data){if(data&&data.authenticated&&data.user&&data.user.role==='DEVELOPER_ROOT') showDashboard(data);});
+  }
+  window.EDUTRACK_SERVER_AUTH={login:function(fields){return request('/api/auth/login',{method:'POST',body:JSON.stringify(fields)}).then(safeJson);},session:function(){return request('/api/auth/session').then(safeJson);},logout:function(){return request('/api/auth/logout',{method:'POST'}).then(safeJson);}};
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',install); else install();
+})();
+</script>
+
 </body></html>
 
 <!-- EDUTRACK_STAFF_MANAGEMENT_PART3 -->
@@ -149587,19 +149446,21 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   function all(){return read(KEY)}
   function scoped(){var c=current();return all().filter(function(t){return String(t.schoolId||'')===c.id || (!t.schoolId&&String(t.school||'').trim().toLowerCase()===c.name.toLowerCase())})}
   function active(){return scoped().filter(function(t){return String(t.status||'ACTIVE').toUpperCase()==='ACTIVE'})}
-  function saveRecords(records){write(KEY,records);var legacy=read(LEGACY);var ids={};records.forEach(function(t){ids[String(t.staffId||t.teacher_staff_id||'').toUpperCase()]=t});var out=legacy.filter(function(t){var id=String(t.staffId||t.teacher_staff_id||'').toUpperCase();return !ids[id]});records.forEach(function(t){out.push(Object.assign({},t,{staffId:t.staffId,teacher_staff_id:t.staffId,school:t.schoolName||t.school,schoolName:t.schoolName||t.school,role:t.role,status:t.status||'ACTIVE'}))});write(LEGACY,out);if(typeof loadTeacherData==='function')loadTeacherData();if(typeof renderTeacherRegister==='function')renderTeacherRegister()}
+  function saveRecords(records){write(KEY,records);write(LEGACY,records);if(typeof loadTeacherData==='function')loadTeacherData();if(typeof renderTeacherRegister==='function')renderTeacherRegister()}
+  function serverStaff(){return window.EduTrackDomainAPI&&typeof window.EduTrackDomainAPI.listStaff==='function'?window.EduTrackDomainAPI.listStaff():Promise.reject(new Error('Server API unavailable'))}
+  function refreshServerStaff(done){serverStaff().then(function(data){var rows=(data.staff||[]).map(function(t){return {teacherId:t.id,schoolId:t.schoolId,schoolName:t.schoolId||'',school:t.schoolId||'',name:t.fullName,staffId:t.staffIdentifier,teacher_staff_id:t.staffIdentifier,role:t.staffType||'STAFF',status:t.status||'ACTIVE',phone:t.phone||'',email:t.email||''}});saveRecords(rows);if(done)done(rows)}).catch(function(){if(done)done(all())})}
   function addNav(){var a=document.getElementById('school-headteacher-anchor');if(!a||document.getElementById('p3-staff-management-nav'))return;var n=document.createElement('div');n.id='p3-staff-management-nav';n.className='nav-item';n.innerHTML='<span class="icon">👥</span><span class="nav-label">Staff Management</span>';n.onclick=function(){open()};a.parentNode.insertBefore(n,a)}
   function optionList(a,placeholder){return '<option value="">'+placeholder+'</option>'+a.map(function(x){return '<option value="'+esc(x)+'">'+esc(x)+'</option>'}).join('')}
   function render(){var box=document.getElementById('p3-staff-modal-body');if(!box)return;var c=current(), act=active();box.innerHTML='<div style="font-size:.75rem;color:#555;margin-bottom:.65rem">Authenticated school: <strong>'+esc(c.name||'Not resolved')+'</strong></div><div class="sub-section-title">1. Register Staff</div><div id="p3-reg-rows"></div><div style="display:flex;gap:.5rem;margin:.5rem 0"><button class="btn btn-sm btn-ghost" id="p3-add">ADD</button><button class="btn btn-sm btn-primary" id="p3-save">SAVE</button></div><div id="p3-reg-msg" style="font-size:.78rem;margin:.35rem 0"></div><div class="sub-section-title" style="margin-top:1rem">2. Remove Registered Teacher</div><select id="p3-remove">'+optionList(act.map(function(t){return t.staffId+' — '+t.name}), '— Select active teacher —')+'</select><button class="btn btn-sm" id="p3-remove-btn" style="margin:.5rem 0;background:#b83232;color:#fff">Remove Registered Teacher</button><div class="sub-section-title" style="margin-top:1rem">3. Assign Class</div><select id="p3-class-teacher">'+optionList(act.map(function(t){return t.staffId+' — '+t.name}), '— Select active teacher —')+'</select><select id="p3-class">'+optionList(CLASSES,'— Select class —')+'</select><button class="btn btn-sm btn-primary" id="p3-class-btn" style="margin:.5rem 0">Assign Class</button><div class="sub-section-title" style="margin-top:1rem">4. Assign Role</div><select id="p3-role-teacher">'+optionList(act.map(function(t){return t.staffId+' — '+t.name}), '— Select active teacher —')+'</select><select id="p3-role">'+optionList(ROLES,'— Select existing role —')+'</select><button class="btn btn-sm btn-primary" id="p3-role-btn" style="margin:.5rem 0">Assign Role</button><div id="p3-op-msg" style="font-size:.78rem;margin-top:.4rem"></div><div style="font-size:.7rem;color:#667;margin-top:.7rem">Removed staff remain in the historical teacher database and are excluded from active login, class, and role lists.</div>';addRow();document.getElementById('p3-add').onclick=addRow;document.getElementById('p3-save').onclick=saveNew;document.getElementById('p3-remove-btn').onclick=removeOne;document.getElementById('p3-class-btn').onclick=assignClass;document.getElementById('p3-role-btn').onclick=assignRole}
   function addRow(){var r=document.getElementById('p3-reg-rows');if(!r)return;var d=document.createElement('div');d.className='p3-reg-row';d.style='display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin:.35rem 0';d.innerHTML='<input class="p3-name" placeholder="Name"><input class="p3-sid" placeholder="Staff ID">';r.appendChild(d)}
   function msg(id,text,ok){var e=document.getElementById(id);if(e){e.textContent=text;e.style.color=ok?'#176b45':'#b83232'}}
-  function saveNew(){var c=current();if(!c.id){msg('p3-reg-msg','No authenticated school context is available.',false);return}var rows=[].slice.call(document.querySelectorAll('.p3-reg-row')).map(function(r){return {name:r.querySelector('.p3-name').value.trim(),staffId:r.querySelector('.p3-sid').value.trim().toUpperCase()}});var seen={};var existing=all();for(var i=0;i<rows.length;i++){if(!rows[i].name||!rows[i].staffId){msg('p3-reg-msg','Complete Name and Staff ID for every entry.',false);return}if(seen[rows[i].staffId]||existing.some(function(t){return String(t.staffId||t.teacher_staff_id||'').toUpperCase()===rows[i].staffId})){msg('p3-reg-msg','Duplicate Staff ID rejected: '+rows[i].staffId,false);return}seen[rows[i].staffId]=1}var now=new Date().toISOString();var recs=rows.map(function(x){return {teacherId:'teacher_'+Date.now()+'_'+x.staffId,schoolId:c.id,schoolName:c.name,school:c.name,name:x.name,staffId:x.staffId,teacher_staff_id:x.staffId,role:'Classroom Teacher',status:'ACTIVE',class_assigned:'',registeredAt:now}});saveRecords(existing.concat(recs));msg('p3-reg-msg',rows.length+' staff member(s) registered successfully.',true);render()}
+  function saveNew(){var c=current();if(!c.id){msg('p3-reg-msg','No authenticated school context is available.',false);return}var rows=[].slice.call(document.querySelectorAll('.p3-reg-row')).map(function(r){return {name:r.querySelector('.p3-name').value.trim(),staffId:r.querySelector('.p3-sid').value.trim().toUpperCase()}});for(var i=0;i<rows.length;i++){if(!rows[i].name||!rows[i].staffId){msg('p3-reg-msg','Complete Name and Staff ID for every entry.',false);return}}if(!window.EduTrackDomainAPI){msg('p3-reg-msg','Authoritative server API is unavailable.',false);return}var sessionPromise=window.EDUTRACK_SERVER_AUTH&&window.EDUTRACK_SERVER_AUTH.session?window.EDUTRACK_SERVER_AUTH.session():Promise.resolve({user:null});Promise.resolve(sessionPromise).then(function(session){var u=session&&session.user||{};return Promise.all(rows.map(function(x){return window.EduTrackDomainAPI.createStaff({staffIdentifier:x.staffId,fullName:x.name,tenantId:u.tenantId||window.CONFIG&&CONFIG.tenantId||'',schoolId:c.id,staffType:'TEACHER',status:'ACTIVE'}));});}).then(function(){refreshServerStaff(function(){msg('p3-reg-msg',rows.length+' staff member(s) registered on the server.',true);render()})}).catch(function(error){msg('p3-reg-msg',error&&error.message||'Staff registration failed.',false)})}
   function findBySelect(id){var v=document.getElementById(id).value||'';var sid=v.split(' — ')[0];return active().find(function(t){return String(t.staffId||'').toUpperCase()===sid.toUpperCase()})}
   function updateOne(t,patch){var rs=all();var i=rs.findIndex(function(x){return String(x.staffId||x.teacher_staff_id).toUpperCase()===String(t.staffId).toUpperCase()&&String(x.schoolId||'')===String(t.schoolId||'')});if(i<0)return false;rs[i]=Object.assign({},rs[i],patch);saveRecords(rs);return true}
   function removeOne(){var t=findBySelect('p3-remove');if(!t){msg('p3-op-msg','Select an active teacher to remove.',false);return}updateOne(t,{status:'INACTIVE',revoked:true,revokedAt:new Date().toISOString()});msg('p3-op-msg','Staff account revoked immediately; historical records preserved.',true);render()}
   function assignClass(){var t=findBySelect('p3-class-teacher'),cl=document.getElementById('p3-class').value;if(!t||!cl){msg('p3-op-msg','Select an active teacher and class.',false);return}updateOne(t,{class_assigned:cl,assignedClass:cl});var as=read(ASSIGN).filter(function(a){return String(a.schoolId||'')!==String(t.schoolId)||String(a.teacherStaffId||'').toUpperCase()!==String(t.staffId).toUpperCase()});as.push({id:'assign_'+Date.now(),schoolId:t.schoolId,teacherStaffId:t.staffId,teacherName:t.name,class:cl,active:true,assignedAt:new Date().toISOString()});write(ASSIGN,as);try{if(window.GES_TEACHER_ASSIGN&&typeof window.GES_TEACHER_ASSIGN.assign==='function'){window.GES_TEACHER_ASSIGN.assign({schoolId:t.schoolId,teacherStaffId:t.staffId,teacherName:t.name,class:cl,active:true})}}catch(e){}msg('p3-op-msg',t.name+' assigned to '+cl+'.',true);render()}
   function assignRole(){var t=findBySelect('p3-role-teacher'),role=document.getElementById('p3-role').value;if(!t||!role){msg('p3-op-msg','Select an active teacher and role.',false);return}updateOne(t,{role:role});msg('p3-op-msg',t.name+' assigned the existing role: '+role+'.',true);render()}
-  function open(){var m=document.getElementById('p3-staff-modal');if(!m){m=document.createElement('div');m.id='p3-staff-modal';m.style='position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:100300;display:none;align-items:flex-start;justify-content:center;padding:1rem;overflow:auto';m.innerHTML='<div class="sub-modal" style="max-width:760px;width:100%"><div class="sub-modal-header"><h2>👥 Staff Management</h2><button class="sub-modal-close" id="p3-close">✕</button></div><div class="sub-modal-body" id="p3-staff-modal-body"></div></div>';document.body.appendChild(m);document.getElementById('p3-close').onclick=function(){m.style.display='none'}}m.style.display='flex';render()}
+  function open(){refreshServerStaff();var m=document.getElementById('p3-staff-modal');if(!m){m=document.createElement('div');m.id='p3-staff-modal';m.style='position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:100300;display:none;align-items:flex-start;justify-content:center;padding:1rem;overflow:auto';m.innerHTML='<div class="sub-modal" style="max-width:760px;width:100%"><div class="sub-modal-header"><h2>👥 Staff Management</h2><button class="sub-modal-close" id="p3-close">✕</button></div><div class="sub-modal-body" id="p3-staff-modal-body"></div></div>';document.body.appendChild(m);document.getElementById('p3-close').onclick=function(){m.style.display='none'}}m.style.display='flex';render()}
   window.EDUTRACK_STAFF_MANAGEMENT_PART3={open:open,active:active,current:current};
   function boot(){addNav()} if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();window.addEventListener('load',addNav);
 })();
@@ -149761,4 +149622,201 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   window.v43DoLogin._part9Authoritative=true;
   window.__EDUTRACK_PART9_AUTHORITY__=true;
 })();
+</script>
+
+
+<script>
+(function(){
+  'use strict';
+  if(window.__EDUTRACK_PART21_DOMAIN_BRIDGE__) return;
+  window.__EDUTRACK_PART21_DOMAIN_BRIDGE__=true;
+  function request(path, options){
+    options=options||{};
+    var headers=Object.assign({'Content-Type':'application/json'},options.headers||{});
+    return fetch(path,{method:options.method||'GET',credentials:'same-origin',headers:headers,body:options.body===undefined?undefined:JSON.stringify(options.body)}).then(function(res){return res.json().catch(function(){return {};}).then(function(body){if(!res.ok){var e=new Error(body.error||'Server request failed');e.status=res.status;e.body=body;throw e;}return body;});});
+  }
+  function api(method,path,body){return request(path,{method:method,body:body});}
+  function query(filters){filters=filters||{};var q=Object.keys(filters).filter(function(k){return filters[k];}).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(filters[k]);}).join('&');return q?'?'+q:'';}
+  window.EduTrackDomainAPI=Object.freeze({
+    listRegions:function(){return request('/api/domain/regions');},
+    listDistricts:function(regionId){return request('/api/domain/districts'+(regionId?'?regionId='+encodeURIComponent(regionId):''));},
+    listSchools:function(filters){filters=filters||{};var q=Object.keys(filters).filter(function(k){return filters[k];}).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(filters[k]);}).join('&');return request('/api/domain/schools'+(q?'?'+q:''));},
+    createSchool:function(record){return api('POST','/api/domain/schools',record);},
+    updateSchool:function(id,record){return api('PATCH','/api/domain/schools/'+encodeURIComponent(id),record);},
+    listStaff:function(){return request('/api/domain/staff');},
+    createStaff:function(record){return api('POST','/api/domain/staff',record);},
+    updateStaff:function(id,record){return api('PATCH','/api/domain/staff/'+encodeURIComponent(id),record);},
+    listStudents:function(){return request('/api/domain/students');},
+    createStudent:function(record){return api('POST','/api/domain/students',record);},
+    updateStudent:function(id,record){return api('PATCH','/api/domain/students/'+encodeURIComponent(id),record);},
+    listClasses:function(){return request('/api/domain/classes');},
+    createClass:function(record){return api('POST','/api/domain/classes',record);},
+    updateClass:function(id,record){return api('PATCH','/api/domain/classes/'+encodeURIComponent(id),record);},
+    assignStaffSchool:function(record){return api('POST','/api/domain/staff-school-assignments',record);},
+    createParentStudentRelationship:function(record){return api('POST','/api/domain/parent-student-relationships',record);},
+    assignTeacherClass:function(record){return api('POST','/api/domain/teacher-class-assignments',record);},
+    getAcademicConfig:function(filters){return request('/api/domain/academic-config'+query(filters));},
+    saveAcademicConfig:function(record){return api('POST','/api/domain/academic-config',record);},
+    updateAcademicConfig:function(id,record){return api('PATCH','/api/domain/academic-config/'+encodeURIComponent(id),record);},
+    listSubjects:function(filters){return request('/api/domain/subjects'+query(filters));},
+    createSubject:function(record){return api('POST','/api/domain/subjects',record);},
+    updateSubject:function(id,record){return api('PATCH','/api/domain/subjects/'+encodeURIComponent(id),record);},
+    listAttendance:function(filters){return request('/api/domain/attendance'+query(filters));},
+    saveAttendance:function(record){return api('POST','/api/domain/attendance',record);},
+    updateAttendance:function(id,record){return api('PATCH','/api/domain/attendance/'+encodeURIComponent(id),record);},
+    listExaminationTypes:function(filters){return request('/api/domain/examination-types'+query(filters));},
+    createExaminationType:function(record){return api('POST','/api/domain/examination-types',record);},
+    listExaminations:function(filters){return request('/api/domain/examinations'+query(filters));},
+    listExaminationComponents:function(filters){return request('/api/domain/examination-components'+query(filters));},
+    createExamination:function(record){return api('POST','/api/domain/examinations',record);},
+    updateExamination:function(id,record){return api('PATCH','/api/domain/examinations/'+encodeURIComponent(id),record);},
+    listScores:function(filters){return request('/api/domain/scores'+query(filters));},
+    saveScore:function(record){return api('POST','/api/domain/scores',record);},
+    updateScore:function(id,record){return api('PATCH','/api/domain/scores/'+encodeURIComponent(id),record);},
+    saveScoresBulk:function(record){return api('POST','/api/domain/scores/bulk',record);},
+    listMockScores:function(filters){return request('/api/domain/mock-scores'+query(filters));},
+    saveMockScore:function(record){return api('POST','/api/domain/mock-scores',record);},
+    saveMockScoresBulk:function(record){return api('POST','/api/domain/mock-scores/bulk',record);},
+    publishMockExamination:function(record){return api('POST','/api/domain/mock-examinations/publish',record);},
+    getAcademicReport:function(type,filters){return request('/api/domain/academic-reports/'+encodeURIComponent(type)+query(filters));},
+    saveAcademicReport:function(record){return api('POST','/api/domain/academic-reports',record);} ,
+    calculateResults:function(record){return api('POST','/api/domain/results/calculate',record);},
+    publishResults:function(record){return api('POST','/api/domain/results/publish',record);},
+    listResults:function(filters){return request('/api/domain/results'+query(filters));},
+    getResultSlip:function(id){return request('/api/domain/result-slips/'+encodeURIComponent(id));},
+    updateResultSlip:function(id,record){return request('/api/domain/result-slips/'+encodeURIComponent(id),{method:'PATCH',body:record});},
+    getBroadsheet:function(filters){return request('/api/domain/broadsheets'+query(filters));},
+    listPromotions:function(filters){return request('/api/domain/promotions'+query(filters));},
+    createPromotion:function(record){return api('POST','/api/domain/promotions',record);},
+    createPromotionsBulk:function(record){return api('POST','/api/domain/promotions/bulk',record);},
+    listMockExaminations:function(filters){return request('/api/domain/mock-examinations'+query(filters));},
+    listMockComponents:function(filters){return request('/api/domain/mock-components'+query(filters));},
+    createMockExamination:function(record){return api('POST','/api/domain/mock-examinations',record);},
+    listTeacherAttendance:function(filters){return request('/api/domain/teacher-attendance'+query(filters));},
+    saveTeacherAttendance:function(record){return api('POST','/api/domain/teacher-attendance',record);}
+  });
+  window.addEventListener('edutrack:domain-refresh',function(){window.dispatchEvent(new CustomEvent('edutrack:domain-authority-ready'));});
+})();
+</script>
+
+
+<script id="edutrack-part21-workflow-panel-script">
+(function(){
+  'use strict';
+  if(window.__EDUTRACK_PART21_WORKFLOW_PANEL__) return;
+  window.__EDUTRACK_PART21_WORKFLOW_PANEL__=true;
+  function esc(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]})}
+  function input(id,label,placeholder){return '<label style="display:block;font-size:.8rem;margin:.35rem 0">'+label+'<input id="'+id+'" placeholder="'+placeholder+'" style="display:block;width:100%;box-sizing:border-box;padding:.55rem;margin-top:.2rem;border:1px solid #cbd5e1;border-radius:6px"></label>'}
+  function api(){return window.EduTrackDomainAPI}
+  function val(id){var e=document.getElementById(id);return e?String(e.value||'').trim():''}
+  function msg(text,ok){var e=document.getElementById('edutrack-part21-message');if(e){e.textContent=text;e.style.color=ok?'#176b45':'#b42318'}}
+  function card(title,body){return '<section style="border:1px solid #d9e2ee;border-radius:10px;padding:1rem;background:#fbfdff"><h3 style="margin:.1rem 0 .7rem;font-size:1rem">'+title+'</h3>'+body+'</section>'}
+  function render(){
+    if(document.getElementById('edutrack-part21-workflow-panel')) return;
+    var host=document.getElementById('edutrack-part18-developer-dashboard');if(!host)return;
+    var panel=document.createElement('div');panel.id='edutrack-part21-workflow-panel';panel.style='max-width:900px;margin:1rem auto 0;background:#fff;border:1px solid #d9e2ee;border-radius:16px;padding:clamp(1rem,4vw,2rem);box-shadow:0 12px 40px rgba(21,34,56,.08)';
+    panel.innerHTML='<div><p style="margin:0;color:#52627d;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase">Part 21 authoritative domain workflows</p><p style="margin:.35rem 0 1rem;color:#52627d;font-size:.86rem">These forms submit to the relational API and reload records from the server. No authoritative domain data is written to browser storage.</p></div><div id="edutrack-part21-message" style="min-height:1.3rem;font-size:.82rem"></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem">'+card('School Registration',input('p21-school-code','School code','SCH-001')+input('p21-school-name','School name','Example School')+input('p21-tenant','Tenant ID','tenant-a')+input('p21-region','Region ID','region-a')+input('p21-district','District ID','district-a')+input('p21-school-address','Address','Address')+'<button id="p21-school-create" type="button">Create school</button> <button id="p21-school-refresh" type="button">Reload schools</button> <input id="p21-school-update-id" placeholder="School ID" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><input id="p21-school-update-name" placeholder="Updated school name" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><button id="p21-school-update" type="button">Update school</button><div id="p21-school-list" style="font-size:.75rem;margin-top:.5rem"></div>')+card('Staff Registration',input('p21-staff-id','Staff identifier','STF-001')+input('p21-staff-name','Name','Teacher One')+input('p21-staff-tenant','Tenant ID','tenant-a')+input('p21-staff-school','School ID','school-id')+'<button id="p21-staff-create" type="button">Create staff</button> <button id="p21-staff-refresh" type="button">Reload staff</button> <input id="p21-staff-update-id" placeholder="Staff ID" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><input id="p21-staff-update-name" placeholder="Updated staff name" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><button id="p21-staff-update" type="button">Update staff</button><div id="p21-staff-list" style="font-size:.75rem;margin-top:.5rem"></div>')+card('Student Admission',input('p21-student-adm','Admission number','ADM-001')+input('p21-student-name','Student name','Student One')+input('p21-student-tenant','Tenant ID','tenant-a')+input('p21-student-school','School ID','school-id')+'<button id="p21-student-create" type="button">Create student</button> <button id="p21-student-refresh" type="button">Reload students</button> <input id="p21-student-update-id" placeholder="Student ID" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><input id="p21-student-update-name" placeholder="Updated student name" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><button id="p21-student-update" type="button">Update student</button><div id="p21-student-list" style="font-size:.75rem;margin-top:.5rem"></div>')+card('Class Management',input('p21-class-name','Class name','Class 1')+input('p21-class-tenant','Tenant ID','tenant-a')+input('p21-class-school','School ID','school-id')+'<button id="p21-class-create" type="button">Create class</button> <button id="p21-class-refresh" type="button">Reload classes</button> <input id="p21-class-update-id" placeholder="Class ID" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><input id="p21-class-update-name" placeholder="Updated class name" style="margin-top:.4rem;width:100%;box-sizing:border-box;padding:.5rem"><button id="p21-class-update" type="button">Update class</button><div id="p21-class-list" style="font-size:.75rem;margin-top:.5rem"></div>')+'</div>';
+    host.appendChild(panel);
+    function showList(id,key,fields,loader){return loader().then(function(data){var rows=data[key]||[];document.getElementById(id).innerHTML=rows.map(function(r){return '<div style="padding:.2rem 0;border-top:1px solid #e2e8f0">'+fields.map(function(f){return esc(r[f]||'')}).join(' · ')+'</div>'}).join('')||'<span>No records.</span>';return rows;})}
+    document.getElementById('p21-school-create').onclick=function(){api().createSchool({schoolCode:val('p21-school-code'),name:val('p21-school-name'),ownershipType:'PUBLIC',tenantId:val('p21-tenant'),regionId:val('p21-region'),districtId:val('p21-district'),address:val('p21-school-address')}).then(function(){msg('School created on the relational server.',true);return showList('p21-school-list','schools',['schoolCode','name'],api().listSchools)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-school-refresh').onclick=function(){showList('p21-school-list','schools',['schoolCode','name'],api().listSchools).then(function(){msg('Schools reloaded from the relational server.',true)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-staff-create').onclick=function(){api().createStaff({staffIdentifier:val('p21-staff-id'),fullName:val('p21-staff-name'),tenantId:val('p21-staff-tenant'),schoolId:val('p21-staff-school'),staffType:'TEACHER',status:'ACTIVE'}).then(function(){msg('Staff created on the relational server.',true);return showList('p21-staff-list','staff',['staffIdentifier','fullName'],api().listStaff)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-staff-refresh').onclick=function(){showList('p21-staff-list','staff',['staffIdentifier','fullName'],api().listStaff).then(function(){msg('Staff reloaded from the relational server.',true)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-student-create').onclick=function(){api().createStudent({admissionNumber:val('p21-student-adm'),fullName:val('p21-student-name'),tenantId:val('p21-student-tenant'),schoolId:val('p21-student-school')}).then(function(data){msg('Student created; server identifier '+(data.student&&data.student.studentIdentifier||'returned')+'.',true);return showList('p21-student-list','students',['admissionNumber','studentIdentifier','fullName'],api().listStudents)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-student-refresh').onclick=function(){showList('p21-student-list','students',['admissionNumber','studentIdentifier','fullName'],api().listStudents).then(function(){msg('Students reloaded from the relational server.',true)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-class-create').onclick=function(){api().createClass({name:val('p21-class-name'),tenantId:val('p21-class-tenant'),schoolId:val('p21-class-school')}).then(function(){msg('Class created on the relational server.',true);return showList('p21-class-list','classes',['name','schoolId'],api().listClasses)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-class-refresh').onclick=function(){showList('p21-class-list','classes',['name','schoolId'],api().listClasses).then(function(){msg('Classes reloaded from the relational server.',true)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-school-update').onclick=function(){api().updateSchool(val('p21-school-update-id'),{name:val('p21-school-update-name')}).then(function(){msg('School updated on the relational server.',true);return showList('p21-school-list','schools',['schoolCode','name'],api().listSchools)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-staff-update').onclick=function(){api().updateStaff(val('p21-staff-update-id'),{fullName:val('p21-staff-update-name')}).then(function(){msg('Staff updated on the relational server.',true);return showList('p21-staff-list','staff',['staffIdentifier','fullName'],api().listStaff)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-student-update').onclick=function(){api().updateStudent(val('p21-student-update-id'),{fullName:val('p21-student-update-name')}).then(function(){msg('Student updated on the relational server.',true);return showList('p21-student-list','students',['admissionNumber','studentIdentifier','fullName'],api().listStudents)}).catch(function(e){msg(e.message,false)})};
+    document.getElementById('p21-class-update').onclick=function(){api().updateClass(val('p21-class-update-id'),{name:val('p21-class-update-name')}).then(function(){msg('Class updated on the relational server.',true);return showList('p21-class-list','classes',['name','schoolId'],api().listClasses)}).catch(function(e){msg(e.message,false)})};
+  }
+  var mo=new MutationObserver(render);mo.observe(document.body,{childList:true,subtree:true});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render);else setTimeout(render,50);
+})();
+</script>
+
+<script id="edutrack-part22-academic-authority">
+(function(){'use strict';if(window.__EDUTRACK_PART22_ACADEMIC_AUTHORITY__)return;window.__EDUTRACK_PART22_ACADEMIC_AUTHORITY__=true;
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function api(){return window.EduTrackDomainAPI}function val(id){var e=document.getElementById(id);return e?String(e.value||'').trim():''}function set(id,t,ok){var e=document.getElementById(id);if(e){e.textContent=t;e.style.color=ok?'#176b45':'#b42318'}}
+function inp(id,label,ph){return '<div style="display:block;font-size:.78rem;margin:.3rem 0">'+label+'<input id="'+id+'" placeholder="'+ph+'" style="display:block;width:100%;box-sizing:border-box;padding:.5rem;margin-top:.2rem;border:1px solid #cbd5e1;border-radius:6px"></div>'}
+function render(){if(document.getElementById('edutrack-part22-academic-panel'))return;var host=document.getElementById('edutrack-part18-developer-dashboard');if(!host)return;var p=document.createElement('section');p.id='edutrack-part22-academic-panel';p.style='max-width:900px;margin:1rem auto 0;background:#fff;border:1px solid #d9e2ee;border-radius:16px;padding:clamp(1rem,4vw,2rem);box-shadow:0 12px 40px rgba(21,34,56,.08)';p.innerHTML='<p style="margin:0;color:#52627d;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase">Part 22 academic operations</p><p style="margin:.35rem 0 1rem;color:#52627d;font-size:.86rem">Attendance, examinations, scores, results, promotions, mock examinations, and reports use the relational server as authority. Legacy browser data is not submitted as a source of truth.</p><div id="p22-msg" style="min-height:1.3rem;font-size:.82rem"></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:1rem">'+
+card('Context',inp('p22-tenant','Tenant ID','tenant-a')+inp('p22-school','School ID','school-a')+inp('p22-class','Class ID','class-a')+inp('p22-student','Student ID','student-a')+inp('p22-config','Academic configuration ID','config id')+inp('p22-subject','Subject ID','subject id')+inp('p22-exam','Examination ID','exam id')+inp('p22-component','Exam component ID','component id'))+
+card('Configuration and subjects','<button id="p22-config-create" type="button">Create academic configuration</button> <button id="p22-subject-create" type="button">Create subject</button><div id="p22-config-list" style="font-size:.75rem;margin-top:.5rem"></div><div id="p22-subject-list" style="font-size:.75rem;margin-top:.5rem"></div>')+
+card('Attendance and scores','<select id="p22-att-status" style="padding:.5rem;width:100%;margin:.3rem 0"><option>PRESENT</option><option>ABSENT</option><option>LATE</option><option>EXCUSED</option></select><button id="p22-att-save" type="button">Save student attendance</button><br><br>'+inp('p22-score','Raw score','0–100')+inp('p22-max','Maximum score','100')+'<button id="p22-score-save" type="button">Save score</button>')+
+card('Results and lifecycle','<button id="p22-result-calc" type="button">Calculate result</button> <button id="p22-result-publish" type="button">Publish result by ID</button>'+inp('p22-result','Result ID','result id')+inp('p22-destination','Destination class ID','next class id')+'<button id="p22-promotion" type="button">Create promotion decision</button><br><br>'+inp('p22-mock-label','Mock examination label','1st MOCK')+'<button id="p22-mock" type="button">Create mock examination</button>')+'</div><div id="p22-output" style="margin-top:1rem;background:#122033;color:#e8f0fa;padding:.75rem;border-radius:8px;font-size:.72rem;white-space:pre-wrap;overflow:auto">No server records loaded.</div>';host.appendChild(p);
+function card(t,b){return '<section style="border:1px solid #d9e2ee;border-radius:10px;padding:1rem;background:#fbfdff"><h3 style="margin:.1rem 0 .7rem;font-size:1rem">'+t+'</h3>'+b+'</section>'}
+function call(fn,ok){return Promise.resolve().then(fn).then(function(x){set('p22-msg',ok||'Saved on the relational server.',true);document.getElementById('p22-output').textContent=JSON.stringify(x,null,2);return x}).catch(function(e){set('p22-msg',e.message||'Server request failed.',false);throw e})}
+function scope(){return {tenantId:val('p22-tenant'),schoolId:val('p22-school'),classId:val('p22-class'),studentId:val('p22-student')}}
+p.querySelector('#p22-config-create').onclick=function(){call(function(){return api().saveAcademicConfig(Object.assign(scope(),{academicYear:'2026/2027',term:'First Term',openingDate:'2026-09-01',closingDate:'2026-12-20'}));},'Academic configuration saved on the relational server.')};
+p.querySelector('#p22-subject-create').onclick=function(){call(function(){return api().createSubject(Object.assign(scope(),{code:'SUB-'+Date.now().toString().slice(-5),name:'New Subject'}))},'Subject saved on the relational server.')};
+p.querySelector('#p22-att-save').onclick=function(){call(function(){return api().saveAttendance(Object.assign(scope(),{attendanceDate:new Date().toISOString().slice(0,10),records:[{studentId:val('p22-student'),status:val('p22-att-status')}] }));},'Attendance saved on the relational server.')};
+p.querySelector('#p22-score-save').onclick=function(){call(function(){return api().saveScore(Object.assign(scope(),{subjectId:val('p22-subject'),examinationId:val('p22-exam'),componentId:val('p22-component'),rawScore:val('p22-score'),maximumScore:val('p22-max')}))},'Score saved on the relational server.')};
+p.querySelector('#p22-result-calc').onclick=function(){call(function(){return api().calculateResults(Object.assign(scope(),{academicConfigId:val('p22-config'),examinationId:val('p22-exam')}))},'Result calculated on the relational server.')};
+p.querySelector('#p22-result-publish').onclick=function(){call(function(){return api().publishResults({resultId:val('p22-result')})},'Result publication committed on the relational server.')};
+p.querySelector('#p22-promotion').onclick=function(){call(function(){return api().createPromotion(Object.assign(scope(),{sourceClassId:val('p22-class'),destinationClassId:val('p22-destination'),academicConfigId:val('p22-config'),decision:'PROMOTE'}))},'Promotion decision saved on the relational server.')};
+p.querySelector('#p22-mock').onclick=function(){call(function(){return api().createMockExamination(Object.assign(scope(),{academicConfigId:val('p22-config'),label:val('p22-mock-label')||'MOCK',formatCode:'B'}))},'Mock examination saved on the relational server.')};
+}
+var mo=new MutationObserver(render);mo.observe(document.documentElement,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render);else setTimeout(render,80);
+})();</script>
+
+<script id="edutrack-part23-legacy-adapter">
+(function(){'use strict';
+var wired=false;
+function api(){return window.EduTrackDomainAPI;}
+function upper(v){return String(v==null?'':v).trim().toUpperCase();}
+function toastMsg(m,kind){if(typeof window.toast==='function')window.toast(m,kind||'error');}
+function cfg(){var c=window.CONFIG||{},s=(window._v43SchoolLoginContext&&window._v43SchoolLoginContext.school)||{};return {tenantId:String(c.tenantId||s.tenantId||''),schoolId:String(c.schoolId||s.id||'')};}
+function unique(rows,key){var k=upper(key),hits=(rows||[]).filter(function(r){return [r.id,r.studentIdentifier,r.admissionNumber,r.staffIdentifier,r.code,r.name].some(function(v){return upper(v)===k;});});if(hits.length!==1)throw new Error(hits.length?'Identity is ambiguous; no authoritative record was changed.':'Identity could not be mapped; no authoritative record was changed.');return hits[0];}
+async function context(){var c=cfg(),ss=(await api().listStudents()).students||[],cs=(await api().listClasses()).classes||[],subs=(await api().listSubjects(c)).subjects||[];if(!c.tenantId&&ss[0])c.tenantId=String(ss[0].tenantId||'');if(!c.schoolId&&ss[0])c.schoolId=String(ss[0].schoolId||'');if(!c.tenantId||!c.schoolId)throw new Error('Authoritative tenant and school context is required.');return {tenantId:c.tenantId,schoolId:c.schoolId,students:ss,classes:cs,subjects:subs};}
+function toLegacyScore(r,student){return {student_usid:student.studentIdentifier||student.admissionNumber,subject:r.subjectId,term:'',academic_year:'',ca_score:null,exam_score:Number(r.rawScore),total_score:Number(r.rawScore),serverScoreId:r.id,__serverAuthoritative:true};}
+async function saveScore(id,subjectKey,value){var c=await context(),st=unique(c.students,id),sub=unique(c.subjects,subjectKey),classes=c.classes.filter(function(x){return String(x.id)===String(st.classId);}),cl=classes[0];if(!cl)throw new Error('Student class could not be mapped; no score was saved.');var exams=(await api().listExaminations({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id})).examinations||[];if(exams.length!==1)throw new Error(exams.length?'Examination mapping is ambiguous; no score was saved.':'No authoritative examination is available for this class.');var comps=(await api().listExaminationComponents({tenantId:c.tenantId,schoolId:c.schoolId,examinationId:exams[0].id})).components||[],matches=comps.filter(function(x){return String(x.subjectId||x.subject_id)===String(sub.id);});if(matches.length!==1)throw new Error(matches.length?'Component mapping is ambiguous; no score was saved.':'No examination component maps to the selected subject.');var max=Number(matches[0].maximumScore),raw=Number(value);if(!Number.isFinite(raw)||raw<0||raw>max)throw new Error('Score must be between 0 and the maximum score.');var out=await api().saveScoresBulk({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,rows:[{studentId:st.id,subjectId:sub.id,examinationId:exams[0].id,componentId:matches[0].id,rawScore:raw,maximumScore:max}]});var fresh=(await api().listScores({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,studentId:st.id})).scores||[];try{localStorage.setItem('ems_v130_usid_scores',JSON.stringify(fresh.map(function(x){return toLegacyScore(x,st);})));}catch(e){}return out;}
+async function saveAttendance(id,classKey,date,status){var c=await context(),st=unique(c.students,id),cl=unique(c.classes,classKey);var out=await api().saveAttendance({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,attendanceDate:date,registerType:'STUDENT',records:[{studentId:st.id,status:upper(status)}]});try{var old=JSON.parse(localStorage.getItem('ems_v130_student_attendance')||'[]').filter(function(x){return !(upper(x.student_usid)===upper(st.studentIdentifier)&&x.date===date&&upper(x.class)===upper(classKey));});old.push({student_usid:st.studentIdentifier,date:date,class:classKey,status:upper(status),marked_by:'SERVER',timestamp:new Date().toISOString(),__serverAuthoritative:true});localStorage.setItem('ems_v130_student_attendance',JSON.stringify(old));}catch(e){}return out;}
+function wire(){if(wired||!api()||!window.EMS_V130_P23)return;wired=true;var p=window.EMS_V130_P23;p._part23Subject=function(){var a=document.querySelectorAll('#page-scorev130 select');return a.length>1?a[1].value:(a[0]||{}).value||'';};p.scoreSet=function(id,field,val){return saveScore(id,p._part23Subject(),val).then(function(){toastMsg('Score saved on the relational server.','success');}).catch(function(e){toastMsg(e.message||'Score could not be saved.','error');});};p.markStudent=function(id,status){var cl=((document.querySelector('#page-studattv130 select')||{}).value)||'';var date=((document.querySelector('#page-studattv130 input[type=date]')||{}).value)||new Date().toISOString().slice(0,10);return saveAttendance(id,cl,date,status).then(function(){toastMsg('Attendance saved on the relational server.','success');}).catch(function(e){toastMsg(e.message||'Attendance could not be saved. Please try again.','error');});};p.teacherMark=function(id,field,val){if(!['status','sign_in','sign_out'].includes(field)){toastMsg('Unsupported teacher attendance field.','error');return Promise.resolve();}var c=cfg(),date=((document.querySelector('#page-teachattv130 input[type=date]')||{}).value)||new Date().toISOString().slice(0,10),record={staffId:id,attendanceDate:date};if(field==='status')record.status=upper(val);else if(field==='sign_in')record.signIn=val;else record.signOut=val;return api().saveTeacherAttendance({tenantId:c.tenantId,schoolId:c.schoolId,records:[record]}).then(function(){toastMsg('Teacher attendance saved on the relational server.','success');}).catch(function(e){toastMsg(e.message||'Teacher attendance could not be saved.','error');});};window.EduTrackLegacyAcademicAdapter={saveScore:saveScore,saveAttendance:saveAttendance,resolveContext:context};}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(wire,900);});else setTimeout(wire,900);setInterval(wire,1000);
+})();
+
+</script>
+
+<script id="edutrack-part23-legacy-read-adapters">
+(function(){'use strict';
+function A(){return window.EduTrackDomainAPI;}
+function C(){var c=window.CONFIG||{},s=(window._v43SchoolLoginContext&&window._v43SchoolLoginContext.school)||{};return{tenantId:String(c.tenantId||s.tenantId||''),schoolId:String(c.schoolId||s.id||'')};}
+function U(v){return String(v==null?'':v).trim().toUpperCase();}
+function one(rows,key){var k=U(key),h=(rows||[]).filter(function(r){return [r.id,r.studentIdentifier,r.admissionNumber,r.name,r.code].some(function(v){return U(v)===k;});});if(h.length!==1)throw new Error(h.length?'Record identity is ambiguous; operation cancelled.':'Record identity could not be mapped; operation cancelled.');return h[0];}
+function notice(m,k){if(typeof window.toast==='function')window.toast(m,k||'error');}
+async function authoritativeSlip(){var idx=(document.getElementById('slip-index')||{}).value||'',st=await A().listStudents(),c=C(),student=one(st.students||[],idx),rs=await A().listResults({tenantId:c.tenantId,schoolId:c.schoolId,studentId:student.id}),pub=(rs.results||[]).find(function(x){return U(x.publicationStatus||x.publication_status)==='PUBLISHED';});if(!pub)throw new Error('No published relational result was found for this student.');var slip=await A().getResultSlip(pub.id),row=slip.resultSlip||slip.result||{},data=row.resultJson||row.result_json||{};var box=document.getElementById('slip-container'),status=document.getElementById('slip-status');if(status)status.innerHTML='<span style="color:#176b45">Results loaded from the authoritative relational server.</span>';if(box){var subjects=Array.isArray(data.subjects)?data.subjects:[];box.innerHTML='<div class="slip-card"><h3>Authoritative Result Slip</h3><p><strong>'+String(student.fullName||student.full_name||'')+'</strong> · '+String(student.studentIdentifier||student.student_identifier||idx)+'</p><p>Result ID: '+String(row.id||pub.id)+'</p><div class="tbl-wrap"><table><thead><tr><th>Subject</th><th>Score</th><th>Maximum</th></tr></thead><tbody>'+subjects.map(function(x){return'<tr><td>'+String(x.subjectId||x.subject_id||'')+'</td><td>'+String(x.rawScore||x.raw_score||0)+'</td><td>'+String(x.maximumScore||x.maximum_score||0)+'</td></tr>';}).join('')+'</tbody></table></div><p><strong>Total:</strong> '+String(data.total||0)+' / '+String(data.max||0)+' · <strong>Percentage:</strong> '+String(data.percentage||0)+'%</p></div>';}return slip;}
+async function authoritativeBroadsheet(){var c=C(),label=(document.getElementById('bs-class')||{}).value||'',classes=(await A().listClasses()).classes||[],cl=classes.filter(function(x){return [x.id,x.name].some(function(v){return U(v)===U(label);});})[0]||(classes.length===1?classes[0]:null);if(!cl)throw new Error('Class identity could not be mapped; broadsheet was not loaded.');var ex=(await A().listExaminations({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id})).examinations||[];if(ex.length!==1)throw new Error(ex.length?'Examination mapping is ambiguous; broadsheet was not loaded.':'No authoritative examination is available for this class.');var out=await A().getBroadsheet({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,examinationId:ex[0].id}),rows=out.broadsheets||[],box=document.getElementById('broadsheet-container');if(box){box.innerHTML='<div class="tbl-wrap"><table class="score-table"><thead><tr><th>Student</th><th>Student ID</th><th>Subject</th><th>Score</th><th>Maximum</th><th>Status</th></tr></thead><tbody>'+rows.map(function(x){return'<tr><td>'+String(x.studentName||x.student_name||'')+'</td><td>'+String(x.studentIdentifier||x.student_identifier||'')+'</td><td>'+String(x.subjectName||x.subject_name||'')+'</td><td>'+String(x.rawScore||x.raw_score||0)+'</td><td>'+String(x.maximumScore||x.maximum_score||0)+'</td><td>'+String(x.status||'')+'</td></tr>';}).join('')+'</tbody></table></div><p style="font-size:.75rem;color:#176b45">Broadsheet source: authoritative relational scores.</p>';}return out;}
+async function authoritativeMockSave(){var cls=(document.getElementById('mock-class')||{}).value||'',form=(document.getElementById('mock-form')||{}).value||'',c=C(),classes=(await A().listClasses()).classes||[],cl=classes.filter(function(x){return String(x.tenantId)===String(c.tenantId)&&String(x.schoolId)===String(c.schoolId)&&[x.id,x.name].some(function(v){return U(v)===U(cls);});})[0],configs=(await A().getAcademicConfig({tenantId:c.tenantId,schoolId:c.schoolId})).configurations||[];if(!configs.length)throw new Error('No academic configuration is available for mock scores.');var mocks=(await A().listMockExaminations({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id})).mockExaminations||[],label=form+' Mock',mock=mocks.find(function(x){return U(x.label)===U(label);});var subjects=(typeof SUBJECTS!=='undefined'&&SUBJECTS.JHS)||[],subRows=(await A().listSubjects({tenantId:c.tenantId,schoolId:c.schoolId})).subjects||[];if(!mock){var components=subjects.map(function(n){var s=subRows.filter(function(x){return U(x.name)===U(n)||U(x.code)===U(n);});if(s.length!==1)throw new Error('Subject '+n+' could not be mapped; mock scores were not saved.');return{subjectId:s[0].id,name:n,maximumScore:100};});mock=(await A().createMockExamination({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,academicConfigId:configs[0].id,label:label,formatCode:'B',components:components})).mockExamination;}var comps=(await A().listMockComponents({tenantId:c.tenantId,schoolId:c.schoolId,mockExaminationId:mock.id})).components||[],students=(typeof getMockStudents==='function'?getMockStudents(cls,form):[]),allStudents=(await A().listStudents()).students||[],records=[];for(const st of students){if(!st||!st.indexNo)continue;var scoredSubjects=subjects.filter(function(subj){var score=st.scores&&st.scores[subj]&&st.scores[subj].examScore;return score!==null&&score!==undefined&&score!=='';});if(!scoredSubjects.length)continue;var matchingStudents=allStudents.filter(function(x){return [x.id,x.studentIdentifier,x.admissionNumber,x.fullName,x.name].some(function(v){return U(v)===U(st.indexNo);});});if(matchingStudents.length!==1)throw new Error('Student identity could not be mapped; mock scores were not saved.');var rel=matchingStudents[0];for(const subj of scoredSubjects){var score=st.scores[subj].examScore;var comp=comps.filter(function(x){return U(x.name)===U(subj);});if(comp.length!==1)throw new Error('Mock component mapping is ambiguous for '+subj+'; no score was saved.');records.push({mockExaminationId:mock.id,componentId:comp[0].id,studentId:rel.id,rawScore:Number(score)});}}if(records.length)await A().saveMockScoresBulk({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,mockExaminationId:mock.id,records:records});notice(records.length+' mock score(s) saved on the relational server.','success');return{mockExamination:mock,saved:records.length};}
+async function hydrateAuthoritativeMockRows(){
+  if(window.__EDUTRACK_MOCK_HYDRATING__)return;
+  var root=document.getElementById('page-mock');
+  if(!root||root.classList.contains('hidden')||typeof getMockStudents!=='function')return;
+  var cls=(document.getElementById('mock-class')||{}).value||'',form=(document.getElementById('mock-form')||{}).value||'A';
+  if(!cls||!form)return;
+  window.__EDUTRACK_MOCK_HYDRATING__=true;
+  try{
+    var c=C(),classes=(await A().listClasses()).classes||[];classes=classes.filter(function(x){return String(x.tenantId)===String(c.tenantId)&&String(x.schoolId)===String(c.schoolId);});var cl=one(classes,cls);
+    var relStudents=(await A().listStudents()).students||[];
+    var candidates=relStudents.filter(function(st){return String(st.classId)===String(cl.id);});
+    var rows=getMockStudents(cls,form),changed=false,used={},label=form+' Mock',mocks=(await A().listMockExaminations({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id})).mockExaminations||[],mock=mocks.find(function(x){return U(x.label)===U(label);}),mockComponents=mock?(await A().listMockComponents({tenantId:c.tenantId,schoolId:c.schoolId,mockExaminationId:mock.id})).components||[]:[],mockScores=mock?(await A().listMockScores({tenantId:c.tenantId,schoolId:c.schoolId,classId:cl.id,mockExaminationId:mock.id})).scores||[]:[];
+    candidates.forEach(function(st){
+      var canonical=st.studentIdentifier||st.admissionNumber||st.id;
+      if(!canonical)return;
+      var existing=rows.find(function(row){return String(row.student_usid||row.indexNo||'')===String(canonical);});
+      if(existing){used[canonical]=true;return;}
+      var target=rows.find(function(row){return (!row.student_usid||/^0{7}-\d{4}-\d{4}$/.test(String(row.student_usid||'')))&&(!row.name||/^0{7}-\d{4}-\d{4}$/.test(String(row.indexNo||'')));});
+      if(!target)return;
+      target.student_usid=canonical;target.usid=canonical;target.indexNo=canonical;target.name=st.fullName||'';target.gender=st.gender||target.gender||'M';used[canonical]=true;changed=true;
+    });
+    mockScores.forEach(function(score){var student=relStudents.find(function(st){return String(st.id)===String(score.studentId);}),row=student&&rows.find(function(item){return String(item.student_usid||item.indexNo||'')===String(student.studentIdentifier||student.admissionNumber||student.id);}),component=mockComponents.find(function(item){return String(item.id)===String(score.componentId);});if(!row||!component)return;row.scores=row.scores||{};row.scores[component.name]={examScore:score.rawScore,position:row.scores[component.name]&&row.scores[component.name].position||''};changed=true;});
+    if(changed&&typeof renderMockTable==='function')renderMockTable();
+  }catch(e){/* the visible page remains usable; authoritative save reports the precise mapping error */}
+  finally{window.__EDUTRACK_MOCK_HYDRATING__=false;}
+}
+function wire(){if(!window.EduTrackDomainAPI)return;window.EduTrackLegacyAcademicAdapter.fetchResultSlip=authoritativeSlip;window.EduTrackLegacyAcademicAdapter.loadBroadsheet=authoritativeBroadsheet;window.EduTrackLegacyAcademicAdapter.saveMock=authoritativeMockSave;window.EduTrackLegacyAcademicAdapter.hydrateMock=hydrateAuthoritativeMockRows;window.fetchSlip=function(){authoritativeSlip().catch(function(e){notice(e.message||'Result slip could not be loaded.','error');});};window.renderBroadsheet=function(){authoritativeBroadsheet().catch(function(e){notice(e.message||'Broadsheet could not be loaded.','error');});};window.saveMockData=function(){authoritativeMockSave().catch(function(e){notice(e.message||'Mock scores could not be saved.','error');});};if(document.getElementById('page-mock')&&!document.getElementById('page-mock').classList.contains('hidden'))hydrateAuthoritativeMockRows();if(window.EMS_V130_P23&&!window.EMS_V130_P23._part23Promotion){var p=window.EMS_V130_P23;p._part23Promotion=true;p.approvePromotions=async function(){var c=C(),classes=(await A().listClasses()).classes||[],select=document.querySelector('#page-promov130 select'),source=one(classes,select&&select.value),ordered=classes.slice().sort(function(a,b){return U(a.name).localeCompare(U(b.name),undefined,{numeric:true});}),pos=ordered.findIndex(function(x){return String(x.id)===String(source.id);}),dest=pos>=0?ordered[pos+1]:null;if(!dest)throw new Error('Destination class could not be mapped; no promotion was saved.');var conf=(await A().getAcademicConfig({tenantId:c.tenantId,schoolId:c.schoolId})).configurations||[],students=(await A().listStudents()).students||[];if(!conf.length)throw new Error('No academic configuration is available.');var rows=students.filter(function(x){return String(x.classId)===String(source.id);});var saved=await A().createPromotionsBulk({tenantId:c.tenantId,schoolId:c.schoolId,records:rows.map(function(st){return{studentId:st.id,sourceClassId:source.id,destinationClassId:dest.id,academicConfigId:conf[0].id,decision:'PROMOTE',status:'APPROVED'};})});if(typeof p.refresh==='function')await p.refresh();notice(rows.length+' promotion decision(s) saved on the relational server.','success');return saved;};}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(wire,1200);});else setTimeout(wire,1200);setInterval(wire,1500);
+})();
+
 </script>

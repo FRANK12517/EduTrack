@@ -1,0 +1,33 @@
+Part 40 live HTTPS evidence
+
+Target: https://edutrack-2wiim5pdk-frank12517s-projects.vercel.app
+Deployment: dpl_4f3FGEebd6u7a2pRmgqn64rMPCPU
+Release SHA: ca64f8c6b23fb9397eda256cf27ea7e40be14aa3
+
+Access grant:
+- HTTPS response: HTTP 307
+- Location: /
+- Result: temporary preview access cookie established; cookie value intentionally omitted
+
+Preview root after access:
+- HTTPS response: HTTP 200
+- Content-Type: text/html; charset=utf-8
+- Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+- Access-Control-Allow-Origin: *
+- Result: static HTML reached; this is not backend validation
+
+GET /api/health:
+- HTTPS response: HTTP 500
+- Content-Type: text/plain; charset=utf-8
+- x-vercel-error: FUNCTION_INVOCATION_FAILED
+- Result: FAIL; no EduTrack health JSON
+
+GET /api/auth/session:
+- HTTPS response: HTTP 500
+- Content-Type: text/plain; charset=utf-8
+- x-vercel-error: FUNCTION_INVOCATION_FAILED
+- Result: FAIL; no EduTrack session JSON
+
+Approved and unauthorized Origin requests to /api/health both returned the same provider-level HTTP 500 before the application handler could apply its exact-origin CORS policy. CORS is therefore BLOCKED, not PASS.
+
+No access token, cookie value, password, API key, database credential, or provider secret is recorded in this artifact.

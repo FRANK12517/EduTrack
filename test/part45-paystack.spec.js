@@ -1,0 +1,1 @@
+'use strict';if(!process.env.PAYSTACK_SECRET_KEY||!process.env.PAYSTACK_WEBHOOK_SECRET){console.log('Part 45 Paystack: NOT_PROVEN (sandbox unavailable; no transaction attempted).');process.exit(0)};if(process.env.EDUTRACK_PAYSTACK_LIVE==='true')throw Error('Live Paystack forbidden.');

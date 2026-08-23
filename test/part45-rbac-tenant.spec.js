@@ -1,0 +1,1 @@
+'use strict';if(!process.env.EDUTRACK_STAGING_RBAC_FIXTURES){console.log('Part 45 RBAC/tenant: BLOCKED (staging backend/fixtures unavailable).');process.exit(0)};if(process.env.EDUTRACK_STAGING_RBAC_FIXTURES==='production')throw Error('Production fixtures forbidden.');

@@ -1,0 +1,14 @@
+Part: 45
+Status: implemented; real staging activation BLOCKED
+Baseline Part 44 commit: b9cc0770f2584fb0d84a1065ef1dc383db4f91a7
+Required Part 44 source lineage: eaa7a7b50f09fdd6cb4bd9127e2f2538828ce331
+Part 45 release commit: pending final metadata commit
+Branch: part45-staging
+Deployment ID: none
+Staging URL: none
+Declared runtime: Node.js 22.x
+Actual connected Vercel runtime: Node.js 24.x (FAIL)
+Secret values printed: false
+Production modified: no
+Production data modified: no
+Part 46 started: no

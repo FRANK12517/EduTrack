@@ -1,0 +1,15 @@
+Part: 47
+Status: implemented; BLOCKED — EXTERNAL INFRASTRUCTURE ACCESS REQUIRED
+Baseline Part 46 commit: 45f0e99932219978ab16b6c11690524829d26298
+Part 47 release commit: pending final metadata commit
+Branch: part47-staging
+Deployment ID: none
+Staging URL: none
+Declared runtime: Node.js 22.x
+Actual connected Vercel runtime: Node.js 24.x (FAIL)
+Plugin required: true
+Secret values printed: false
+Production modified: no
+Production data modified: no
+Production secrets modified: no
+Part 48 started: no

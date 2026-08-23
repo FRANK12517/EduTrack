@@ -6,7 +6,7 @@
   "productionUntouched": true,
   "part44Started": false,
   "requiredPart41Release": "63b6739b72389d066d496a9b1e12afad13137cec",
-  "releaseCommit": null,
+  "releaseCommit": "719e0e66747e972aa234eef1b6317dbbbc51114a",
   "deploymentId": null,
   "stagingUrl": null,
   "checks": {

@@ -1,0 +1,9 @@
+Part: 39
+Exact release commit: b25347f4bae65e656870068696d4bf63f4f11048b
+Branch: part39-staging
+Release timestamp: 2026-08-23T11:31:00Z
+Node version: 22.x required by package.json and vercel.json
+npm version: verified by npm test run
+Package-lock status: package-lock.json refreshed and clean at release commit
+Test status: npm test PASS; Part 39 repair and adapter checks PASS; staging browser check NOT_PROVEN without EDUTRACK_STAGING_BASE_URL
+Note: This SHA is the immutable application release commit. The gate/evidence metadata update is recorded in the following commit.

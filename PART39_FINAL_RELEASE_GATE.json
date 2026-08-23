@@ -1,7 +1,7 @@
 {
   "part": 39,
   "decision": "BLOCKED",
-  "releaseCommit": "PENDING_COMMIT_CREATION",
+  "releaseCommit": "b25347f4bae65e656870068696d4bf63f4f11048b",
   "stagingDeployment": "NOT_PROVEN",
   "stagingBaseUrl": null,
   "runtime": "Node.js 22.x configured; external runtime not verified",

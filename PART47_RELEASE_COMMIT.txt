@@ -1,7 +1,7 @@
 Part: 47
 Status: implemented; BLOCKED — EXTERNAL INFRASTRUCTURE ACCESS REQUIRED
 Baseline Part 46 commit: 45f0e99932219978ab16b6c11690524829d26298
-Part 47 release commit: pending final metadata commit
+Part 47 release commit: 30f298265dc8f73bfae96e92084a80e88ccee5cb
 Branch: part47-staging
 Deployment ID: none
 Staging URL: none

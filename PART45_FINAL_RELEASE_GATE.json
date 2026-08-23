@@ -1,7 +1,7 @@
 {
   "phase": 45,
   "baselineCommit": "b9cc0770f2584fb0d84a1065ef1dc383db4f91a7",
-  "releaseCommit": null,
+  "releaseCommit": "0ea5b1fa5bf114d95a7c2d3d08f34e491016d942",
   "branch": "part45-staging",
   "deploymentId": null,
   "deploymentUrl": null,

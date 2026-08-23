@@ -2,7 +2,7 @@ Part: 45
 Status: implemented; real staging activation BLOCKED
 Baseline Part 44 commit: b9cc0770f2584fb0d84a1065ef1dc383db4f91a7
 Required Part 44 source lineage: eaa7a7b50f09fdd6cb4bd9127e2f2538828ce331
-Part 45 release commit: pending final metadata commit
+Part 45 release commit: 0ea5b1fa5bf114d95a7c2d3d08f34e491016d942
 Branch: part45-staging
 Deployment ID: none
 Staging URL: none

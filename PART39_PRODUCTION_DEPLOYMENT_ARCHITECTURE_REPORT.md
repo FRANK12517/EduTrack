@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-Part 38 established that the connected Vercel deployment served the EduTrack landing page but not the backend. Part 39 repaired the repository-side deployment boundary by making the existing Node HTTP handler importable, adding a Vercel function adapter, pinning Node.js 22, and routing `/api/*` requests to that adapter. Local verification passes. A controlled external staging deployment was not completed because the authorized Vercel project requires a clean pushed release and real staging environment variables; no production deployment was overwritten.
+Part 38 established that the connected Vercel deployment served the EduTrack landing page but not the backend. Part 39 repaired the repository-side deployment boundary by making the existing Node HTTP handler importable, adding a Vercel function adapter, pinning Node.js 22, and routing `/api/*` requests to that adapter. Local verification passes. A controlled Vercel preview deployment was created from the pushed Part 39 branch and reached READY state. External application verification was then blocked by the project’s SSO protection on non-custom preview domains; no production deployment was overwritten.
 
-The current decision is **BLOCKED** for staging verification and **not a production approval**.
+The current decision is **BLOCKED** for application-level staging verification and **not a production approval**.
 
 ## Part 38 Defects Confirmed
 
@@ -28,7 +28,7 @@ The repository was classified before release. The working tree contains historic
 
 ## Staging and External Verification
 
-No staging URL was available in the environment, and no external staging request was intercepted or replaced with localhost. The browser staging test therefore reports `NOT_PROVEN`. Database, S3, Paystack sandbox, deployed RBAC, tenant isolation, mobile staging, performance, backups, and rollback remain `NOT_PROVEN` or `BLOCKED` until an independently provisioned staging target and non-production credentials are supplied.
+The preview URL `https://edutrack-2wiim5pdk-frank12517s-projects.vercel.app` and deployment `dpl_4f3FGEebd6u7a2pRmgqn64rMPCPU` were independently observed as READY. Requests to the preview API were redirected with HTTP 302 to Vercel SSO, so application-level health and session verification were classified `BLOCKED`, not PASS. Database, S3, Paystack sandbox, deployed RBAC, tenant isolation, mobile staging, performance, backups, and rollback remain `NOT_PROVEN` or `BLOCKED` until an independently provisioned staging target and non-production credentials are supplied.
 
 ## Regression Results
 

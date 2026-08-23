@@ -1,0 +1,11 @@
+[Unit]
+Description=EduTrack production backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=edutrack
+Group=edutrack
+WorkingDirectory=/opt/edutrack
+EnvironmentFile=/etc/edutrack/production.env
+ExecStart=/opt/edutrack/scripts/run-scheduled-backup.sh

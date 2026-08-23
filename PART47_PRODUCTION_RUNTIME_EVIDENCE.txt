@@ -1,0 +1,23 @@
+PART 47 PRODUCTION RUNTIME EVIDENCE
+
+Vercel project: edutrack
+Project ID: prj_1miXGmYHIgxMAEOQ5SK5UIC2Zu7N
+Production deployment: dpl_P2BhPXyz1FZVuBd3KDU8bekJuoW5
+Deployment state: READY
+Deployment source: Git
+Production deployed commit: f5125710c31b96de0cba750dcf114167e28bf3d0
+
+Vercel-reported project runtime: Node.js 24.x
+Required repository runtime: Node.js 22.x
+Runtime gate: FAIL
+
+Local production serverless import reproduction before repair:
+NODE_ENV=production VERCEL=1 require('./api/index.js')
+Result: process exited with status 1.
+Exception: Production requires EDUTRACK_DATABASE_URL; JSON compatibility storage is not a production persistence target.
+
+Local focused regression after repair:
+node test/part47-production-function-failure.spec.js
+Result: passed.
+
+The production runtime mismatch was not treated as the root cause without evidence. No authorized operation was available to change the Vercel runtime configuration during this verification.

@@ -13,7 +13,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 const vercel = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 
 assert.strictEqual(packageJson.engines.node, '22.x', 'Node runtime must be pinned to 22.x');
-assert.strictEqual(vercel.functions['api/index.js'].runtime, 'nodejs22.x');
+assert.strictEqual(vercel.functions, undefined, 'Vercel function runtime must not use an invalid custom runtime declaration');
 assert.ok(vercel.rewrites.some((rule) => rule.source === '/api/:path*' && rule.destination === '/api/index.js'));
 assert.strictEqual(typeof require('../api/index.js'), 'function');
 

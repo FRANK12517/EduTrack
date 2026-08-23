@@ -1,0 +1,9 @@
+Part 42 runtime evidence
+
+Required and declared runtime: Node.js 22.x, declared in package.json engines and retained from Part 41. Local execution observed Node.js v22.13.0.
+
+Actual connected Vercel project runtime: Node.js 24.x, as recorded in Part 41 deployment/project metadata. No separate Part 42 deployment with verified Node.js 22 execution was possible because no suitable isolated staging target or environment configuration capability was available.
+
+Runtime result: FAIL for the connected Vercel project and NOT_PROVEN for an isolated Part 42 target. No runtime claim is based solely on package configuration.
+
+No secrets, credentials, tokens, cookies, or temporary access URLs are recorded.

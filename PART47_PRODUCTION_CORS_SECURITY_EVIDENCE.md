@@ -1,9 +1,13 @@
 # Part 47 Production CORS and Security Evidence
 
-The production root at `https://www.edutrackgh.online/` returned HTTP 200 over HTTPS. The response included HSTS (`strict-transport-security: max-age=63072000`) and Vercel served the response successfully.
+## Production response
 
-The same response exposed `access-control-allow-origin: *`. This does not satisfy EduTrack’s exact-origin production requirement and is recorded as a **CORS FAIL**. No wildcard-CORS workaround was introduced in the repair.
+The deployed production root returned HTTP 200 over HTTPS. Its response included `access-control-allow-origin: *`, which fails EduTrack’s exact-origin production requirement. No wildcard-CORS workaround was introduced by the repair.
 
-The backend security-header set could not be independently verified because `GET /api/health` returned HTTP 500 with `FUNCTION_INVOCATION_FAILED`. The repaired preview redirected to Vercel SSO, so preview security checks were not attempted through a bypass. Unauthorized-origin behavior was not tested after the backend failure.
+The production backend responses from `/api/health` and `/api/auth/session` returned the generic HTTP 503 fail-closed response. Both included Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Permissions-Policy.
 
-No Vercel protection was bypassed. No production configuration, secrets, database, storage, or Paystack credentials were changed.
+## CORS probes
+
+A request to `/api/health` with the authorized origin `https://www.edutrackgh.online` returned HTTP 503 without an allow-origin response. A request with unauthorized origin `https://attacker.invalid` returned the same HTTP 503 without an allow-origin response. Exact-origin success behavior and unauthorized-origin rejection are **NOT_PROVEN** while required production configuration is unavailable; the root wildcard header remains a **FAIL**.
+
+No Vercel protection was bypassed. No production configuration, secrets, database, storage, Paystack credentials, or data were modified.

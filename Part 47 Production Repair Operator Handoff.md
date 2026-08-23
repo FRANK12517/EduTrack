@@ -2,24 +2,20 @@
 
 ## Current state
 
-The repair is isolated on branch `part47-production-repair` at commit `1f6b3abb9dbb002fd438c6bef28de9c9f513cca5`. The original `part47-staging` branch remains preserved at `563cb5eeac887d53f2bf39772f03b2f99ad20010`. The repair preview deployment reached `READY` as `dpl_FE2Gn4dZQGdYyoMibj1cdnaHGo2o`, but its HTTPS URL redirected to Vercel SSO.
+The production repair is merged into `main` at `3b9ba70e8ad7e8f4351c1fdb9655a6323f48db6f`, with parents `f5125710c31b96de0cba750dcf114167e28bf3d0` and `1680f89ea099036d6759c0d72b1d62a016874895`. `origin/main` confirms the same SHA. Vercel deployed that exact SHA as production deployment `dpl_GGPmQqsjB2duNyLKaaM5C1LCmfdk`, which reached `READY`.
 
-## Repair summary
+## Verified behavior
 
-The existing production configuration assertion was moved from module-import time to request-invocation time. This allows the Vercel function module to load while preserving the fail-closed production guard. A misconfigured production invocation now returns a generic HTTP 503 before filesystem or compatibility persistence access. The focused regression test failed before the repair and passed afterward.
+The serverless import-time crash is repaired. Production `/api/health` now returns the application’s generic HTTP 503 rather than `FUNCTION_INVOCATION_FAILED`, and `/api/auth/session` returns the same fail-closed 503. Required security headers are present on those responses. The repair does not weaken production persistence, authentication, authorization, tenant isolation, CORS, storage, payment, or fail-closed controls.
 
-## Required operator actions
+## Remaining blockers
 
-An authorized operator must first configure the Vercel project to use Node.js 22.x and provision the required isolated production-grade relational database, private storage, Paystack sandbox or approved production configuration, exact HTTPS origin configuration, monitoring, backup, rollback, and controlled test accounts. Do not use live credentials to manufacture a test pass.
+Vercel still reports Node.js 24.x while Part 47 requires Node.js 22.x. Required production configuration remains unavailable, so the backend correctly fails closed. The production root exposes wildcard `access-control-allow-origin: *`, which fails exact-origin policy. Exact-origin success behavior and unauthorized-origin rejection are not proven while configuration is unavailable.
 
-After the prerequisites are available, deploy the exact repair commit through the authorized Vercel Git workflow. Confirm that the deployment reaches `READY`, its commit SHA is `1f6b3abb9dbb002fd438c6bef28de9c9f513cca5`, and Vercel reports Node.js 22.x.
+## Operator action
 
-Then verify the production domain over HTTPS. Check `/`, `/api/health`, and `/api/auth/session`; verify that `/api/health` returns an EduTrack backend response rather than a Vercel-generated error; verify exact-origin CORS and unauthorized-origin rejection; and inspect the required security headers. If any critical backend or runtime check fails, stop and retain the gate as `PRODUCTION NOT VERIFIED — BLOCKED`.
+Use an authorized Vercel configuration operation to set Node.js 22.x and provide the required isolated production-grade relational database, private storage, exact HTTPS origin configuration, Paystack configuration, monitoring, backup, rollback, and controlled test accounts. Do not bypass SSO or deployment protection, modify production data manually, use live Paystack for testing, or weaken guards.
 
-## Safety constraints
+After the prerequisites are available, redeploy through the authorized Git workflow and verify the exact SHA, runtime, `/`, `/api/health`, `/api/auth/session`, exact-origin CORS, unauthorized-origin rejection, and security headers. If any critical check fails, retain `PRODUCTION NOT VERIFIED — BLOCKED`.
 
-Do not bypass Vercel SSO or deployment protection. Do not modify production data manually. Do not change credentials or environment variables without an authorized, demonstrably safe operation. Do not commit `.env` files or credentials. Do not use wildcard CORS as a workaround. Do not start Part 48.
-
-## Validation already completed
-
-`npm run check`, `npm test`, `npm audit --omit=dev --audit-level=moderate`, the new production-function regression, and the preserved Part 39–47 focused suites completed locally. Infrastructure-dependent suites correctly remain `BLOCKED` or `NOT_PROVEN` where external resources were unavailable.
+**PART 48 WAS NOT STARTED.**

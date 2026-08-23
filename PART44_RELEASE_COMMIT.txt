@@ -1,7 +1,7 @@
 Part: 44
 Status: implemented; activation BLOCKED
 Required Part 43 release: 36703581747bd45b00d3da9bdd5ae473915209d5
-Part 44 release commit: pending final metadata commit
+Part 44 release commit: eaa7a7b50f09fdd6cb4bd9127e2f2538828ce331
 Branch: part44-staging
 Deployment ID: none
 Staging URL: none

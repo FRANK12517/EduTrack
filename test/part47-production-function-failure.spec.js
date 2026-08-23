@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('assert');
+const { spawnSync } = require('child_process');
+const path = require('path');
+const repo = path.resolve(__dirname, '..');
+const env = { PATH: process.env.PATH, NODE_ENV: 'production', VERCEL: '1' };
+const probe = "const api=require('./api/index.js'); console.log(typeof api);";
+const result = spawnSync(process.execPath, ['-e', probe], { cwd: repo, env, encoding: 'utf8' });
+assert.strictEqual(result.status, 0, `serverless adapter import failed: ${result.stderr || result.stdout}`);
+assert.match(result.stdout, /function/);
+console.log('Part 47 production-function import regression passed.');

@@ -331,6 +331,10 @@ function applyTrustedPayment(db, { reference, user, plan, amount, currency, even
 }
 
 async function handler(req, res) {
+  if (process.env.NODE_ENV === 'production') {
+    try { assertProductionConfiguration(); }
+    catch { return json(res, 503, { error: 'Service unavailable' }); }
+  }
   const db = loadDb();
   if (relational.isConfigured()) await relational.hydrateAuthState(db);
   cleanup(db);
@@ -619,7 +623,6 @@ async function handler(req, res) {
 }
 
 if (!(SERVERLESS_RUNTIME && process.env.NODE_ENV === 'production')) ensureData();
-assertProductionConfiguration();
 function startServer() {
   return http.createServer((req, res) => handler(req, res).catch(() => json(res, 500, { error: 'Internal server error' }))).listen(PORT, () => console.log(`EduTrack server listening on port ${PORT}`));
 }

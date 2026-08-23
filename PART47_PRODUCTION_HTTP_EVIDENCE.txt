@@ -1,0 +1,24 @@
+PART 47 PRODUCTION HTTP EVIDENCE
+
+Production deployment: dpl_P2BhPXyz1FZVuBd3KDU8bekJuoW5
+Production domain tested: https://www.edutrackgh.online
+
+GET /
+- Result: HTTP 200 OK
+- Served by: Vercel
+- HSTS observed
+- access-control-allow-origin: * observed
+
+GET /api/health
+- Result: HTTP 500 Internal Server Error
+- Header: x-vercel-error: FUNCTION_INVOCATION_FAILED
+- Body: Vercel-generated server error; no EduTrack JSON health response
+
+GET /api/auth/session
+- Not attempted after the backend failure, per the mandatory production safety rule.
+
+Repair preview deployment: dpl_FE2Gn4dZQGdYyoMibj1cdnaHGo2o
+- Commit: 1f6b3abb9dbb002fd438c6bef28de9c9f513cca5
+- State: READY
+- Preview root access: HTTP 302 redirect to Vercel SSO
+- SSO bypass was not attempted.

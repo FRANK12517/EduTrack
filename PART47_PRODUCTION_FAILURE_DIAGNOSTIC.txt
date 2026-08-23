@@ -1,0 +1,17 @@
+PART 47 PRODUCTION FAILURE DIAGNOSTIC
+
+Production deployment inspected: dpl_P2BhPXyz1FZVuBd3KDU8bekJuoW5
+Production route: GET /api/health
+Observed response: HTTP 500 FUNCTION_INVOCATION_FAILED
+
+Authorized Vercel runtime-log queries were attempted for the deployment and /api/health. The broad seven-day query timed out before returning logs. A narrowed 24-hour serverless /api/health query also timed out. The grouped runtime-error query for /api/health returned no runtime errors in the selected seven-day range. Therefore, no Vercel log line exposing a production exception was available; no exception is fabricated as a direct log finding.
+
+Reproducible local evidence on the production serverless import path:
+Command: env -i PATH="$PATH" NODE_ENV=production VERCEL=1 node -e "require('./api/index.js')"
+Observed exception:
+Error: Production requires EDUTRACK_DATABASE_URL; JSON compatibility storage is not a production persistence target.
+Source: server.js invoked assertProductionConfiguration() at module import time.
+
+Diagnosis: the serverless adapter could not load when production configuration was absent, causing an invocation-level failure before a request handler could return the application’s fail-closed response. Node.js 24.x is a separate configuration mismatch; available evidence does not prove it caused the invocation failure.
+
+The repair defers the existing production assertion until request invocation and returns a generic HTTP 503 without exposing configuration details. The assertion remains fail-closed and no JSON/localStorage production fallback was added.

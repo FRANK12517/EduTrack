@@ -10,6 +10,7 @@ const authorization = require('./app/auth/authorization');
 const privateStorage = require('./app/private-storage');
 
 const ROOT = __dirname;
+const SERVERLESS_RUNTIME = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DATA_DIR = path.join(ROOT, 'data');
 const DB_FILE = path.join(DATA_DIR, 'edutrack.json');
 const PORT = Number(process.env.PORT || 3000);
@@ -570,7 +571,7 @@ async function handler(req, res) {
   json(res, 404, { error: 'Not found' });
 }
 
-ensureData();
+if (!(SERVERLESS_RUNTIME && process.env.NODE_ENV === 'production')) ensureData();
 assertProductionConfiguration();
 function startServer() {
   return http.createServer((req, res) => handler(req, res).catch(() => json(res, 500, { error: 'Internal server error' }))).listen(PORT, () => console.log(`EduTrack server listening on port ${PORT}`));

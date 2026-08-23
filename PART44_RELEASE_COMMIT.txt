@@ -1,0 +1,12 @@
+Part: 44
+Status: implemented; activation BLOCKED
+Required Part 43 release: 36703581747bd45b00d3da9bdd5ae473915209d5
+Part 44 release commit: pending final metadata commit
+Branch: part44-staging
+Deployment ID: none
+Staging URL: none
+Declared runtime: Node.js 22.x
+Actual connected Vercel runtime: Node.js 24.x (FAIL)
+Secret values printed: false
+Production modified: no
+Part 45 started: no

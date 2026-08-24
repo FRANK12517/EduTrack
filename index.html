@@ -5154,47 +5154,19 @@ td input, td select, td textarea, td button {
       <div id="sub-page-1">
         <div class="sub-section-title">📦 Select Subscription Package</div>
         <div class="pkg-grid">
-          <div class="pkg-card" id="pkg-full" onclick="subSelectPkg('full',this)">
+          <div class="pkg-card" id="pkg-government" onclick="subSelectPkg('government',this)">
+            <div class="pkg-icon">🏛️</div>
+            <div class="pkg-name">Government/Public School</div>
+            <div class="pkg-price">GH₵130</div>
+            <div class="pkg-period">Per School · Per Term</div>
+            <ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Central government calendar</li><li>First term free once</li></ul>
+          </div>
+          <div class="pkg-card" id="pkg-private" onclick="subSelectPkg('private',this)">
             <div class="pkg-icon">🏫</div>
-            <div class="pkg-name">Full School Package</div>
-            <div class="pkg-price">GHC 250</div>
+            <div class="pkg-name">Private School</div>
+            <div class="pkg-price">GH₵200</div>
             <div class="pkg-period">Per School · Per Term</div>
-            <ul class="pkg-features">
-              <li>Full Application Access</li>
-              <li>Examination Management</li>
-              <li>Result Generation</li>
-              <li>Chart Analysis</li>
-              <li>Student & Teacher Management</li>
-              <li>Dashboards & Reports</li>
-              <li>All Features Included</li>
-            </ul>
-          </div>
-          <div class="pkg-card" id="pkg-exam" onclick="subSelectPkg('exam',this)">
-            <div class="pkg-icon">📝</div>
-            <div class="pkg-name">Examination Package</div>
-            <div class="pkg-price exam-price">GHC 150</div>
-            <div class="pkg-period">Per School · Per Term</div>
-            <ul class="pkg-features">
-              <li>Score Entry</li>
-              <li>Exam Management</li>
-              <li>Result Generation</li>
-              <li>Chart Analysis</li>
-              <li>Exam Reports & Slips</li>
-              <li>Other features locked</li>
-            </ul>
-          </div>
-          <div class="pkg-card" id="pkg-teacher" onclick="subSelectPkg('teacher',this)">
-            <div class="pkg-icon">👩‍🏫</div>
-            <div class="pkg-name">Individual Teacher</div>
-            <div class="pkg-price teacher-price">GHC 50</div>
-            <div class="pkg-period">Per Teacher · Per Term</div>
-            <ul class="pkg-features">
-              <li>Score Entry</li>
-              <li>Subject Results</li>
-              <li>Class Results</li>
-              <li>Performance Analysis</li>
-              <li>Exam Features Only</li>
-            </ul>
+            <ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed calendar</li></ul>
           </div>
         </div>
         <div id="sub-pkg-error" style="color:#c0392b;font-size:.78rem;margin-top:.5rem;display:none">⚠ Please select a subscription package.</div>
@@ -8692,7 +8664,7 @@ td input, td select, td textarea, td button {
           <option value="enrollment">Enrollment</option>
           <option value="examination">Examination</option>
           <option value="attendance">Attendance</option>
-          <option value="teacher">Teacher</option>
+          <option value="private">Private School</option>
           <option value="infrastructure">Infrastructure</option>
           <option value="transfer">Transfer</option>
           <option value="admission">Admission</option>
@@ -38963,11 +38935,7 @@ function fmsPrintOutstanding() {
     <p>Generated: ${new Date().toLocaleString()} · ${rows.length} record(s)</p>
     <table><thead><tr><th>Student</th><th>ID</th><th>Class</th><th>Term</th><th>Total Fees</th><th>Paid</th><th>Balance</th><th>Due Date</th><th>Overdue</th><th>Status</th></tr></thead>
     <tbody>${rowsHTML}</tbody></table>
-
-
-
-
-
+<\/script>
 
 </body></html>`);
   win.document.close();
@@ -40675,17 +40643,12 @@ function subGetSchoolStatus(school) {
 }
 
 function subGetPackagePrice(pkg) {
-  // Sync with V70 Price Engine
-  if (typeof v70GetActivePrices === 'function') {
-    const prices = v70GetActivePrices();
-    if (prices[pkg] !== undefined) return 'GHC ' + Number(prices[pkg]).toFixed(2);
-  }
-  const map = { full:'GHC 250', exam:'GHC 150', teacher:'GHC 50' };
+  const map = { government:'GH₵130', private:'GH₵200' };
   return map[pkg] || '—';
 }
 
 function subGetPackageName(pkg) {
-  const map = { full:'Full School Package', exam:'Examination Package', teacher:'Individual Teacher Package' };
+  const map = { government:'Government/Public School', private:'Private School' };
   return map[pkg] || pkg;
 }
 
@@ -40752,11 +40715,12 @@ function subShowStep(n) {
 }
 
 function subSelectPkg(pkg, el) {
+  if (pkg !== 'government' && pkg !== 'private') return;
   subSelectedPkg = pkg;
   document.querySelectorAll('.pkg-card').forEach(c => c.classList.remove('selected','selected-exam','selected-teacher'));
-  const map = { full:'selected', exam:'selected-exam', teacher:'selected-teacher' };
-  el.classList.add(map[pkg] || 'selected');
-  document.getElementById('sub-pkg-error').style.display = 'none';
+  if (el) el.classList.add('selected');
+  const error = document.getElementById('sub-pkg-error');
+  if (error) error.style.display = 'none';
 }
 
 function subStepNext() {
@@ -40978,7 +40942,7 @@ window.subBuildConfirm = subBuildConfirm;
 function subOpenRenewalModal() {
   const school = subGetArr(SUB_KEYS.schools).slice().reverse().find(s => s && s.id);
   if (!school) { subOpenModal(); return; }
-  subOpenModal(); window.subRenewalSchoolId = school.id; subSelectedPkg = school.package || 'full';
+  subOpenModal(); window.subRenewalSchoolId = school.id; var storedType=String(school.schoolType||school.ownershipType||school.ownership_type||school.type||'').toLowerCase(); subSelectedPkg = (storedType==='public'||storedType==='government') ? 'government' : 'private';
   document.querySelectorAll('.pkg-card').forEach(card => { if ((card.getAttribute('onclick')||'').includes(subSelectedPkg)) card.classList.add('selected'); });
   const values = {'sub-school-name':school.name,'sub-school-code':school.schoolCode||'','sub-school-type':school.type||'','sub-region':school.region||'','sub-district':school.district||'','sub-circuit':school.circuit||'','sub-head-name':school.headName||'','sub-contact':school.contact||'','sub-email':school.email||''};
   Object.entries(values).forEach(([id,v]) => { const el=document.getElementById(id); if(el) el.value=v; });
@@ -41146,8 +41110,9 @@ function subInitTrialBanner() {
 // ── Lock screen ───────────────────────────────────────────────────
 function subShowLock(show) {
   const el = document.getElementById('sub-lock-screen');
-  if (show) { el.classList.add('show'); }
-  else       { el.classList.remove('show'); }
+  if (!el) return;
+  if (show) { el.style.display = 'flex'; el.classList.add('show'); }
+  else       { el.classList.remove('show'); el.style.display = 'none'; }
 }
 
 function subCheckAutoLock() {
@@ -41343,7 +41308,7 @@ const EMS_SA_SAMPLE_SCHOOLS = Object.freeze([
     name: 'Ekumfi Anomabo D/A Basic School',
     schoolCode: 'SCH-SAMPLE-001', subCode: 'GES-CE-EKU-100011',
     region: 'Central Region', district: 'Ekumfi',
-    package: 'full', status: 'expired',
+    package: 'government', status: 'expired',
     registeredAt: '2024-02-10T09:00:00.000Z',
     expiryDate:   '2024-05-10T09:00:00.000Z',
     teacherCount: 14, lastLogin: '2024-05-08T07:30:00.000Z'
@@ -41353,7 +41318,7 @@ const EMS_SA_SAMPLE_SCHOOLS = Object.freeze([
     name: 'Accra Ridge Church of Christ School',
     schoolCode: 'SCH-SAMPLE-002', subCode: 'GES-GA-ACC-200022',
     region: 'Greater Accra Region', district: 'Accra Metropolitan',
-    package: 'exam', status: 'expired',
+    package: 'private', status: 'expired',
     registeredAt: '2024-01-15T09:00:00.000Z',
     expiryDate:   '2024-04-15T09:00:00.000Z',
     teacherCount: 21, lastLogin: '2024-04-12T07:30:00.000Z'
@@ -41363,7 +41328,7 @@ const EMS_SA_SAMPLE_SCHOOLS = Object.freeze([
     name: 'Kumasi Anglican Basic School',
     schoolCode: 'SCH-SAMPLE-003', subCode: 'GES-AS-KUM-300033',
     region: 'Ashanti Region', district: 'Kumasi Metropolitan',
-    package: 'teacher', status: 'expired',
+    package: 'government', status: 'expired',
     registeredAt: '2024-03-01T09:00:00.000Z',
     expiryDate:   '2024-06-01T09:00:00.000Z',
     teacherCount: 18, lastLogin: '2024-05-29T07:30:00.000Z'
@@ -41639,7 +41604,7 @@ window.addEventListener('load', function subV60Init() {
     // Update announcement
     const annoEl = document.getElementById('dash-announcement');
     if (annoEl) {
-      annoEl.innerHTML = '📢 <strong>EMS GES Unified</strong> — NEW: <strong>Complete Subscription & License Management System</strong> — School registration, free trial (90 days), auto lock/unlock, payment tracking, Super Admin Engine Room, unique school subscription codes, 3 subscription packages. All prior modules fully intact.';
+      annoEl.innerHTML = '📢 <strong>EMS GES Unified</strong> — NEW: <strong>Complete Subscription & License Management System</strong> — School registration, free trial (90 days), auto lock/unlock, payment tracking, Super Admin Engine Room, unique school subscription codes, two term-based subscription plans. All prior modules fully intact.';
     }
   } catch(e) { console.warn('Sub v60 init:', e); }
 });
@@ -43301,9 +43266,9 @@ function v61InjectAdminExtensions() {
         <label>Package</label>
         <select id="admin-filter-package" onchange="subAdminSearchSchools()">
           <option value="">All Packages</option>
-          <option value="full">Full EMS</option>
-          <option value="exam">Exam Only</option>
-          <option value="teacher">Teacher</option>
+          <option value="government">Government/Public</option>
+          <option value="government">Government/Public</option>
+          <option value="private">Private School</option>
         </select>
       </div>
       <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:flex-end">
@@ -43616,15 +43581,8 @@ window.addEventListener('load', function v61Init() {
     security:'ems_sa_rebuild_security_v1'
   };
   var PACKAGE_DEFS = {
-    full:{id:'full',code:'PACKAGE A',name:'Full EMS Package',price:500,durationDays:365,status:'active',
-      rights:['Student Admission','Student Transfer','Student Removal','Attendance Management','Continuous Assessment','Examination Management','Result Processing','Result Slip Generation','Analytics and Statistics','Teacher Management','Academic Records','Promotion and Repetition','School Dashboard','District Dashboard Functions','Regional Dashboard Functions','Result Slip Auto Fetch','Automatic Result Retrieval','National Student Identity System','All Existing EMS Features','All Future EMS Features'],
-      restrictions:['None - complete system access']},
-    exam:{id:'exam',code:'PACKAGE B',name:'Exams Only Package',price:300,durationDays:365,status:'active',
-      rights:['Examination Score Entry','Examination Processing','Examination Reports','Examination Statistics','Result Generation','Subject Analysis','Performance Reports','Examination Result Printing'],
-      restrictions:['Result Slip Auto Fetch disabled','Automatic Result Retrieval disabled','Premium Result Processing Features disabled','Full Academic Management Features disabled','Manual examination processing required']},
-    teacher:{id:'teacher',code:'PACKAGE C',name:'Individual Teacher Package',price:100,durationDays:365,status:'active',
-      rights:['Class Assessment Entry','Examination Score Entry','Class Reports','Class Result Generation','Student Performance Analysis','Attendance Recording'],
-      restrictions:['One assigned class only','Separate subscription required for additional classes','All unassigned classes automatically blocked']}
+    government:{id:'government',code:'GOVERNMENT',name:'Government/Public School',price:130,billingPeriod:'term',durationDays:null,status:'active',rights:['Full EduTrack application access','Student management','Teacher/staff management','Attendance','Examination management','Score entry','Broadsheet','Format A/B/C','Result slips','Mock examinations','Result publication','Analysis and rankings','KG assessment','Conduct, attitude and interest','Remarks','Announcements','Parent/student dashboards','Reports and printing','Mobile/PWA','Offline functionality','Automatic synchronization','Subscription management','Existing authorized features'],restrictions:[]},
+    private:{id:'private',code:'PRIVATE',name:'Private School',price:200,billingPeriod:'term',durationDays:null,status:'active',rights:['Full EduTrack application access','All core school-management functionality','500 SMS credits per paid term','SMS balance tracking','Existing authorized features'],restrictions:[]}
   };
   var CLASSES = ['KG 1','KG 2','Basic 1','Basic 2','Basic 3','Basic 4','Basic 5','Basic 6','JHS 1','JHS 2','JHS 3'];
   var GH = {
@@ -43665,17 +43623,17 @@ window.addEventListener('load', function v61Init() {
     write(STORE.audit,rows.slice(0,1000));
   }
   function packages(){
-    var p=read(STORE.packages,null)||{};
-    Object.keys(PACKAGE_DEFS).forEach(function(k){p[k]=Object.assign({},PACKAGE_DEFS[k],p[k]||{});});
+    var saved=read(STORE.packages,null)||{},p={};
+    Object.keys(PACKAGE_DEFS).forEach(function(k){p[k]=Object.assign({},PACKAGE_DEFS[k],saved[k]||{});});
     write(STORE.packages,p);
     return p;
   }
   function prices(){
-    var p=arr(STORE.prices);
-    if(!p.length){
-      Object.keys(PACKAGE_DEFS).forEach(function(k){p.push({id:'price_'+k+'_'+Date.now(),packageId:k,currentPrice:PACKAGE_DEFS[k].price,newPrice:PACKAGE_DEFS[k].price,effectiveDate:today(),effectiveTime:'00:00',status:'active',createdAt:iso()});});
-      write(STORE.prices,p);
-    }
+    var allowed=Object.keys(PACKAGE_DEFS),p=arr(STORE.prices).filter(function(row){return row&&allowed.indexOf(String(row.packageId))>=0;});
+    allowed.forEach(function(k){
+      if(!p.some(function(row){return String(row.packageId)===k;})) p.push({id:'price_'+k+'_'+Date.now(),packageId:k,currentPrice:PACKAGE_DEFS[k].price,newPrice:PACKAGE_DEFS[k].price,effectiveDate:today(),effectiveTime:'00:00',status:'active',createdAt:iso()});
+    });
+    write(STORE.prices,p);
     return p;
   }
   function activePrice(id){
@@ -43687,8 +43645,8 @@ window.addEventListener('load', function v61Init() {
   function schools(){return arr(STORE.schools);}
   function saveSchools(v){write(STORE.schools,v);}
   function payments(){return arr(STORE.payments);}
-  function pkgId(v){v=String(v||'full').toLowerCase();if(v.indexOf('exam')>=0)return'exam';if(v.indexOf('teacher')>=0)return'teacher';return'full';}
-  function pkgName(v){var id=pkgId(v);return (packages()[id]||PACKAGE_DEFS[id]).name;}
+  function pkgId(v){v=String(v||'').toLowerCase();if(v==='government'||v==='public'||v.indexOf('government')>=0||v.indexOf('public')>=0)return'government';if(v==='private'||v.indexOf('private')>=0)return'private';return'';}
+  function pkgName(v){var id=pkgId(v),p=id?(packages()[id]||PACKAGE_DEFS[id]):null;return p&&p.name?p.name:'Unassigned';}
   function schoolStatus(s){
     if(!s)return 'expired';
     if(s.permanentStatus==='active')return 'permanent';
@@ -43767,7 +43725,7 @@ window.addEventListener('load', function v61Init() {
       '<div class="sa-mini" style="margin:.55rem 0"><strong>Access Rights:</strong></div><div class="sa-rights">'+p.rights.map(function(x){return'<span class="sa-chip">'+esc(x)+'</span>';}).join('')+'</div>'+
       '<div class="sa-mini" style="margin:.55rem 0"><strong>Restrictions:</strong> '+esc((p.restrictions||[]).join('; '))+'</div>'+
       '<div class="sa-actions"><button class="btn btn-primary btn-sm" onclick="EMS_SA_REBUILD.savePackage(\''+id+'\')">Save Package</button><button class="btn btn-ghost btn-sm" onclick="EMS_SA_REBUILD.togglePackage(\''+id+'\')">Activate / Deactivate</button></div></div>';}).join('')+'</div>'+
-    '<div class="sa-card"><h4>Price Control Engine</h4><div class="sa-form"><div><label>Package</label><select id="sa-price-package">'+Object.keys(pkgs).map(function(k){return'<option value="'+k+'">'+esc(pkgs[k].name)+'</option>';}).join('')+'</select></div><div><label>New Price</label><input id="sa-price-new" type="number" min="0" step="0.01" value="'+activePrice('full')+'"></div><div><label>Effective Date</label><input id="sa-price-date" type="date" value="'+today()+'"></div><div><label>Effective Time</label><input id="sa-price-time" type="time" value="'+nowTime()+'"></div><div><label>Status</label><select id="sa-price-status"><option>scheduled</option><option>active</option></select></div></div><div class="sa-actions" style="margin-top:.7rem"><button class="btn btn-primary btn-sm" onclick="EMS_SA_REBUILD.schedulePrice()">Schedule Price</button></div><div class="sa-tabs-note">Price protection: active school and teacher subscriptions keep the old price until expiry. The new price applies to new schools, new teachers and expired subscribers renewing.</div><div class="tbl-wrap"><table><thead><tr><th>Package</th><th>Current Price</th><th>New Price</th><th>Effective</th><th>Status</th></tr></thead><tbody>'+rows.map(function(r){return'<tr><td>'+esc(pkgName(r.packageId))+'</td><td>'+money(r.currentPrice)+'</td><td>'+money(r.newPrice)+'</td><td>'+esc(r.effectiveDate+' '+r.effectiveTime)+'</td><td>'+statusPill(r.status)+'</td></tr>';}).join('')+'</tbody></table></div></div>';
+    '<div class="sa-card"><h4>Price Control Engine</h4><div class="sa-form"><div><label>Package</label><select id="sa-price-package">'+Object.keys(pkgs).map(function(k){return'<option value="'+k+'">'+esc(pkgs[k].name)+'</option>';}).join('')+'</select></div><div><label>New Price</label><input id="sa-price-new" type="number" min="0" step="0.01" value="'+activePrice('government')+'"></div><div><label>Effective Date</label><input id="sa-price-date" type="date" value="'+today()+'"></div><div><label>Effective Time</label><input id="sa-price-time" type="time" value="'+nowTime()+'"></div><div><label>Status</label><select id="sa-price-status"><option>scheduled</option><option>active</option></select></div></div><div class="sa-actions" style="margin-top:.7rem"><button class="btn btn-primary btn-sm" onclick="EMS_SA_REBUILD.schedulePrice()">Schedule Price</button></div><div class="sa-tabs-note">Price protection: active school and teacher subscriptions keep the old price until expiry. The new price applies to new schools, new teachers and expired subscribers renewing.</div><div class="tbl-wrap"><table><thead><tr><th>Package</th><th>Current Price</th><th>New Price</th><th>Effective</th><th>Status</th></tr></thead><tbody>'+rows.map(function(r){return'<tr><td>'+esc(pkgName(r.packageId))+'</td><td>'+money(r.currentPrice)+'</td><td>'+money(r.newPrice)+'</td><td>'+esc(r.effectiveDate+' '+r.effectiveTime)+'</td><td>'+statusPill(r.status)+'</td></tr>';}).join('')+'</tbody></table></div></div>';
   }
   function savePackage(id){var pkgs=packages(),p=pkgs[id];if(!p)return;var before=JSON.stringify(p);p.status=val('sa-pkg-status-'+id);p.durationDays=Number(val('sa-pkg-duration-'+id))||365;p.effectiveDate=val('sa-pkg-effective-'+id)||today();p.expiryDate=val('sa-pkg-expiry-'+id);p.renewalRule=val('sa-pkg-renewal-'+id);write(STORE.packages,pkgs);audit('PACKAGE_UPDATED',before,JSON.stringify(p),p.name);renderAll();toast('Package saved');}
   function togglePackage(id){var pkgs=packages(),p=pkgs[id];if(!p)return;var before=p.status;p.status=p.status==='active'?'inactive':'active';write(STORE.packages,pkgs);audit('PACKAGE_STATUS_CHANGED',before,p.status,p.name);renderAll();}
@@ -45347,47 +45305,9 @@ window.addEventListener('load', function v61Init() {
   };
 
   var PACKAGE_DEFS = {
-    full: {
-      id:'full', code:'PACKAGE A', name:'Full EMS Package', status:'active', durationDays:365,
-      renewalRule:'Renew at active price on expiry; active subscribers keep original price until expiry.',
-      access:[
-        'Student Admission','Student Transfer','Student Removal','Attendance Management',
-        'Continuous Assessment','Examination Management','Result Processing','Result Slip Generation',
-        'Analytics and Statistics','Teacher Management','Academic Records','Promotion and Repetition',
-        'School Dashboard','District Dashboard Functions','Regional Dashboard Functions',
-        'Result Slip Auto Fetch','Automatic Result Retrieval','National Student Identity System',
-        'All Existing EMS Features','All Future EMS Features'
-      ],
-      restrictions:[]
-    },
-    exam: {
-      id:'exam', code:'PACKAGE B', name:'Exams Only Package', status:'active', durationDays:365,
-      renewalRule:'Manual examination processing only; renew at active price on expiry.',
-      access:[
-        'Examination Score Entry','Examination Processing','Examination Reports',
-        'Examination Statistics','Result Generation','Subject Analysis','Performance Reports',
-        'Examination Result Printing'
-      ],
-      restrictions:[
-        'Result Slip Auto Fetch disabled','Automatic Result Retrieval disabled',
-        'Premium Result Processing Features disabled','Full Academic Management Features disabled'
-      ]
-    },
-    teacher: {
-      id:'teacher', code:'PACKAGE C', name:'Individual Teacher Package', status:'active', durationDays:365,
-      renewalRule:'One class per subscription; additional classes require separate subscriptions.',
-      access:[
-        'Class Assessment Entry','Examination Score Entry','Class Reports','Class Result Generation',
-        'Student Performance Analysis','Attendance Recording'
-      ],
-      restrictions:[
-        'Linked to one class only','All unassigned classes are automatically blocked',
-        'School subscription is not required for individual teacher subscription'
-      ]
-    }
-  };
-
-  var CLASS_OPTIONS = ['KG 1','KG 2','Basic 1','Basic 2','Basic 3','Basic 4','Basic 5','Basic 6','JHS 1','JHS 2','JHS 3'];
+    government: { id:'government', code:'GOVERNMENT', name:'Government/Public School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'One free first term for eligible Government/Public schools; subsequent terms are GH₵130.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','Central government calendar','Optional paid SMS credits'], restrictions:[] },
+    private: { id:'private', code:'PRIVATE', name:'Private School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'Paid term renewal at GH₵200 with 500 SMS credits.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','School-managed calendar','500 SMS credits per term'], restrictions:[] }
+  };var CLASS_OPTIONS = ['KG 1','KG 2','Basic 1','Basic 2','Basic 3','Basic 4','Basic 5','Basic 6','JHS 1','JHS 2','JHS 3'];
 
   function get(k, fallback){ try{ var v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?fallback:v; }catch(e){ return fallback; } }
   function set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -45420,8 +45340,8 @@ window.addEventListener('load', function v61Init() {
     try{ if(window.v70GetActivePrices) return window.v70GetActivePrices(); }catch(e){}
     try{
       var p = JSON.parse(localStorage.getItem('v70_active_prices')||'{}');
-      return {full:p.full||250, exam:p.exam||150, teacher:p.teacher||50};
-    }catch(e){ return {full:250, exam:150, teacher:50}; }
+      return {government:p.government||130, private:p.private||200};
+    }catch(e){ return {government:130, private:200}; }
   }
 
   function packageLabel(id){
@@ -45663,7 +45583,7 @@ window.addEventListener('load', function v61Init() {
     wrap.id='sub-teacher-class-wrap';
     wrap.className='sub-form-group';
     wrap.style.display='none';
-    wrap.innerHTML='<label>Assigned Class <span class="sub-req-star">*</span></label><select id="sub-teacher-class"><option value="">Select one class</option>'+CLASS_OPTIONS.map(function(c){return '<option>'+esc(c)+'</option>';}).join('')+'</select><small style="color:var(--muted);font-size:.68rem">Individual Teacher Package allows one class only.</small>';
+    wrap.innerHTML='<label>Assigned Class <span class="sub-req-star">*</span></label><select id="sub-teacher-class"><option value="">Select one class</option>'+CLASS_OPTIONS.map(function(c){return '<option>'+esc(c)+'</option>';}).join('')+'</select><small style="color:var(--muted);font-size:.68rem">Teacher assignment is managed within the selected school subscription.</small>';
     var grid=schoolPage.querySelector('.sub-form-grid');
     if(grid) grid.appendChild(wrap);
   }
@@ -45671,15 +45591,15 @@ window.addEventListener('load', function v61Init() {
   function syncTeacherClassVisibility(){
     ensureTeacherClassField();
     var wrap=document.getElementById('sub-teacher-class-wrap');
-    if(wrap) wrap.style.display=(window.subSelectedPkg==='teacher')?'':'none';
+    if(wrap) wrap.style.display='none';
   }
 
   function syncPackageCards(){
     var pkgs=packageStore(), prices=priceMap();
-    ['full','exam','teacher'].forEach(function(id){
-      var card=document.getElementById('pkg-'+(id==='exam'?'exam':id));
+    ['government','private'].forEach(function(id){
+      var card=document.getElementById('pkg-'+id);
       var price=card&&card.querySelector('.pkg-price');
-      if(price) price.textContent='GHC '+Number(prices[id]||0).toFixed(2);
+      if(price) price.textContent='GH₵'+Number(prices[id]||0).toFixed(2);
       if(card){
         var disabled=pkgs[id] && pkgs[id].status==='inactive';
         card.style.opacity=disabled?'.45':'';
@@ -45704,7 +45624,7 @@ window.addEventListener('load', function v61Init() {
       var oldNext=window.subStepNext;
       window.subStepNext=function(){
         var step=window.subCurrentStep || 1;
-        if(step===2 && window.subSelectedPkg==='teacher'){
+        if(step===2 && false){
           var cls=(document.getElementById('sub-teacher-class')||{}).value || '';
           var err=document.getElementById('sub-school-error');
           if(!cls){
@@ -45732,10 +45652,6 @@ window.addEventListener('load', function v61Init() {
             created.priceProtectedUntil = created.expiryDate || '';
             created.packagePermissions = (pkgs[created.package] && pkgs[created.package].access) || [];
             created.packageRestrictions = (pkgs[created.package] && pkgs[created.package].restrictions) || [];
-            if(created.package==='teacher'){
-              created.assignedClass = (document.getElementById('sub-teacher-class')||{}).value || created.assignedClass || '';
-              created.allowedClasses = created.assignedClass ? [created.assignedClass] : [];
-            }
             subSet(SUB_KEYS.schools, schools);
           }
         }catch(e){}
@@ -45746,19 +45662,10 @@ window.addEventListener('load', function v61Init() {
   }
 
   function packageAllows(feature, school){
-    var pkg=(school&&school.package)||'full', p=packageStore()[pkg] || PACKAGE_DEFS.full;
-    if(p.status==='inactive') return false;
-    var f=String(feature||'').toLowerCase();
-    if(pkg==='full') return true;
-    if(pkg==='exam') return /exam|result generation|subject analysis|performance report|examination report|statistics|printing/.test(f) && !/auto fetch|automatic result retrieval|premium|student admission|transfer|removal|attendance management|teacher management|promotion/.test(f);
-    if(pkg==='teacher') return /assessment|score entry|class report|class result|student performance|attendance recording/.test(f);
-    return false;
+    var pkg=(school&&school.package)||'government', p=packageStore()[pkg] || PACKAGE_DEFS.government;
+    return p.status!=='inactive' && (pkg==='government' || pkg==='private');
   }
-
-  function classAllowed(school, className){
-    if(!school || school.package!=='teacher') return true;
-    return (school.allowedClasses||[]).indexOf(className)>=0 || school.assignedClass===className;
-  }
+  function classAllowed(school, className){ return true; }
 
   function boot(){
     try{ injectAdminTabs(); }catch(e){}
@@ -51183,24 +51090,23 @@ const GH_REGIONS_DISTRICTS = {
 // ─────────────────────────────────────────────────────────────────
 
 function v67GetPrices() {
-  const stored = v67Get(V67_KEYS.prices);
-  return stored || {
-    full:    { amount: 250, label: 'Full School Package' },
-    exam:    { amount: 150, label: 'Examination Package' },
-    teacher: { amount: 50,  label: 'Individual Teacher Package' },
-    updatedBy: '', updatedAt: ''
+  const stored = v67Get(V67_KEYS.prices) || {};
+  const normalized = {
+    government: { amount: Number(stored.government?.amount ?? 130), label: 'Government/Public School' },
+    private:    { amount: Number(stored.private?.amount ?? 200), label: 'Private School' },
+    updatedBy: stored.updatedBy || '', updatedAt: stored.updatedAt || ''
   };
+  v67Set(V67_KEYS.prices, normalized);
+  return normalized;
 }
 
 function v67SavePrices() {
-  const fullAmt    = parseFloat(document.getElementById('v67-price-full')?.value) || 250;
-  const examAmt    = parseFloat(document.getElementById('v67-price-exam')?.value) || 150;
-  const teacherAmt = parseFloat(document.getElementById('v67-price-teacher')?.value) || 50;
+  const governmentAmt = parseFloat(document.getElementById('v67-price-government')?.value) || 130;
+  const privateAmt = parseFloat(document.getElementById('v67-price-private')?.value) || 200;
 
   const prices = {
-    full:    { amount: fullAmt,    label: 'Full School Package' },
-    exam:    { amount: examAmt,    label: 'Examination Package' },
-    teacher: { amount: teacherAmt, label: 'Individual Teacher Package' },
+    government: { amount: governmentAmt, label: 'Government/Public School' },
+    private:    { amount: privateAmt, label: 'Private School' },
     updatedBy: 'Frank Abban (Super Admin)',
     updatedAt: new Date().toISOString()
   };
@@ -51209,7 +51115,7 @@ function v67SavePrices() {
   // Sync to v60 rebuild storage if present
   if (window.EMS_SA_REBUILD && window.STORE && STORE.prices) {
     let saPrices = arr(STORE.prices);
-    ['full','exam','teacher'].forEach(id => {
+    ['government','private'].forEach(id => {
       saPrices.unshift({
         id: 'price_'+id+'_'+Date.now(),
         packageId: id,
@@ -51232,19 +51138,14 @@ function v67SavePrices() {
 
 function v67SyncPricesToUI() {
   const prices = v67GetPrices();
-  // Sync to subscription registration page display
+  // Sync current Government/Public and Private term-plan prices to the UI.
   const priceMap = {
-    'full':    { selectors: ['.pkg-price:not(.exam-price):not(.teacher-price)', '#pkg-full .pkg-price'], val: `GHC ${prices.full.amount}` },
-    'exam':    { selectors: ['#pkg-exam .pkg-price', '.exam-price'], val: `GHC ${prices.exam.amount}` },
-    'teacher': { selectors: ['#pkg-teacher .pkg-price', '.teacher-price'], val: `GHC ${prices.teacher.amount}` },
+    government: { selectors: ['#pkg-government .pkg-price', '#subv2-renew-price-government'], val: `GHC ${prices.government.amount}` },
+    private:    { selectors: ['#pkg-private .pkg-price', '#subv2-renew-price-private'], val: `GHC ${prices.private.amount}` },
   };
-  // Update #pkg-full price
-  const fullEl = document.querySelector('#pkg-full .pkg-price');
-  if (fullEl) fullEl.textContent = `GHC ${prices.full.amount}`;
-  const examEl = document.querySelector('#pkg-exam .pkg-price');
-  if (examEl) examEl.textContent = `GHC ${prices.exam.amount}`;
-  const teachEl = document.querySelector('#pkg-teacher .pkg-price');
-  if (teachEl) teachEl.textContent = `GHC ${prices.teacher.amount}`;
+  Object.values(priceMap).forEach(function(entry){
+    entry.selectors.forEach(function(selector){document.querySelectorAll(selector).forEach(function(el){el.textContent=entry.val;});});
+  });
   // Also update the payment amount display if visible
   const amtEl = document.getElementById('sub-pay-amount-val');
   if (amtEl && window.subSelectedPkg) {
@@ -51272,7 +51173,7 @@ function v67RenderPriceControlModule() {
       <p style="font-size:.72rem;opacity:.75">Changes take effect immediately on the subscription registration page</p>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-bottom:1rem">
-      ${['full','exam','teacher'].map(pkg => `
+      ${['government','private'].map(pkg => `
       <div style="background:#f5f7fb;border:1px solid #d0d8e8;border-radius:10px;padding:1rem">
         <div style="font-size:.8rem;font-weight:700;color:#0d1b3e;margin-bottom:.5rem">${prices[pkg].label}</div>
         <div style="font-size:.68rem;color:#8090b0;margin-bottom:.35rem">Current Price</div>
@@ -51327,9 +51228,9 @@ function v67RenderMonitoringCenter() {
         style="border:1px solid #d0d8e8;border-radius:7px;padding:.42rem .6rem;font-size:.82rem;font-family:inherit;flex:1;min-width:180px"/>
       <select id="v67-mon-pkg-filter" onchange="v67MonFilter()" style="border:1px solid #d0d8e8;border-radius:7px;padding:.42rem .6rem;font-size:.82rem;font-family:inherit">
         <option value="">All Packages</option>
-        <option value="full">Full School</option>
-        <option value="exam">Examination</option>
-        <option value="teacher">Individual Teacher</option>
+        <option value="government">Government/Public</option>
+        <option value="government">Government/Public</option>
+        <option value="private">Private School</option>
       </select>
       <select id="v67-mon-status-filter" onchange="v67MonFilter()" style="border:1px solid #d0d8e8;border-radius:7px;padding:.42rem .6rem;font-size:.82rem;font-family:inherit">
         <option value="">All Statuses</option>
@@ -52124,9 +52025,7 @@ window.GH_REGIONS_DISTRICTS = GH_REGIONS_DISTRICTS;
 //  V70 — SUBSCRIPTION PRICE CONTROL MANAGEMENT PANEL +
 //         REGION–DISTRICT DEPENDENT DROPDOWN IN ENGINE ROOM FILTER BAR
 //
-//  • Full Package Subscription price scheduling & history
-//  • Exams Only Subscription price scheduling & history
-//  • Individual Teacher Subscription price scheduling & history
+//  • Government/Public and Private term-plan price scheduling & history
 //  • Automatic activation when scheduled date/time is reached
 //  • Price History section (package, old, new, effective, admin, status)
 //  • Audit Trail
@@ -52145,7 +52044,7 @@ ALL EXISTING FUNCTIONALITIES MUST BE MAINTAINED.
 // ── STORAGE KEYS ─────────────────────────────────────────────────────────
 const V70_PRICE_HISTORY_KEY = 'v70_price_history';      // array of price records
 const V70_AUDIT_KEY         = 'v70_audit_trail';         // array of audit entries
-const V70_ACTIVE_PRICES_KEY = 'v70_active_prices';       // {full,exam,teacher} active amounts
+const V70_ACTIVE_PRICES_KEY = 'v70_active_prices';       // {government,private} active amounts
 
 function v70GetArr(k) { try { return JSON.parse(localStorage.getItem(k)||'[]'); } catch { return []; } }
 function v70Get(k)    { try { return JSON.parse(localStorage.getItem(k)||'null'); } catch { return null; } }
@@ -52153,9 +52052,8 @@ function v70Set(k,v)  { try { localStorage.setItem(k, JSON.stringify(v)); } catc
 
 // ── PACKAGE META ──────────────────────────────────────────────────────────
 const V70_PACKAGES = [
-  { id: 'full',    label: '🏫 Full School Package',         icon: '🏫' },
-  { id: 'exam',    label: '📝 Examinations Only Package',   icon: '📝' },
-  { id: 'teacher', label: '👩‍🏫 Individual Teacher Package', icon: '👩‍🏫' },
+  { id: 'government', label: '🏛️ Government/Public School', icon: '🏛️' },
+  { id: 'private',    label: '🏫 Private School',            icon: '🏫' },
 ];
 
 // ── GET ACTIVE PRICES (merged: v70 active overrides v67) ─────────────────
@@ -52164,17 +52062,15 @@ function v70GetActivePrices() {
   const sa = window.EMS_SA_REBUILD;
   if (sa && typeof sa.activePrice === 'function') {
     return {
-      full:    sa.activePrice('full'),
-      exam:    sa.activePrice('exam'),
-      teacher: sa.activePrice('teacher')
+      government: sa.activePrice('government'),
+      private:    sa.activePrice('private')
     };
   }
   const v70Active = v70Get(V70_ACTIVE_PRICES_KEY) || {};
-  const v67Prices = (typeof v67GetPrices === 'function') ? v67GetPrices() : { full:{amount:250}, exam:{amount:150}, teacher:{amount:50} };
+  const v67Prices = (typeof v67GetPrices === 'function') ? v67GetPrices() : { government:{amount:130}, private:{amount:200} };
   return {
-    full:    v70Active.full    ?? v67Prices.full?.amount    ?? 250,
-    exam:    v70Active.exam    ?? v67Prices.exam?.amount    ?? 150,
-    teacher: v70Active.teacher ?? v67Prices.teacher?.amount ?? 50,
+    government: v70Active.government ?? v67Prices.government?.amount ?? 130,
+    private:    v70Active.private    ?? v67Prices.private?.amount    ?? 200,
   };
 }
 
@@ -52182,7 +52078,7 @@ function v70GetActivePrices() {
 function v70SyncPricesToUI() {
   const p = v70GetActivePrices();
   const history = v70GetArr(V70_PRICE_HISTORY_KEY);
-  const map = { full: '#pkg-full', exam: '#pkg-exam', teacher: '#pkg-teacher' };
+  const map = { government: '#pkg-government', private: '#pkg-private' };
 
   Object.entries(map).forEach(([k, id]) => {
     const el = document.querySelector(`${id} .pkg-price`);
@@ -52270,10 +52166,10 @@ function v70CheckScheduledPrices() {
   if (changed) {
     v70Set(V70_PRICE_HISTORY_KEY, history);
     v70Set(V70_ACTIVE_PRICES_KEY, activePrices);
-    // Also sync to v67 so legacy UI is consistent
+    // Also sync the current term-plan UI state
     if (typeof v67Set === 'function') {
       const v67Prices = (typeof v67GetPrices === 'function') ? v67GetPrices() : {};
-      ['full','exam','teacher'].forEach(k => {
+      ['government','private'].forEach(k => {
         if (activePrices[k] !== undefined && v67Prices[k]) v67Prices[k].amount = activePrices[k];
       });
       if (typeof V67_KEYS !== 'undefined') v67Set(V67_KEYS.prices, v67Prices);
@@ -52319,7 +52215,7 @@ function v70AddPriceRecord(pkg, newPrice, effectiveDate, effectiveTime, adminNam
     const ap = v70Get(V70_ACTIVE_PRICES_KEY) || {};
     ap[pkg] = newPrice;
     v70Set(V70_ACTIVE_PRICES_KEY, ap);
-    // Sync to v67
+    // Sync to the current term-plan price store
     if (typeof v67GetPrices === 'function' && typeof V67_KEYS !== 'undefined') {
       const v67p = v67GetPrices();
       if (v67p[pkg]) v67p[pkg].amount = newPrice;
@@ -147597,8 +147493,38 @@ window.SRG_ANNUAL = (function(){
 })();
 </script>
 
+<script id="edutrack-part49-subscription-model-ui">
+(function EDUTRACK_PART49_SUBSCRIPTION_MODEL_UI(){
+  'use strict';
+  if(window.EDUTRACK_PART49_SUBSCRIPTION_MODEL_UI)return;
+  function byId(id){return document.getElementById(id)}
+  function schoolFromFields(){
+    var name=String(byId('subv2-renew-school')?.value||'').trim().toLowerCase();
+    var region=String(byId('subv2-renew-region')?.value||'').trim().toLowerCase();
+    var district=String(byId('subv2-renew-district')?.value||'').trim().toLowerCase();
+    var rows=[];try{rows=JSON.parse(localStorage.getItem('sub_v60_schools')||'[]')}catch(e){}
+    return rows.find(function(s){return String(s.name||'').trim().toLowerCase()===name&&String(s.region||'').trim().toLowerCase()===region&&String(s.district||'').trim().toLowerCase()===district})||null;
+  }
+  function syncPersistedSchoolType(){
+    var school=schoolFromFields();if(!school)return;
+    var type=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase();
+    type=(type==='public'||type==='government')?'government':(type==='private'?'private':null);if(!type)return;
+    var card=byId('subv2-renew-pkg-'+type);if(typeof window.subv2RenewSelectPackage==='function')window.subv2RenewSelectPackage(type,card);
+    document.querySelectorAll('#subv2-renew-package-grid .pkg-card').forEach(function(c){c.style.display=c.id==='subv2-renew-pkg-'+type?'':'none'});
+    var label=byId('subv2-renew-package-label');if(label)label.textContent=type==='government'?'Government/Public School':'Private School';
+  }
+  function install(){
+    var grid=byId('subv2-renew-package-grid');if(!grid)return;
+    grid.setAttribute('aria-label','Persisted school subscription plan');
+    ['subv2-renew-school','subv2-renew-region','subv2-renew-district'].forEach(function(id){var e=byId(id);if(e&&!e.dataset.part49){e.dataset.part49='1';e.addEventListener('change',syncPersistedSchoolType);e.addEventListener('input',syncPersistedSchoolType)}});
+    syncPersistedSchoolType();
+  }
+  window.EDUTRACK_PART49_SUBSCRIPTION_MODEL_UI={install:install,syncPersistedSchoolType:syncPersistedSchoolType};
+  if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});
+  setTimeout(install,0);setTimeout(install,500);setTimeout(install,1500);
+})();
+</script>
 </body></html>
-
 <!--
 ================================================================================
    FIX INTEGRITY MONITOR (V375-FIX)
@@ -147843,24 +147769,20 @@ window.SRG_ANNUAL = (function(){
               '<div class="sub-form-group"><label>Phone <span class="sub-req-star">*</span></label><input id="subv2-renew-phone" type="tel" placeholder="e.g. 0241234567"/></div>' +
               '<div class="sub-form-group"><label>Email</label><input id="subv2-renew-email" type="email" placeholder="school@example.com"/></div>' +
             '<div class="sub-section-title" style="margin-top:1rem">② Select Subscription Package</div>' +
-            '<div id="subv2-renew-package-grid" class="pkg-grid">' +
-              '<div class="pkg-card" id="subv2-renew-pkg-full" onclick="subv2RenewSelectPackage(\'full\',this)">' +
-                '<div class="pkg-icon">🏫</div><div class="pkg-name">Full School Package</div><div class="pkg-price" id="subv2-renew-price-full">GHC 250</div><div class="pkg-period">Per School · Per Term</div>' +
-                '<ul class="pkg-features"><li>Full Application Access</li><li>Examination Management</li><li>Result Generation</li><li>Chart Analysis</li><li>Student & Teacher Management</li><li>Dashboards & Reports</li><li>All Features Included</li></ul>' +
+            '<div id="subv2-renew-package-grid" class="pkg-grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">' +
+              '<div class="pkg-card" id="subv2-renew-pkg-government" onclick="subv2RenewSelectPackage(\'government\',this)">' +
+                '<div class="pkg-icon">🏛️</div><div class="pkg-name">Government/Public School</div><div class="pkg-price" id="subv2-renew-price-government">GH₵130</div><div class="pkg-period">Per School · Per Term</div>' +
+                '<ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Centrally controlled government calendar</li><li>Optional paid SMS credits</li></ul>' +
               '</div>' +
-              '<div class="pkg-card" id="subv2-renew-pkg-exam" onclick="subv2RenewSelectPackage(\'exam\',this)">' +
-                '<div class="pkg-icon">📝</div><div class="pkg-name">Examination Package</div><div class="pkg-price exam-price" id="subv2-renew-price-exam">GHC 150</div><div class="pkg-period">Per School · Per Term</div>' +
-                '<ul class="pkg-features"><li>Score Entry</li><li>Exam Management</li><li>Result Generation</li><li>Chart Analysis</li><li>Exam Reports & Slips</li><li>Other features locked</li></ul>' +
-              '</div>' +
-              '<div class="pkg-card" id="subv2-renew-pkg-teacher" onclick="subv2RenewSelectPackage(\'teacher\',this)">' +
-                '<div class="pkg-icon">👩‍🏫</div><div class="pkg-name">Individual Teacher</div><div class="pkg-price teacher-price" id="subv2-renew-price-teacher">GHC 50</div><div class="pkg-period">Per Teacher · Per Term</div>' +
-                '<ul class="pkg-features"><li>Score Entry</li><li>Subject Results</li><li>Class Results</li><li>Performance Analysis</li><li>Exam Features Only</li></ul>' +
+              '<div class="pkg-card" id="subv2-renew-pkg-private" onclick="subv2RenewSelectPackage(\'private\',this)">' +
+                '<div class="pkg-icon">🏫</div><div class="pkg-name">Private School</div><div class="pkg-price" id="subv2-renew-price-private">GH₵200</div><div class="pkg-period">Per School · Per Term</div>' +
+                '<ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed academic calendar</li></ul>' +
               '</div>' +
             '</div>' +
             '<div id="subv2-renew-package-error" style="color:#c0392b;font-size:.78rem;margin-top:.5rem;display:none">⚠ Please select a subscription package.</div>' +
             '<div class="sub-section-title" style="margin-top:1rem">③ Subscription Period</div>' +
             '<div class="sub-form-grid">' +
-              '<div class="sub-form-group"><label>Subscription Period <span class="sub-req-star">*</span></label><select id="subv2-renew-period" aria-label="Subscription period" required><option value="">— Select Week —</option><option value="1_week">Week 1</option><option value="2_week">Week 2</option><option value="3_week">Week 3</option><option value="4_week">Week 4</option><option value="5_week">Week 5</option><option value="6_week">Week 6</option><option value="7_week">Week 7</option><option value="8_week">Week 8</option><option value="9_week">Week 9</option><option value="10_week">Week 10</option><option value="11_week">Week 11</option><option value="12_week">Week 12</option><option value="13_week">Week 13</option><option value="14_week">Week 14</option><option value="15_week">Week 15</option><option value="16_week">Week 16</option><option value="17_week">Week 17</option><option value="18_week">Week 18</option><option value="19_week">Week 19</option><option value="20_week">Week 20</option></select></div>' +
+              '<div class="sub-form-group"><label>Subscription Period <span class="sub-req-star">*</span></label><select id="subv2-renew-period" aria-label="Subscription period" required><option value="">— Select Term —</option><option value="term_1">Term 1</option><option value="term_2">Term 2</option><option value="term_3">Term 3</option></select></div>' +
               '<div class="sub-form-group"><label>Payment Method</label><div id="subv2-renew-paymethod" style="padding:.65rem .75rem;border:1px solid #d0d8e8;border-radius:8px;background:#f5f7fb;font-weight:800;color:#0e7c86">Paystack</div></div>' +
             '</div>' +
             '<div id="subv2-renew-payment-panel" style="margin-top:1rem;padding:1rem;border:1px solid #8bcbd2;border-radius:10px;background:#effbfd">' +
@@ -148022,8 +147944,8 @@ window.SRG_ANNUAL = (function(){
       teacherCount: 0,
       username: null,      // Do not generate a school username (per spec)
       passwordHash: null,
-      package: 'full',
-      priceAtSubscription: (typeof subGetPackagePrice === 'function') ? subGetPackagePrice('full') : '',
+      package: 'government',
+      priceAtSubscription: (typeof subGetPackagePrice === 'function') ? subGetPackagePrice('government') : '',
       status: 'trial',
       expiryDate: trialExpiry.toISOString(),
       registeredAt: new Date().toISOString(),
@@ -148893,8 +148815,8 @@ window.SRG_ANNUAL = (function(){
   var selectedPackage = window.subv2RenewSelectedPackage = null;
   function periodLabel(){ var e=el('subv2-renew-period'); return e?.selectedOptions?.[0]?.textContent || '—'; }
   function period(){ return val('subv2-renew-period'); }
-  function packageName(){ return ({full:'Full School Package',exam:'Examination Package',teacher:'Individual Teacher'})[selectedPackage] || '—'; }
-  window.subv2RenewSelectPackage = function(pkg, card){ selectedPackage=pkg; window.subv2RenewSelectedPackage=pkg; document.querySelectorAll('#subv2-renew-package-grid .pkg-card').forEach(function(c){c.classList.remove('selected','selected-exam','selected-teacher');}); if(card) card.classList.add(pkg==='exam'?'selected-exam':pkg==='teacher'?'selected-teacher':'selected'); var er=el('subv2-renew-package-error'); if(er) er.style.display='none'; if(el('subv2-renew-package-label')) el('subv2-renew-package-label').textContent=packageName(); loadQuote(); };
+  function packageName(){ return ({government:'Government/Public School',private:'Private School'})[selectedPackage] || '—'; }
+  window.subv2RenewSelectPackage = function(pkg, card){ if(pkg!=='government'&&pkg!=='private') return; selectedPackage=pkg; window.subv2RenewSelectedPackage=pkg; document.querySelectorAll('#subv2-renew-package-grid .pkg-card').forEach(function(c){c.classList.remove('selected');}); if(card) card.classList.add('selected'); var er=el('subv2-renew-package-error'); if(er) er.style.display='none'; if(el('subv2-renew-package-label')) el('subv2-renew-package-label').textContent=packageName(); loadQuote(); };
   function schoolLookup(){
     if(window.EDUTRACK_SUB_V2 && typeof window.EDUTRACK_SUB_V2.findSchool==='function') return window.EDUTRACK_SUB_V2.findSchool(val('subv2-renew-school'),val('subv2-renew-region'),val('subv2-renew-district'));
     return read(schoolsKey).find(function(s){return String(s.name||'').trim().toLowerCase()===val('subv2-renew-school').toLowerCase() && String(s.region||'').trim().toLowerCase()===val('subv2-renew-region').toLowerCase() && String(s.district||'').trim().toLowerCase()===val('subv2-renew-district').toLowerCase();}) || null;
@@ -148911,7 +148833,7 @@ window.SRG_ANNUAL = (function(){
       setAmount(d.amount); setStatus('Ready to Pay.','Payment method: Paystack.');
     }catch(e){ setAmount(null); setStatus('Amount Pending.','The server will confirm the authoritative amount when payment starts.'); }
   }
-  function payload(school){ return {schoolId:school.id,schoolName:school.name,region:val('subv2-renew-region'),district:val('subv2-renew-district'),currentAccessCode:val('subv2-renew-code'),packageId:selectedPackage,packageName:packageName(),period:period(),contactPerson:val('subv2-renew-contact'),phone:val('subv2-renew-phone'),email:val('subv2-renew-email') || school.email || '',paymentPurpose:'subscription_renewal'}; }
+  function payload(school){ var storedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); var type=storedType==='public'||storedType==='government'?'government':'private'; selectedPackage=type; window.subv2RenewSelectedPackage=type; return {schoolId:school.id,schoolType:type,schoolName:school.name,region:val('subv2-renew-region'),district:val('subv2-renew-district'),currentAccessCode:val('subv2-renew-code'),planId:type,subscriptionPackageId:type,packageId:type,packageName:packageName(),period:period(),contactPerson:val('subv2-renew-contact'),phone:val('subv2-renew-phone'),email:val('subv2-renew-email') || school.email || '',paymentPurpose:'subscription_renewal'}; }
   async function verify(reference){
     var r=await fetch('/api/payments/paystack/verify/'+encodeURIComponent(reference),{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
     if(!r.ok || d.status!=='verified' || !d.transaction) throw new Error(d.message||'Payment could not be verified.');
@@ -148960,11 +148882,11 @@ window.SRG_ANNUAL = (function(){
   'use strict';
   function currentPrices(){
     if(typeof window.v70GetActivePrices==='function') return window.v70GetActivePrices();
-    return {full:250,exam:150,teacher:50};
+    return {government:130,private:200};
   }
   function syncRenewalCards(){
     var p=currentPrices();
-    ['full','exam','teacher'].forEach(function(pkg){
+    ['government','private'].forEach(function(pkg){
       var price=pkg in p ? Number(p[pkg]) : NaN;
       if(!Number.isFinite(price)) return;
       var renewalTarget=document.getElementById('subv2-renew-price-'+pkg);
@@ -149492,7 +149414,8 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
 
 
 
-</body></html>
+
+
 
 <!-- EDUTRACK_STAFF_MANAGEMENT_PART3 -->
 <script id="edutrack-staff-management-part3">

@@ -348,6 +348,13 @@ async function handler(req, res) {
   if (req.method === 'GET' && req.url === '/api/subscriptions/plans') {
     return json(res, 200, { policyVersion: subscriptionPolicy.POLICY_VERSION, plans: Object.values(subscriptionPolicy.PLANS).map(plan => ({ id: plan.id, name: plan.name, priceGhs: plan.priceGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, capacity: plan.capacity, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, smsAddOn: plan.smsAddOn, termCalendar: plan.termCalendar })) });
   }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/payments/paystack/renewal-quote') {
+    const query = new URL(req.url, 'http://edutrack.local').searchParams;
+    const type = subscriptionPolicy.normalizeSchoolType(query.get('schoolType') || query.get('packageId'));
+    const plan = type ? subscriptionPolicy.planForSchoolType(type) : null;
+    if (!plan) return json(res, 400, { error: 'Unsupported subscription plan' });
+    return json(res, 200, { planId: plan.id, schoolType: type, amount: plan.priceGhs, amountGhs: plan.priceGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, firstTermFree: false, smsIncluded: plan.smsIncluded, capacity: plan.capacity });
+  }
   if (req.method === 'POST' && req.url === '/api/subscriptions/quote') {
     if (!requireSameOrigin(req, res)) return;
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid subscription quote request' }); }
@@ -586,6 +593,28 @@ async function handler(req, res) {
     let stored; try { stored = await privateStorage.get(record.storageName); } catch { return json(res, 404, { error: 'File not found' }); } if (!stored) return json(res, 404, { error: 'File not found' });
     res.writeHead(200, { 'Content-Type': record.mimeType, 'Content-Disposition': `attachment; filename="${record.id}${path.extname(record.storageName)}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', ...securityHeaders() }); return stored.stream.pipe(res);
   }
+  if (req.method === 'POST' && req.url === '/api/payments/paystack/initialize') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = await authorize(req, res, db, { permission: 'payments.manage' }); if (!auth) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment request' }); }
+    const planId = validateText(input.planId || input.packageId || input.subscriptionPackageId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
+    const plan = planFor(planId); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
+    const idempotencyKey = validateText(req.headers['x-idempotency-key'] || input.clientRequestId, { required: true, max: 120, pattern: /^[A-Za-z0-9._-]+$/ });
+    if (!idempotencyKey) return json(res, 400, { error: 'A valid idempotency key is required' });
+    const existing = relational.isConfigured() ? await relational.findPaymentIntent(auth.user.id, idempotencyKey) : db.paymentIntents.find(intent => intent.userId === auth.user.id && intent.idempotencyKey === idempotencyKey);
+    if (existing) return json(res, 200, { authorization: { reference: existing.reference, amount: Number(existing.amount), currency: existing.currency }, reference: existing.reference, amount: Number(existing.amount), currency: existing.currency, planId: existing.plan_id || existing.planId });
+    const reference = `EDU_${randomToken(18)}`;
+    const email = validateText(input.email || auth.user.email, { required: true, max: 254, pattern: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/ });
+    if (!email) return json(res, 400, { error: 'A valid payment email is required' });
+    if (relational.isConfigured()) await relational.createPaymentIntent({ reference, idempotencyKey, userId: auth.user.id, schoolId: input.schoolId || auth.user.schoolId || null, planId: plan.id, amount: plan.amount, currency: plan.currency, status: 'initialized' });
+    else { db.paymentIntents.push({ reference, idempotencyKey, userId: auth.user.id, schoolId: input.schoolId || auth.user.schoolId || null, planId: plan.id, amount: plan.amount, currency: plan.currency, status: 'initialized', createdAt: new Date().toISOString() }); saveDb(db); }
+    if (!process.env.PAYSTACK_SECRET_KEY) return json(res, 503, { error: 'Payment initialization unavailable' });
+    const paystackResponse = await fetch(`${process.env.PAYSTACK_API_URL || 'https://api.paystack.co'}/transaction/initialize`, { method: 'POST', headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, amount: plan.amount, currency: plan.currency, reference, metadata: { schoolId: input.schoolId || auth.user.schoolId || null, planId: plan.id, paymentPurpose: input.paymentPurpose || 'subscription_renewal' } }) });
+    const paystackPayload = await paystackResponse.json().catch(() => ({}));
+    const authorization = paystackPayload && paystackPayload.data;
+    if (!paystackResponse.ok || !paystackPayload.status || !authorization || !authorization.access_code || authorization.reference !== reference) return json(res, 502, { error: 'Payment initialization unavailable' });
+    return json(res, 201, { authorization: { access_code: authorization.access_code, reference: authorization.reference, amount: Number(authorization.amount || plan.amount), currency: authorization.currency || plan.currency, public_key: process.env.PAYSTACK_PUBLIC_KEY || null }, reference, amount: plan.amount, currency: plan.currency, planId: plan.id });
+  }
   if (req.method === 'POST' && req.url === '/api/payments/initialize') {
     if (!requireSameOrigin(req, res)) return;
     const auth = await authorize(req, res, db, { permission: 'payments.manage' }); if (!auth) return;
@@ -596,6 +625,23 @@ async function handler(req, res) {
     const planId = validateText(input.planId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ }); const plan = planFor(planId); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
     const reference = `EDU_${randomToken(18)}`; if (relational.isConfigured()) await relational.createPaymentIntent({ reference, idempotencyKey, userId: auth.user.id, schoolId: auth.user.schoolId || null, planId: plan.id, amount: plan.amount, currency: plan.currency, status: 'initialized' }); else { db.paymentIntents.push({ reference, idempotencyKey, userId: auth.user.id, planId: plan.id, amount: plan.amount, currency: plan.currency, status: 'initialized', createdAt: new Date().toISOString() }); saveDb(db); }
     return json(res, 201, { reference, amount: plan.amount, currency: plan.currency, planId: plan.id });
+  }
+  if (req.method === 'GET' && /^\/api\/payments\/paystack\/verify\/[A-Za-z0-9._-]+$/.test(req.url)) {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = await authorize(req, res, db, { permission: 'payments.manage' }); if (!auth) return;
+    const reference = paymentRef(req.url.split('/').pop());
+    const intent = reference && (relational.isConfigured() ? await relational.findPaymentIntentByReference(auth.user.id, reference) : db.paymentIntents.find(item => item.reference === reference && item.userId === auth.user.id));
+    if (!intent) return json(res, 404, { error: 'Payment not found' });
+    if (relational.isConfigured() ? await relational.findPaymentTransaction(reference) : db.transactions.some(tx => tx.reference === reference)) return json(res, 200, { status: 'verified', transaction: { reference, status: 'success' } });
+    if (!process.env.PAYSTACK_SECRET_KEY) return json(res, 503, { error: 'Payment verification unavailable' });
+    const response = await fetch(`${process.env.PAYSTACK_API_URL || 'https://api.paystack.co'}/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } });
+    if (!response.ok) return json(res, 502, { error: 'Payment verification unavailable' });
+    const result = await response.json(); const data = result && result.data; const verifiedPlan = planFor(intent.plan_id || intent.planId);
+    if (!result.status || !data || data.status !== 'success' || !verifiedPlan || Number(data.amount) !== Number(intent.amount) || String(data.currency).toUpperCase() !== String(intent.currency).toUpperCase()) return json(res, 400, { error: 'Payment verification failed' });
+    let applied;
+    if (relational.isConfigured()) applied = await relational.recordVerifiedPayment({ reference, userId: auth.user.id, schoolId: intent.school_id || intent.schoolId || auth.user.schoolId || null, planId: verifiedPlan.id, durationDays: verifiedPlan.durationDays, eventType: 'verification', payload: { source: 'paystack_verify' } });
+    else { intent.status = 'verified'; applied = applyTrustedPayment(db, { reference, user: auth.user, plan: verifiedPlan, amount: intent.amount, currency: intent.currency }); saveDb(db); }
+    return json(res, 200, { status: 'verified', transaction: { ...(applied.transaction || {}), reference, amount: data.amount, currency: data.currency, paid_at: data.paid_at || new Date().toISOString() } });
   }
   if (req.method === 'POST' && req.url === '/api/payments/verify') {
     if (!requireSameOrigin(req, res)) return;

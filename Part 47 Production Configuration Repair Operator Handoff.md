@@ -25,7 +25,7 @@ After those prerequisites exist, merge the reviewed repair branch through the no
 
 Part 47 was finalized without starting Part 48. The validated source branch `part47-production-config-repair` at `86a149493d05edab749d7a71c287efbb7c33baa0` was merged into `main` using a non-fast-forward merge. The resulting release commit is `cf917296f0586986fe7f09839ad07770934f7870`, and it was pushed successfully to `origin/main`.
 
-Vercel created production deployment `dpl_EXvSJiaVQRMQ3CzxaaEFiU5Lk1xy` from the release SHA. The deployment state is **READY**, target **production**, and the deployment URL is `https://edutrack-cr30x0our-frank12517s-projects.vercel.app`. The configured project runtime reports **Node.js 22.x**, matching the repository requirement.
+Vercel created final production deployment `dpl_2yf8VjqLvLRjjhzLVdH5Pgv5j9iw` from the final release SHA `f7edb655b6388759cf4d3b2b3da0a4bb99f37f6a`. The deployment state is **READY**, target **production**, and the deployment URL is `https://edutrack-hinl1iqjb-frank12517s-projects.vercel.app`. The configured project runtime reports **Node.js 22.x**, matching the repository requirement.
 
 Read-only HTTPS verification was performed against the configured canonical domain. `https://www.edutrackgh.online/` returned the EduTrack application with HTTP 200. `https://www.edutrackgh.online/api/health` returned the fail-closed application response `{"error":"Service unavailable"}`, and `https://www.edutrackgh.online/api/auth/session` returned the same response. These endpoint results confirm routing and fail-closed behavior, but they do not prove healthy production infrastructure because the required database and external service configuration remain unavailable.
 

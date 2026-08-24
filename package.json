@@ -37,6 +37,7 @@
     "test:part47": "node test/part47-plugin-discovery.spec.js && node test/part47-infrastructure.spec.js && node test/part47-vercel-access.spec.js && node test/part47-environment-management.spec.js && node test/part47-node-runtime.spec.js && node test/part47-database-access.spec.js && node test/part47-storage-access.spec.js && node test/part47-paystack-access.spec.js && node test/part47-delivery-access.spec.js && node test/part47-monitoring-access.spec.js && node test/part47-backup-access.spec.js && node test/part47-rollback-access.spec.js && node test/part47-health-session.spec.js && node test/part47-cors-security.spec.js && node test/part47-authentication.spec.js && node test/part47-rbac-tenant.spec.js && node test/part47-mobile-performance.spec.js",
     "test:part47:browser": "node test/part47-staging-deployment.browser.spec.js",
     "test:payment-paystack-native": "node test/payment-paystack-native-checkout.spec.js",
+    "test:part50": "node test/part50-production-readiness.spec.js",
     "production:deployment-check": "node scripts/production-deployment-check.js",
     "production:paystack-check": "node scripts/production-paystack-check.js",
     "production:storage-check": "node scripts/production-storage-check.js",

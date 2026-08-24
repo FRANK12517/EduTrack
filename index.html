@@ -147782,14 +147782,17 @@ window.SRG_ANNUAL = (function(){
             '<div id="subv2-renew-package-error" style="color:#c0392b;font-size:.78rem;margin-top:.5rem;display:none">⚠ Please select a subscription package.</div>' +
             '<div class="sub-section-title" style="margin-top:1rem">③ Subscription Period</div>' +
             '<div class="sub-form-grid">' +
-              '<div class="sub-form-group"><label>Subscription Period <span class="sub-req-star">*</span></label><select id="subv2-renew-period" aria-label="Subscription period" required><option value="">— Select Term —</option><option value="term_1">Term 1</option><option value="term_2">Term 2</option><option value="term_3">Term 3</option></select></div>' +
+              '<div class="sub-form-group"><label>Subscription Term <span class="sub-req-star">*</span></label><select id="subv2-renew-period" aria-label="Subscription term" required><option value="">— Select Term —</option><option value="term_1">Term 1</option><option value="term_2">Term 2</option><option value="term_3">Term 3</option></select></div>' +
+              '<div class="sub-form-group"><label>Academic Year <span class="sub-req-star">*</span></label><input id="subv2-renew-academic-year" type="text" inputmode="numeric" placeholder="2026/2027" pattern="\\d{4}/\\d{4}"/></div>' +
+              '<div class="sub-form-group" id="subv2-private-term-dates"><label>Reopening Date <span class="sub-req-star">*</span></label><input id="subv2-renew-reopening-date" type="date"/></div>' +
+              '<div class="sub-form-group" id="subv2-private-term-close"><label>Vacation / Term-Closing Date <span class="sub-req-star">*</span></label><input id="subv2-renew-closing-date" type="date"/></div>' +
               '<div class="sub-form-group"><label>Payment Method</label><div id="subv2-renew-paymethod" style="padding:.65rem .75rem;border:1px solid #d0d8e8;border-radius:8px;background:#f5f7fb;font-weight:800;color:#0e7c86">Paystack</div></div>' +
             '</div>' +
             '<div id="subv2-renew-payment-panel" style="margin-top:1rem;padding:1rem;border:1px solid #8bcbd2;border-radius:10px;background:#effbfd">' +
               '<div style="font-weight:800;color:#0d1b3e;margin-bottom:.35rem">💳 Paystack Payment</div>' +
               '<div style="font-size:.82rem;color:#52627d;margin-bottom:.5rem">Subscription Period: <strong id="subv2-renew-period-label">—</strong></div>' +
               '<div style="font-size:1.15rem;font-weight:900;color:#0e7c86;margin-bottom:.65rem">Pay GHC <span id="subv2-renew-amount">—</span></div>' +
-              '<div id="subv2-renew-pay-status" style="font-size:.78rem;color:#52627d;margin-bottom:.65rem">Ready to Pay. Select a week to load the current amount.</div>' +
+              '<div id="subv2-renew-pay-status" style="font-size:.78rem;color:#52627d;margin-bottom:.65rem">Ready to Pay. Select a term to load the current amount.</div>' +
               '<button id="subv2-renew-pay-btn" type="button" class="btn btn-primary" style="width:100%" onclick="subv2RenewPayWithPaystack()">💳 Pay with Paystack</button>' +
             '</div>' +
             '</div>' +
@@ -148825,15 +148828,15 @@ window.SRG_ANNUAL = (function(){
   async function loadQuote(){
     if(el('subv2-renew-period-label')) el('subv2-renew-period-label').textContent=periodLabel();
     if(!selectedPackage){setAmount(null);setStatus('Select a Package.','Choose a subscription package before selecting a renewal period.');return;}
-    if(!period()){setAmount(null);setStatus('Ready to Pay.','Select a subscription week to load the current amount.');return;}
+    if(!period()){setAmount(null);setStatus('Ready to Pay.','Select a subscription term to load the current amount.');return;}
     setStatus('Loading Amount.','Retrieving the current subscription price from the server.');
     try{
-      var qschool=schoolLookup(); var qsid=qschool ? '&schoolId='+encodeURIComponent(qschool.id) : ''; var r=await fetch('/api/payments/paystack/renewal-quote?period='+encodeURIComponent(period())+'&packageId='+encodeURIComponent(selectedPackage)+qsid,{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
+      var qschool=schoolLookup(); var qsid=qschool ? '&schoolId='+encodeURIComponent(qschool.id) : ''; var qay=val('subv2-renew-academic-year'); var r=await fetch('/api/payments/paystack/renewal-quote?period='+encodeURIComponent(period())+'&packageId='+encodeURIComponent(selectedPackage)+'&academicYear='+encodeURIComponent(qay)+qsid,{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
       if(!r.ok || !Number.isFinite(Number(d.amount))) throw new Error(d.message||'Unable to load the current subscription amount.');
       setAmount(d.amount); setStatus('Ready to Pay.','Payment method: Paystack.');
     }catch(e){ setAmount(null); setStatus('Amount Pending.','The server will confirm the authoritative amount when payment starts.'); }
   }
-  function payload(school){ var storedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); var type=storedType==='public'||storedType==='government'?'government':'private'; selectedPackage=type; window.subv2RenewSelectedPackage=type; return {schoolId:school.id,schoolType:type,schoolName:school.name,region:val('subv2-renew-region'),district:val('subv2-renew-district'),currentAccessCode:val('subv2-renew-code'),planId:type,subscriptionPackageId:type,packageId:type,packageName:packageName(),period:period(),contactPerson:val('subv2-renew-contact'),phone:val('subv2-renew-phone'),email:val('subv2-renew-email') || school.email || '',paymentPurpose:'subscription_renewal'}; }
+  function payload(school){ var storedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); var type=storedType==='public'||storedType==='government'?'government':'private'; selectedPackage=type; window.subv2RenewSelectedPackage=type; return {schoolId:school.id,schoolType:type,schoolName:school.name,region:val('subv2-renew-region'),district:val('subv2-renew-district'),currentAccessCode:val('subv2-renew-code'),planId:type,subscriptionPackageId:type,packageId:type,packageName:packageName(),period:period(),academicYear:val('subv2-renew-academic-year'),reopeningDate:val('subv2-renew-reopening-date'),closingDate:val('subv2-renew-closing-date'),contactPerson:val('subv2-renew-contact'),phone:val('subv2-renew-phone'),email:val('subv2-renew-email') || school.email || '',paymentPurpose:'subscription_renewal'}; }
   async function verify(reference){
     var r=await fetch('/api/payments/paystack/verify/'+encodeURIComponent(reference),{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
     if(!r.ok || d.status!=='verified' || !d.transaction) throw new Error(d.message||'Payment could not be verified.');
@@ -148852,8 +148855,8 @@ window.SRG_ANNUAL = (function(){
   window.subv2RenewPayWithPaystack = async function(){
     var err=el('subv2-renew-error'); if(err)err.style.display='none';
     var school=schoolLookup();
-    if(!val('subv2-renew-school')||!val('subv2-renew-region')||!val('subv2-renew-district')||!val('subv2-renew-code')||!selectedPackage||!period()||!val('subv2-renew-contact')||!val('subv2-renew-phone')) return fail(!selectedPackage ? 'Please select a subscription package before payment.' : 'Please complete all required renewal fields.');
-    if(!school) return fail('School not found for the selected Name / Region / District.');
+    if(!val('subv2-renew-school')||!val('subv2-renew-region')||!val('subv2-renew-district')||!val('subv2-renew-code')||!selectedPackage||!period()||!val('subv2-renew-academic-year')||!val('subv2-renew-contact')||!val('subv2-renew-phone')) return fail(!selectedPackage ? 'Please select a subscription package before payment.' : 'Please complete all required renewal fields.');
+    if(!school) return fail('School not found for the selected Name / Region / District.'); var selectedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); if((selectedType==='private'||selectedType==='private school') && (!val('subv2-renew-reopening-date')||!val('subv2-renew-closing-date'))) return fail('Private schools must provide reopening and term-closing dates.');
     var active=(typeof window.getActiveSchoolAccessCode==='function')?window.getActiveSchoolAccessCode(school.id):null;
     if(!active || String(active.accessCode||'').toUpperCase()!==val('subv2-renew-code').toUpperCase()) return fail('Current Access Code is incorrect or no longer active.');
     var data=payload(school); if(!data.email) return fail('A school/contact email is required for Paystack checkout.');

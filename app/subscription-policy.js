@@ -97,6 +97,12 @@ function firstTermFreeEligibility({ firstTermFreeUsed = false, schoolIdentityExi
   return !Boolean(firstTermFreeUsed) && !Boolean(schoolIdentityExists);
 }
 
+function firstTermFreeEligibilityForSchool({ schoolType, schoolIdentityKey, firstTermFreeUsed = false }) {
+  const type = normalizeSchoolType(schoolType);
+  const identity = String(schoolIdentityKey || '').trim();
+  return type === 'government' && Boolean(identity) && !Boolean(firstTermFreeUsed);
+}
+
 function firstTermFreeRecord({ schoolIdentityKey, term }) {
   const key = String(schoolIdentityKey || '').trim();
   if (!key) throw new Error('schoolIdentityKey is required for first-term-free tracking');
@@ -134,6 +140,7 @@ module.exports = {
   validateTermConfiguration,
   validateCapacity,
   firstTermFreeEligibility,
+  firstTermFreeEligibilityForSchool,
   firstTermFreeRecord,
   quote,
 };

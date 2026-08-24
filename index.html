@@ -148758,6 +148758,35 @@ window.SRG_ANNUAL = (function(){
      that renders the six access-level cards; this only adds a safety
      net for very narrow (mobile) and very wide (desktop) viewports. */
   #login-screen, .login-card { max-width: 100%; box-sizing: border-box; }
+  /* Mobile landing fix: the server-auth developer-access control is appended
+     as a sibling of #login-shell. Keep the root in a single full-width column
+     so that sibling flex items cannot shrink the main authentication surface
+     into a narrow side panel on small screens. */
+  #login-screen {
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  #login-shell {
+    width: 100%;
+    max-width: 80rem;
+    min-width: 0;
+    flex: 0 1 auto;
+    box-sizing: border-box;
+  }
+  #login-screen > #edutrack-part18-developer-access {
+    align-self: center;
+    max-width: calc(100% - 1rem);
+  }
+  .login-card {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
   @media (max-width: 420px) {
     .login-level-grid { grid-template-columns: repeat(2, 1fr) !important; }
   }

@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 const httpsOrigin = value => { try { const u = new URL(value); return u.protocol === 'https:' && !['localhost','127.0.0.1','::1'].includes(u.hostname); } catch { return false; } };
-const jsonPlans = value => { try { const parsed=JSON.parse(value||''); return parsed && typeof parsed==='object' && !Array.isArray(parsed) && Object.keys(parsed).length>0; } catch { return false; } };
 const pass=(id,area,evidence,action='None')=>({id,area,status:'PASS',evidence,requiredAction:action});
 const fail=(id,area,evidence,action)=>({id,area,status:'FAIL',evidence,requiredAction:action});
 const unknown=(id,area,evidence,action)=>({id,area,status:'NOT_PROVEN',evidence,requiredAction:action});
 const gates=[];
 const prod=process.env.NODE_ENV==='production';
 gates.push(prod?pass('node-env','Application','NODE_ENV=production'):fail('node-env','Application','NODE_ENV is not production','Set NODE_ENV=production for release execution'));
-gates.push(process.env.EDUTRACK_DATABASE_URL?pass('database-url','Database','EDUTRACK_DATABASE_URL is present'):fail('database-url','Database','EDUTRACK_DATABASE_URL is missing','Configure the relational database URL through the secret manager'));
+gates.push(process.env.EDUTRACK_DATABASE_URL||process.env.DATABASE_URL?pass('database-url','Database','Relational database URL is present'):fail('database-url','Database','EDUTRACK_DATABASE_URL or DATABASE_URL is missing','Configure the relational database URL through the secret manager'));
 gates.push(process.env.EDUTRACK_ENABLE_DEV_ACCESS==='true'?fail('dev-access','Authentication','Development access is enabled','Disable development access'):pass('dev-access','Authentication','Development access is disabled'));
 const origins=String(process.env.EDUTRACK_ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean);
 const validOrigins=origins.length>0&&origins.every(httpsOrigin)&&!origins.includes('*');
 gates.push(validOrigins?pass('origins','CORS','Exact HTTPS origins configured'):fail('origins','CORS','Missing, wildcard, localhost, or non-HTTPS origin','Configure exact production HTTPS origins'));
 gates.push(process.env.PAYSTACK_SECRET_KEY&&process.env.PAYSTACK_WEBHOOK_SECRET?pass('paystack-config','Paystack','Server-side Paystack configuration is present'):fail('paystack-config','Paystack','Required Paystack server configuration is missing','Configure Paystack secrets through the secret manager'));
-gates.push(jsonPlans(process.env.EDUTRACK_PAYMENT_PLANS)?pass('payment-plans','Paystack','Payment-plan JSON is non-empty and parseable'):fail('payment-plans','Paystack','Payment-plan JSON is missing or invalid','Configure a valid payment-plan contract'));
 gates.push(String(process.env.EDUTRACK_STORAGE_MODE||'').toLowerCase()==='s3'&&process.env.EDUTRACK_STORAGE_BUCKET?pass('s3-config','Storage','S3 mode and bucket are configured'):fail('s3-config','Storage','S3 mode or bucket is missing','Configure private S3-compatible storage'));
 gates.push(process.env.EDUTRACK_BACKUP_DESTINATION&&process.env.EDUTRACK_BACKUP_ENCRYPTION_KEY_FILE?pass('backup-config','Backup','Backup destination and encryption key reference are configured'):unknown('backup-config','Backup','External backup destination or encryption key reference is unavailable','Configure external encrypted backups and retention'));
 gates.push(process.env.EDUTRACK_RESET_DELIVERY_PROVIDER?pass('reset-delivery-config','Password reset','Reset delivery provider is configured'):unknown('reset-delivery-config','Password reset','Reset delivery provider is not configured','Configure an approved email/SMS provider without exposing reset tokens'));

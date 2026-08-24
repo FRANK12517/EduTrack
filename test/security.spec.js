@@ -44,7 +44,7 @@ async function run() {
     encoding: 'utf8'
   });
   assert.equal(provision.status, 0, provision.stderr || provision.stdout);
-  const server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), PAYSTACK_WEBHOOK_SECRET: WEBHOOK_SECRET, EDUTRACK_PAYMENT_PLANS: JSON.stringify({ annual: { amount: 12000, currency: 'GHS', durationDays: 365 } }) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), PAYSTACK_WEBHOOK_SECRET: WEBHOOK_SECRET,  }, stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     await waitForServer(server);
     const login = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: BASE }, body: JSON.stringify({ email: EMAIL, password: PASSWORD, accessCode: ACCESS }) });
@@ -93,15 +93,15 @@ async function run() {
     assert.deepEqual([...new Uint8Array(await download.arrayBuffer())], [0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00]);
     const spoofed = await request('/api/files/upload', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE }, body: JSON.stringify({ category: 'profile', filename: 'avatar.jpg', contentBase64: validPng }) });
     assert.equal(spoofed.status, 400);
-    const paymentOne = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE, 'x-idempotency-key': 'payment-key-1' }, body: JSON.stringify({ planId: 'annual', amount: 1, currency: 'USD', durationDays: 1 }) });
+    const paymentOne = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE, 'x-idempotency-key': 'payment-key-1' }, body: JSON.stringify({ planId: 'government', amount: 1, currency: 'USD', durationDays: 1 }) });
     assert.equal(paymentOne.status, 201);
     const intent = await paymentOne.json();
-    assert.equal(intent.amount, 12000);
+    assert.equal(intent.amount, 13000);
     assert.equal(intent.currency, 'GHS');
-    const paymentRepeat = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE, 'x-idempotency-key': 'payment-key-1' }, body: JSON.stringify({ planId: 'annual', amount: 999999 }) });
+    const paymentRepeat = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE, 'x-idempotency-key': 'payment-key-1' }, body: JSON.stringify({ planId: 'government', amount: 999999 }) });
     assert.equal(paymentRepeat.status, 200);
     assert.equal((await paymentRepeat.json()).reference, intent.reference);
-    const event = JSON.stringify({ id: 'evt_1', event: 'charge.success', data: { reference: intent.reference, status: 'success', amount: 12000, currency: 'GHS' } });
+    const event = JSON.stringify({ id: 'evt_1', event: 'charge.success', data: { reference: intent.reference, status: 'success', amount: 13000, currency: 'GHS' } });
     const signature = crypto.createHmac('sha512', WEBHOOK_SECRET).update(event).digest('hex');
     const webhook = await request('/api/payments/paystack/webhook', { method: 'POST', headers: { 'content-type': 'application/json', 'x-paystack-signature': signature }, body: event });
     assert.equal(webhook.status, 200);

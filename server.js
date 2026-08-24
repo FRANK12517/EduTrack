@@ -386,7 +386,7 @@ async function handler(req, res) {
     const auth = await authorize(req, res, db, { permission: 'subscriptions.manage', scope: { schoolId } }); if (!auth) return;
     try {
       if (relational.isConfigured()) {
-        const result = await relational.claimFirstTermFree(schoolId);
+        const result = await relational.claimFirstTermFree(schoolId, { userId: auth.user.id, term: input.term || null });
         return json(res, result.claimed ? 200 : 409, { ok: result.claimed, claimed: result.claimed, firstTermFreeUsed: true });
       }
       const school = (db.schools || []).find((row) => String(row.id) === schoolId && row.active !== false);
@@ -394,8 +394,8 @@ async function handler(req, res) {
       const type = subscriptionPolicy.normalizeSchoolType(school.ownership_type || school.ownershipType || school.schoolType);
       if (type !== 'government') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });
       if (Boolean(school.first_term_free_used ?? school.firstTermFreeUsed)) return json(res, 409, { ok: false, claimed: false, firstTermFreeUsed: true });
-      school.first_term_free_used = true; school.firstTermFreeUsed = true; school.first_term_free_used_at = new Date().toISOString(); school.firstTermFreeUsedAt = school.first_term_free_used_at; saveDb(db);
-      return json(res, 200, { ok: true, claimed: true, firstTermFreeUsed: true });
+      school.first_term_free_used = true; school.firstTermFreeUsed = true; school.first_term_free_used_at = new Date().toISOString(); school.firstTermFreeUsedAt = school.first_term_free_used_at; db.subscriptions = db.subscriptions || []; db.subscriptions.push({ id: id('sub'), userId: auth.user.id, schoolId, planId: 'government', active: true, firstTermFree: true, startsAt: school.first_term_free_used_at, expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(), renewalState: 'FIRST_TERM_FREE' }); saveDb(db);
+      return json(res, 200, { ok: true, claimed: true, firstTermFreeUsed: true, planId: 'government', firstTermFree: true });
     } catch (error) {
       if (error?.code === 'SCHOOL_NOT_FOUND') return json(res, 404, { error: 'School not found' });
       if (error?.code === 'FIRST_TERM_FREE_NOT_APPLICABLE') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });

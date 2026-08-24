@@ -40654,6 +40654,7 @@ function subGetDaysLeft(expiryISO) {
 function subIsLocked(school) {
   if (!school) return false;
   if (school.status === 'locked') return true;
+  if (school.status === 'pending_payment' || school.status === 'pending') return true;
   if (school.status === 'expired') return true;
   if (subGetDaysLeft(school.expiryDate) <= 0 && school.status !== 'active') return true;
   return false;
@@ -40662,6 +40663,7 @@ function subIsLocked(school) {
 function subGetSchoolStatus(school) {
   const days = subGetDaysLeft(school.expiryDate);
   if (school.status === 'locked') return 'locked';
+  if (school.status === 'pending_payment' || school.status === 'pending') return 'pending_payment';
   if (school.status === 'active' && days > 0) return 'active';
   if (school.status === 'trial') {
     if (days > 0) return 'trial';
@@ -149428,6 +149430,38 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',install); else install();
 })();
 </script>
+
+<script id="edutrack-subscription-policy-v1">
+(function EDUTRACK_SUBSCRIPTION_POLICY(){
+  'use strict';
+  if(window.EDUTRACK_SUBSCRIPTION_POLICY) return;
+  var MODEL={
+    government:{id:'government',name:'EduTrack Government School Plan',priceGhs:130,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:true,smsIncluded:0,termCalendar:'central'},
+    private:{id:'private',name:'EduTrack Private School Plan',priceGhs:200,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:false,smsIncluded:500,termCalendar:'school'}
+  };
+  function byId(id){return document.getElementById(id)}
+  function val(id){var el=byId(id);return el?String(el.value||'').trim():''}
+  function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(ch){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])})}
+  function normalized(value){return String(value||'').trim().toLowerCase()}
+  function getType(){return val('subv2-sch-school-type')||'government'}
+  function planFor(type){return MODEL[type]||null}
+  function daysBetween(start,end){var s=new Date(start+'T00:00:00Z'),e=new Date(end+'T00:00:00Z');return Math.round((e-s)/86400000)+1}
+  function getTerm(){var type=getType(),year=val('subv2-sch-academic-year'),number=Number(val('subv2-sch-term-number')||1),start=val('subv2-sch-start-date'),end=val('subv2-sch-end-date');if(type==='government')return{schoolType:type,academicYear:year,termNumber:number,governmentTermId:val('subv2-sch-government-term')||'central-current',startDate:null,endDate:null,durationDays:null};return{schoolType:type,academicYear:year,termNumber:number,governmentTermId:null,startDate:start,endDate:end,durationDays:start&&end?daysBetween(start,end):null}}
+  function showError(message){var el=byId('subv2-schoolreg-error');if(el){el.textContent='⚠ '+message;el.style.display=''}return false}
+  function validRegistration(){var type=getType(),term=getTerm();if(!planFor(type))return showError('Select Government School or Private School.');if(!/^\d{4}\/\d{4}$/.test(term.academicYear))return showError('Enter the academic year in YYYY/YYYY format.');if([1,2,3].indexOf(term.termNumber)<0)return showError('Select Term 1, Term 2, or Term 3.');if(type==='private'){if(!/^\d{4}-\d{2}-\d{2}$/.test(term.startDate)||!/^\d{4}-\d{2}-\d{2}$/.test(term.endDate))return showError('Private schools must provide reopening and vacation dates.');if(!Number.isInteger(term.durationDays)||term.durationDays<1)return showError('Private-school vacation date must be on or after the reopening date.');}return true}
+  function identityKey(school){return [school.name,school.region,school.district].map(normalized).join('|')}
+  function newestSchool(){try{var rows=typeof v2GetArr==='function'?v2GetArr(SUB_KEYS.schools):[];return rows.slice().sort(function(a,b){return String(b.registeredAt||'').localeCompare(String(a.registeredAt||''))})[0]||null}catch(e){return null}}
+  function updateStoredSchool(){var school=newestSchool();if(!school)return null;var type=getType(),plan=planFor(type),term=getTerm(),now=new Date().toISOString();school.schoolType=type;school.subscriptionPlan=type;school.type=type==='government'?'GOVERNMENT':'PRIVATE';school.planName=plan.name;school.priceAtSubscription=plan.firstTermFree?0:plan.priceGhs;school.currency=plan.currency;school.billingPeriod='term';school.capacityLimits={students:plan.capacity.students,staff:plan.capacity.staff};school.smsCreditsIncluded=plan.smsIncluded;school.smsCreditsRemaining=plan.smsIncluded;school.termCalendar=plan.termCalendar;school.academicYear=term.academicYear;school.termNumber=term.termNumber;school.termStartDate=term.startDate;school.termEndDate=term.endDate;school.governmentTermId=term.governmentTermId;school.termDurationDays=term.durationDays;school.firstTermFreeIdentityKey=identityKey(school);school.firstTermFreeUsed=type==='government'?(school.firstTermFreeUsed!==false):false;school.firstTermFreeUsedAt=type==='government'?now:null;school.paymentStatus=type==='government'?'free_term':'pending';school.paymentRequired=type==='private';if(type==='private'){school.status='pending_payment';school.expiryDate=term.endDate?new Date(term.endDate+'T23:59:59.999Z').toISOString():school.expiryDate}else{school.status='trial';if(term.endDate)school.expiryDate=new Date(term.endDate+'T23:59:59.999Z').toISOString()}var rows=v2GetArr(SUB_KEYS.schools);var index=rows.findIndex(function(item){return item.id===school.id});if(index>=0){rows[index]=school;v2SetArr(SUB_KEYS.schools,rows)}return school}
+  function summary(type){var plan=planFor(type),term=getTerm();if(!plan)return '';var lines=['<strong>'+esc(plan.name)+'</strong> · <strong>GH₵'+plan.priceGhs+'/term</strong>','Up to '+plan.capacity.students+' students · '+plan.capacity.staff+' teachers/staff'];if(plan.firstTermFree)lines.push('<span style="color:#176b45;font-weight:800">First complete term free once per school</span>');if(plan.smsIncluded)lines.push('<span style="color:#0e7c86;font-weight:800">'+plan.smsIncluded+' SMS credits included per term</span>');lines.push(plan.termCalendar==='central'?'Government term dates are centrally controlled.':'Private school chooses reopening and vacation dates.');if(type==='private'&&term.durationDays)lines.push('Selected term: '+term.durationDays+' days');return lines.join('<br>')}
+  function render(){var form=byId('subv2-schoolreg-form');if(!form)return;var grid=form.querySelector('.sub-form-grid');if(!grid)return;var type=byId('subv2-sch-school-type');if(!type){var block=document.createElement('div');block.className='sub-form-group';block.style.gridColumn='1/-1';block.innerHTML='<label>School Type <span class="sub-req-star">*</span></label><select id="subv2-sch-school-type"><option value="government">Government / Public School</option><option value="private">Private School</option></select><div id="edutrack-plan-summary" style="margin-top:.55rem;padding:.65rem .75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd;color:#234;font-size:.78rem;line-height:1.45"></div>';grid.insertBefore(block,grid.firstChild);type=byId('subv2-sch-school-type');type.addEventListener('change',render);['subv2-sch-academic-year','subv2-sch-term-number','subv2-sch-government-term','subv2-sch-start-date','subv2-sch-end-date'].forEach(function(id){var holder=document.createElement('div');holder.className='sub-form-group';holder.dataset.policyField=id;var label=id==='subv2-sch-academic-year'?'Academic Year':id==='subv2-sch-term-number'?'Term':id==='subv2-sch-government-term'?'Government Calendar Term':id==='subv2-sch-start-date'?'Reopening Date':'Vacation / Closing Date';var input=id==='subv2-sch-term-number'?'<select id="'+id+'"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>':id==='subv2-sch-government-term'?'<input id="'+id+'" type="text" value="central-current" readonly>':'<input id="'+id+'" type="'+(id.indexOf('date')>=0?'date':'text')+'" '+(id==='subv2-sch-academic-year'?'value="2026/2027" placeholder="YYYY/YYYY"':'')+'>';holder.innerHTML='<label>'+label+' <span class="sub-req-star">*</span></label>'+input;grid.insertBefore(holder,grid.children[1]);var inputEl=byId(id);if(inputEl)inputEl.addEventListener('input',render)});}
+    var isPrivate=(type.value==='private');document.querySelectorAll('[data-policy-field]').forEach(function(el){var id=el.dataset.policyField;el.style.display=(isPrivate||id==='subv2-sch-academic-year'||id==='subv2-sch-term-number'||id==='subv2-sch-government-term')?'':'none'});var sum=byId('edutrack-plan-summary'),summaryHtml=summary(type.value);if(sum&&sum.innerHTML!==summaryHtml)sum.innerHTML=summaryHtml;var government=byId('subv2-sch-government-term');if(government)government.parentElement.style.display=isPrivate?'none':'';}
+  function install(){render();var submit=window.subv2SchoolRegSubmit;if(typeof submit==='function'&&!submit.__part46){var wrapped=function(){if(!validRegistration())return false;var result=submit.apply(this,arguments);var school=updateStoredSchool();if(school){var details=byId('subv2-schoolreg-success-details');if(details){details.insertAdjacentHTML('beforeend','<div class="school-detail-row"><span class="label">Plan</span><span class="value">'+esc(school.planName)+' · GH₵'+school.priceAtSubscription+'/term</span></div><div class="school-detail-row"><span class="label">Term</span><span class="value">'+esc(school.academicYear)+' · Term '+esc(school.termNumber)+'</span></div><div class="school-detail-row"><span class="label">Capacity</span><span class="value">'+school.capacityLimits.students+' students · '+school.capacityLimits.staff+' teachers/staff</span></div>'+(school.schoolType==='private'?'<div class="school-detail-row"><span class="label">SMS</span><span class="value">'+school.smsCreditsIncluded+' credits included</span></div><div style="margin-top:.7rem;padding:.7rem;background:#fff4e5;border:1px solid #e8a33d;border-radius:8px;color:#8a5300;font-weight:700">Payment required before private-school activation. Use the Paystack renewal flow after registration to activate this school.</div>':'<div class="school-detail-row"><span class="label">First Term</span><span class="value" style="color:#176b45">FREE — one-time school offer</span></div>'));}}return result};wrapped.__part46=true;window.subv2SchoolRegSubmit=wrapped;}}
+  window.EDUTRACK_SUBSCRIPTION_POLICY={version:'part46-government-private-term-v1',plans:MODEL,planFor:planFor,term:getTerm,validateRegistration:validRegistration,install:install};
+  var observer=new MutationObserver(install);if(document.body)observer.observe(document.body,{childList:true,subtree:true});setTimeout(install,200);setTimeout(install,1000);setTimeout(install,2500);
+})();
+</script>
+
+
 
 </body></html>
 

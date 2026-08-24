@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const relational = require('./db/relational');
 const authorization = require('./app/auth/authorization');
 const privateStorage = require('./app/private-storage');
+const subscriptionPolicy = require('./app/subscription-policy');
 
 const ROOT = __dirname;
 const SERVERLESS_RUNTIME = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -344,6 +345,17 @@ async function handler(req, res) {
   if (!applyCors(req, res)) { auditSecurityEvent(db, 'CORS_REJECTED', req, { endpoint: req.url }); saveDb(db); return json(res, 403, { error: 'Origin not allowed' }); }
   if (req.method === 'OPTIONS') { res.writeHead(204, securityHeaders()); return res.end(); }
   if (req.method === 'GET' && req.url === '/api/health') { try { if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' }); if (relational.isConfigured()) await relational.ensureInitialized(); return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' }); } catch { return json(res, 503, { ok: false, error: 'Service unavailable' }); } }
+  if (req.method === 'GET' && req.url === '/api/subscriptions/plans') {
+    return json(res, 200, { policyVersion: subscriptionPolicy.POLICY_VERSION, plans: Object.values(subscriptionPolicy.PLANS).map(plan => ({ id: plan.id, name: plan.name, priceGhs: plan.priceGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, capacity: plan.capacity, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, smsAddOn: plan.smsAddOn, termCalendar: plan.termCalendar })) });
+  }
+  if (req.method === 'POST' && req.url === '/api/subscriptions/quote') {
+    if (!requireSameOrigin(req, res)) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid subscription quote request' }); }
+    try {
+      const term = input.term ? subscriptionPolicy.validateTermConfiguration(input.term) : null;
+      return json(res, 200, subscriptionPolicy.quote({ schoolType: input.schoolType, term, firstTermFreeUsed: input.firstTermFreeUsed, schoolIdentityExists: input.schoolIdentityExists }));
+    } catch (error) { return json(res, 400, { error: error.message || 'Invalid subscription quote request' }); }
+  }
   if (req.method === 'POST' && req.url === '/api/auth/developer-login') {
     if (!requireSameOrigin(req, res)) return;
     let input; try { input = await body(req); } catch { return json(res, 400, { error: DEVELOPER_AUTH_ERROR }); }

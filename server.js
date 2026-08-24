@@ -243,7 +243,7 @@ function inputScope(input = {}) { const scope = {}; for (const key of ['tenantId
 function requireFields(input, fields) { for (const field of fields) if (typeof input[field] !== 'string' || !input[field].trim()) throw domainInputError(`Missing required field: ${field}`); }
 function canAssignRole(auth, role) { const roleName = actorRole(auth); const allowed = { DEVELOPER_ROOT: ['DEVELOPER_ROOT','SUPER_ADMIN','NATIONAL_ADMIN','REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], SUPER_ADMIN: ['NATIONAL_ADMIN','REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], NATIONAL_ADMIN: ['REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], REGIONAL_ADMIN: ['DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], DISTRICT_ADMIN: ['HEADTEACHER','TEACHER','PARENT','STUDENT'], HEADTEACHER: ['TEACHER'], TEACHER: [], PARENT: [], STUDENT: [] }; return Boolean(role && (allowed[roleName] || []).includes(role)); }
 async function auditDomainMutation(auth, action, req, metadata = {}) { if (relational.isConfigured()) await relational.appendAudit({ id: id('audit'), action, userId: auth?.user?.id || null, at: new Date().toISOString(), ip: clientIp(req), ...metadata }); else { const db = loadDb(); auditSecurityEvent(db, action, req, { userId: auth?.user?.id || null, ...metadata }); saveDb(db); } }
-function publicSchool(row) { return row ? { id: row.id, schoolCode: row.school_code, name: row.name, ownershipType: row.ownership_type, tenantId: row.tenant_id, districtId: row.district_id, address: row.address, contactPhone: row.contact_phone, contactEmail: row.contact_email, registrationMetadata: row.registration_metadata, active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at } : null; }
+function publicSchool(row) { return row ? { id: row.id, schoolCode: row.school_code, name: row.name, ownershipType: row.ownership_type, tenantId: row.tenant_id, districtId: row.district_id, address: row.address, contactPhone: row.contact_phone, contactEmail: row.contact_email, registrationMetadata: row.registration_metadata, firstTermFreeUsed: Boolean(row.first_term_free_used ?? row.firstTermFreeUsed), smsCreditsBalance: Number(row.sms_credits_balance ?? row.smsCreditsBalance ?? 0), active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at } : null; }
 function publicStaff(row) { return row ? { id: row.id, userId: row.user_id, staffIdentifier: row.staff_identifier, fullName: row.full_name, phone: row.phone, email: row.email, staffType: row.staff_type, status: row.status, tenantId: row.tenant_id, regionId: row.region_id, districtId: row.district_id, schoolId: row.school_id, createdAt: row.created_at, updatedAt: row.updated_at } : null; }
 function publicStudent(row) { return row ? { id: row.id, admissionNumber: row.admission_number, studentIdentifier: row.student_identifier, fullName: row.full_name, dateOfBirth: row.date_of_birth, gender: row.gender, tenantId: row.tenant_id, schoolId: row.school_id, classId: row.class_id, admissionDate: row.admission_date, specialNeeds: row.special_needs, emergencyContact: row.emergency_contact, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at } : null; }
 function publicClass(row) { return row ? { id: row.id, name: row.name, schoolId: row.school_id, tenantId: row.tenant_id, academicConfigRef: row.academic_config_ref, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at } : null; }
@@ -353,8 +353,43 @@ async function handler(req, res) {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid subscription quote request' }); }
     try {
       const term = input.term ? subscriptionPolicy.validateTermConfiguration(input.term) : null;
-      return json(res, 200, subscriptionPolicy.quote({ schoolType: input.schoolType, term, firstTermFreeUsed: input.firstTermFreeUsed, schoolIdentityExists: input.schoolIdentityExists }));
+      // Anonymous registration quotes are informational only. They never grant a free term;
+      // only an authorized request tied to a persistent school identity can do that.
+      if (!input.schoolId) return json(res, 200, subscriptionPolicy.quote({ schoolType: input.schoolType, term, firstTermFreeUsed: true, schoolIdentityExists: true }));
+      const auth = await authorize(req, res, db, { permission: 'subscriptions.manage', scope: { schoolId: String(input.schoolId) } });
+      if (!auth) return;
+      const school = relational.isConfigured()
+        ? (await relational.domainRows('SELECT id,ownership_type,first_term_free_used FROM schools WHERE id=? AND active=TRUE LIMIT 1', [String(input.schoolId)]))[0]
+        : (db.schools || []).find((row) => String(row.id) === String(input.schoolId) && row.active !== false);
+      if (!school) return json(res, 404, { error: 'School not found' });
+      const schoolType = subscriptionPolicy.normalizeSchoolType(school.ownership_type || school.ownershipType || input.schoolType);
+      if (!schoolType || (input.schoolType && subscriptionPolicy.normalizeSchoolType(input.schoolType) !== schoolType)) return json(res, 400, { error: 'School type does not match the persistent school record' });
+      return json(res, 200, subscriptionPolicy.quote({ schoolType, term, firstTermFreeUsed: Boolean(school.first_term_free_used ?? school.firstTermFreeUsed), schoolIdentityExists: true }));
     } catch (error) { return json(res, 400, { error: error.message || 'Invalid subscription quote request' }); }
+  }
+  if (req.method === 'POST' && req.url === '/api/subscriptions/claim-first-term-free') {
+    if (!requireSameOrigin(req, res)) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid first-term-free request' }); }
+    const schoolId = validateText(input.schoolId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
+    if (!schoolId) return json(res, 400, { error: 'schoolId is required' });
+    const auth = await authorize(req, res, db, { permission: 'subscriptions.manage', scope: { schoolId } }); if (!auth) return;
+    try {
+      if (relational.isConfigured()) {
+        const result = await relational.claimFirstTermFree(schoolId);
+        return json(res, result.claimed ? 200 : 409, { ok: result.claimed, claimed: result.claimed, firstTermFreeUsed: true });
+      }
+      const school = (db.schools || []).find((row) => String(row.id) === schoolId && row.active !== false);
+      if (!school) return json(res, 404, { error: 'School not found' });
+      const type = subscriptionPolicy.normalizeSchoolType(school.ownership_type || school.ownershipType || school.schoolType);
+      if (type !== 'government') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });
+      if (Boolean(school.first_term_free_used ?? school.firstTermFreeUsed)) return json(res, 409, { ok: false, claimed: false, firstTermFreeUsed: true });
+      school.first_term_free_used = true; school.firstTermFreeUsed = true; school.first_term_free_used_at = new Date().toISOString(); school.firstTermFreeUsedAt = school.first_term_free_used_at; saveDb(db);
+      return json(res, 200, { ok: true, claimed: true, firstTermFreeUsed: true });
+    } catch (error) {
+      if (error?.code === 'SCHOOL_NOT_FOUND') return json(res, 404, { error: 'School not found' });
+      if (error?.code === 'FIRST_TERM_FREE_NOT_APPLICABLE') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });
+      return json(res, 500, { error: 'First-term-free claim failed' });
+    }
   }
   if (req.method === 'POST' && req.url === '/api/auth/developer-login') {
     if (!requireSameOrigin(req, res)) return;

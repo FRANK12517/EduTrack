@@ -181,20 +181,28 @@ async function createSchool(input) {
   await ensureInitialized(); const conn = await getPool().getConnection(); const id = input.id || newId('school'); const now = iso(new Date());
   try { await conn.beginTransaction(); const [hierarchy] = await conn.query('SELECT d.id AS district_id,d.region_id,t.id AS tenant_id FROM districts d JOIN tenants t ON t.id=? AND t.active=TRUE WHERE d.id=? AND d.region_id=? LIMIT 1', [input.tenantId, input.districtId, input.regionId]); if (!hierarchy.length) throw new Error('INVALID_HIERARCHY'); await conn.query('INSERT INTO schools (id,school_code,name,ownership_type,tenant_id,district_id,address,contact_phone,contact_email,registration_metadata,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [id,input.schoolCode,input.name,input.ownershipType,input.tenantId,input.districtId,input.address||null,input.contactPhone||null,input.contactEmail||null,json(input.registrationMetadata||{}),true,now,now]); await conn.commit(); return (await conn.query('SELECT * FROM schools WHERE id=?',[id]))[0][0]; } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
-async function claimFirstTermFree(schoolId) {
+async function claimFirstTermFree(schoolId, options = {}) {
   await ensureInitialized(); const conn = await getPool().getConnection();
   try {
     await conn.beginTransaction();
     const [rows] = await conn.query('SELECT id,ownership_type,first_term_free_used,first_term_free_used_at FROM schools WHERE id=? AND active=TRUE LIMIT 1 FOR UPDATE', [schoolId]);
     if (!rows.length) throw Object.assign(new Error('SCHOOL_NOT_FOUND'), { code: 'SCHOOL_NOT_FOUND' });
     const school = rows[0];
-    if (String(school.ownership_type).toUpperCase() !== 'PUBLIC') throw Object.assign(new Error('FIRST_TERM_FREE_NOT_APPLICABLE'), { code: 'FIRST_TERM_FREE_NOT_APPLICABLE' });
+    const ownership = String(school.ownership_type || '').trim().toLowerCase();
+    if (!['government', 'public'].includes(ownership)) throw Object.assign(new Error('FIRST_TERM_FREE_NOT_APPLICABLE'), { code: 'FIRST_TERM_FREE_NOT_APPLICABLE' });
     if (Boolean(school.first_term_free_used)) { await conn.commit(); return { claimed: false, school }; }
-    await conn.query('UPDATE schools SET first_term_free_used=TRUE,first_term_free_used_at=?,updated_at=? WHERE id=?', [new Date(), new Date(), schoolId]);
+    const now = new Date();
+    await conn.query('UPDATE schools SET first_term_free_used=TRUE,first_term_free_used_at=?,updated_at=? WHERE id=?', [now, now, schoolId]);
+    if (options.userId) {
+      const subId = newId('sub');
+      const expires = new Date(now.getTime() + 90 * 86400000);
+      await conn.query('INSERT INTO subscriptions (id,user_id,school_id,plan_id,status,starts_at,expires_at,payment_reference,last_transaction_id,renewal_state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [subId, options.userId, schoolId, 'government', 'ACTIVE', iso(now), iso(expires), null, null, 'FIRST_TERM_FREE', iso(now), iso(now)]);
+    }
     await conn.commit();
-    return { claimed: true, school: { ...school, first_term_free_used: true, first_term_free_used_at: new Date() } };
+    return { claimed: true, school: { ...school, first_term_free_used: true, first_term_free_used_at: now } };
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
+
 async function updateSchool(id, input) { await ensureInitialized(); const fields=[]; const values=[]; for (const [key,column] of Object.entries({schoolCode:'school_code',name:'name',ownershipType:'ownership_type',address:'address',contactPhone:'contact_phone',contactEmail:'contact_email',active:'active'})) if (input[key] !== undefined) { fields.push(`${column}=?`); values.push(input[key]); } if (!fields.length) return null; values.push(new Date(),id); await getPool().query(`UPDATE schools SET ${fields.join(',')},updated_at=? WHERE id=?`,values); const rows=await domainRows('SELECT * FROM schools WHERE id=?',[id]); return rows[0]||null; }
 async function createStaff(input) { await ensureInitialized(); const conn=await getPool().getConnection(); const id=input.id||newId('staff'); const now=iso(new Date()); try { await conn.beginTransaction(); await conn.query('INSERT INTO staff (id,user_id,staff_identifier,full_name,phone,email,staff_type,status,tenant_id,region_id,district_id,school_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[id,input.userId||null,input.staffIdentifier,input.fullName,input.phone||null,input.email||null,input.staffType||'STAFF',input.status||'ACTIVE',input.tenantId,input.regionId||null,input.districtId||null,input.schoolId||null,now,now]); if(input.schoolId) await conn.query('INSERT INTO staff_school_assignments (staff_id,school_id,active,assigned_at) VALUES (?,?,1,?)',[id,input.schoolId,now]); if(input.userId&&input.role) { const [roles]=await conn.query('SELECT id FROM roles WHERE name=?',[input.role]); if(!roles.length) throw new Error('INVALID_ROLE'); await conn.query('INSERT INTO user_roles (user_id,role_id) VALUES (?,?)',[input.userId,roles[0].id]); } await conn.commit(); return (await conn.query('SELECT * FROM staff WHERE id=?',[id]))[0][0]; } catch(e){await conn.rollback();throw e;} finally{conn.release();} }
 async function updateStaff(id,input){await ensureInitialized();const fields=[];const values=[];for(const [key,column] of Object.entries({fullName:'full_name',phone:'phone',email:'email',staffType:'staff_type',status:'status',schoolId:'school_id',districtId:'district_id',regionId:'region_id'}))if(input[key]!==undefined){fields.push(`${column}=?`);values.push(input[key]);}if(!fields.length)return null;values.push(new Date(),id);await getPool().query(`UPDATE staff SET ${fields.join(',')},updated_at=? WHERE id=?`,values);const rows=await domainRows('SELECT * FROM staff WHERE id=?',[id]);return rows[0]||null;}

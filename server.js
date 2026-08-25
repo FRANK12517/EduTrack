@@ -27,7 +27,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });

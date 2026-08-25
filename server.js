@@ -27,7 +27,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css', 'edutrack-polish.css']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css', 'edutrack-polish.css']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -419,6 +419,9 @@ async function handler(req, res) {
   if (!ALLOWED_METHODS.has(req.method)) return json(res, 405, { error: 'Method not allowed' }, { Allow: 'GET, POST, PATCH, OPTIONS' });
   if (!applyCors(req, res)) { auditSecurityEvent(db, 'CORS_REJECTED', req, { endpoint: req.url }); saveDb(db); return json(res, 403, { error: 'Origin not allowed' }); }
   if (req.method === 'OPTIONS') { res.writeHead(204, securityHeaders()); return res.end(); }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/quizzes/')) { const id=decodeURIComponent(req.url.split('?')[0].split('/').pop()); const auth=await authorize(req,res,db,{roles:['STUDENT']}); if(!auth)return; try { const quiz=await relational.getStudentQuiz(id,auth.user.id); if(!quiz)return json(res,404,{error:'Quiz not found'}); return json(res,200,quiz); } catch(e){return domainErrorResponse(res,e);} }
+  if (req.method === 'POST' && req.url === '/api/quizzes/submit') { if(!requireSameOrigin(req,res))return; let input; try{input=await body(req);requireFields(input,['quizId','answers']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{roles:['STUDENT']}); if(!auth)return; try { const result=await relational.submitStudentQuiz(input,auth.user.id); await auditDomainMutation(auth,'QUIZ_SUBMITTED',req,{quizId:input.quizId,attemptId:result.attempt&&result.attempt.id}); return json(res,200,result); } catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'GET' && req.url === '/api/health') { try { if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' }); if (relational.isConfigured()) await relational.ensureInitialized(); return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' }); } catch { return json(res, 503, { ok: false, error: 'Service unavailable' }); } }
   if (req.method === 'POST' && /^\/api\/fees\/[A-Za-z0-9_-]+\/publish$/.test(req.url.split('?')[0])) {
     if (!requireSameOrigin(req, res)) return;

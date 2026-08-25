@@ -27,7 +27,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'edutrack-design-system.css']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -932,7 +932,7 @@ Write a concise professional education insight for the ' + level + ' level.');
     const safe = path.resolve(ROOT, requested);
     const relative = path.relative(ROOT, safe);
     if (relative.startsWith('..') || path.isAbsolute(relative) || requested.includes('\\0') || requested.split('/').some(part => part.startsWith('.')) || !SAFE_PUBLIC_FILES.has(relative) || !fs.existsSync(safe) || fs.statSync(safe).isDirectory()) return json(res, 404, { error: 'Not found' });
-    const ext = path.extname(safe); const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+    const ext = path.extname(safe); const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
     res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', ...securityHeaders() }); return fs.createReadStream(safe).pipe(res);
   }
   json(res, 404, { error: 'Not found' });

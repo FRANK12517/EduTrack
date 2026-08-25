@@ -53,6 +53,7 @@
     "test:security": "node test/security.spec.js",
     "test:final": "node test/final-security.spec.js",
     "test:ai": "node test/ai-intelligence.spec.js",
+    "test:qr-attendance": "node test/qr-attendance.spec.js",
     "test:part18": "node test/part18-authentication-foundation.spec.js",
     "test:part19": "node test/part19-database-foundation.spec.js",
     "test:part20": "node test/part20-rbac-tenant-isolation.spec.js",
@@ -64,7 +65,7 @@
     "test:part23:browser": "node test/part23-legacy-academic-browser.spec.js",
     "test:part24": "node test/part24-legacy-academic-integration.spec.js",
     "test:part24:browser": "node test/part24-legacy-academic-browser.spec.js",
-    "test": "npm run check && npm run test:protected && npm run test:security && npm run test:final && npm run test:ai",
+    "test": "npm run check && npm run test:protected && npm run test:security && npm run test:final && npm run test:ai && npm run test:qr-attendance",
     "test:part25": "node test/part25-legacy-academic-completion.spec.js",
     "test:part25:browser": "node test/part25-legacy-academic-browser.spec.js",
     "test:part26": "node test/part26-legacy-academic-final.spec.js",
@@ -84,6 +85,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1116.0",
-    "mysql2": "^3.23.4"
+    "mysql2": "^3.23.4",
+    "qrcode-generator": "^1.4.4"
   }
 }

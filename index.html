@@ -38963,6 +38963,7 @@ function fmsPrintOutstanding() {
     <tbody>${rowsHTML}</tbody></table>
 <\/script>
 
+
 </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);
@@ -147551,6 +147552,36 @@ window.SRG_ANNUAL = (function(){
   window.EDUTRACK_PART49_SUBSCRIPTION_MODEL_UI={install:install,syncPersistedSchoolType:syncPersistedSchoolType};
   if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});
   setTimeout(install,0);setTimeout(install,500);setTimeout(install,1500);
+})();
+</script>
+<style id="edutrack-ai-intelligence-style">
+  .edutrack-ai-shell{max-width:1100px;margin:0 auto;padding:1rem}.edutrack-ai-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:1rem}.edutrack-ai-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:1rem}.edutrack-ai-card h2,.edutrack-ai-card h3{margin-bottom:.5rem}.edutrack-ai-muted{color:var(--muted);font-size:.8rem;line-height:1.5}.edutrack-ai-chat{min-height:260px;max-height:480px;overflow:auto;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:.75rem}.edutrack-ai-message{padding:.65rem .75rem;border-radius:10px;margin:.45rem 0;white-space:pre-wrap;line-height:1.5;font-size:.86rem}.edutrack-ai-message.user{background:#e7f7f8;margin-left:12%}.edutrack-ai-message.assistant{background:#fff;border:1px solid #e4e9f2;margin-right:8%}.edutrack-ai-form{display:flex;gap:.5rem;margin-top:.75rem}.edutrack-ai-form textarea{flex:1;min-width:0;resize:vertical;min-height:66px;border:1px solid var(--border);border-radius:8px;padding:.65rem;font:inherit}.edutrack-ai-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}.edutrack-ai-kpi{background:#f8fafc;border-radius:8px;padding:.7rem}.edutrack-ai-kpi strong{display:block;font-size:1.2rem}.edutrack-ai-brief{white-space:pre-wrap;line-height:1.6;font-size:.86rem;background:#f8fafc;border-radius:8px;padding:.8rem;min-height:180px}.edutrack-ai-nav{color:var(--teal)!important;font-weight:700!important}@media(max-width:760px){.edutrack-ai-grid{grid-template-columns:1fr}.edutrack-ai-form{flex-direction:column}.edutrack-ai-form button{min-height:44px}.edutrack-ai-kpis{grid-template-columns:1fr 1fr}.edutrack-ai-shell{padding:.75rem}}
+</style>
+<div id="page-ai-intelligence" class="hidden" style="flex:1;overflow:auto">
+  <div class="edutrack-ai-shell">
+    <div class="page-title"><span>🧠</span> AI Assistant &amp; Executive Intelligence</div>
+    <p class="edutrack-ai-muted" style="margin:.35rem 0 1rem">AI-generated analysis is advisory and is grounded only in official EduTrack records within your authorized administrative scope.</p>
+    <div class="edutrack-ai-grid">
+      <section class="edutrack-ai-card"><h2>Ask EduTrack</h2><div id="edutrack-ai-chat" class="edutrack-ai-chat"><div class="edutrack-ai-message assistant">Ask an operational question about attendance, academics, fees, enrollment, or results. Unavailable metrics will be identified clearly.</div></div><form id="edutrack-ai-form" class="edutrack-ai-form"><textarea id="edutrack-ai-prompt" maxlength="12000" placeholder="Which classes need attention this term?"></textarea><button class="btn btn-primary" type="submit">Ask Assistant</button></form><div id="edutrack-ai-status" class="edutrack-ai-muted" style="margin-top:.5rem"></div></section>
+      <section class="edutrack-ai-card"><h2>Weekly Executive Briefing</h2><p class="edutrack-ai-muted">Generated from the same server-authorized scope. It does not replace official reports.</p><button id="edutrack-ai-briefing-btn" class="btn btn-primary" style="margin:.75rem 0">Generate Briefing</button><div id="edutrack-ai-briefing" class="edutrack-ai-brief">No briefing generated yet.</div></section>
+    </div>
+    <section class="edutrack-ai-card" style="margin-top:1rem"><h3>Data scope</h3><div id="edutrack-ai-scope" class="edutrack-ai-muted">Scope is resolved server-side for every request.</div><div id="edutrack-ai-facts" class="edutrack-ai-kpis" style="margin-top:.75rem"></div></section>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  const allowed = new Set(['headteacher','district','regional','national','super admin','administrator','superadmin']);
+  function role(){try{const s=typeof fmsSessionInfo==='function'?fmsSessionInfo():null;return String(s&&s.role||'').toLowerCase();}catch(e){return '';}}
+  function canUse(){const r=role();return [...allowed].some(x=>r.includes(x));}
+  function nav(){if(!canUse())return;const candidates=[...document.querySelectorAll('.nav-item,.nav-group-items,.nav-supergroup-items')];const host=candidates.find(el=>/dashboard|intelligence|report/i.test(el.textContent||''))?.parentElement||document.querySelector('.sidebar');if(!host||document.getElementById('edutrack-ai-nav'))return;const item=document.createElement('div');item.id='edutrack-ai-nav';item.className='nav-item edutrack-ai-nav';item.innerHTML='<span class="icon">🧠</span><span class="nav-label">AI Intelligence</span>';item.title='AI Assistant and Executive Intelligence';item.onclick=function(){if(typeof showPage==='function')showPage('page-ai-intelligence',item);renderScope();};host.appendChild(item);}
+  const $=id=>document.getElementById(id);
+  function add(role,text){const el=document.createElement('div');el.className='edutrack-ai-message '+role;el.textContent=text;$('edutrack-ai-chat').appendChild(el);$('edutrack-ai-chat').scrollTop=$('edutrack-ai-chat').scrollHeight;}
+  function renderScope(data){if(data){$('edutrack-ai-scope').textContent='Authorized role: '+(data.role||'—')+'. Scope is enforced on the server for this request.';const facts=(data.available||[]).map(x=>'<div class="edutrack-ai-kpi"><strong>'+String(x.count??'—')+'</strong><span class="edutrack-ai-muted">'+String(x.label||'Metric')+'</span></div>').join('');$('edutrack-ai-facts').innerHTML=facts||'<div class="edutrack-ai-muted">No authorized aggregate metrics available.</div>';}}
+  async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body||{})});const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error(p.error||'AI service unavailable');return p;}
+  $('edutrack-ai-form').addEventListener('submit',async function(e){e.preventDefault();const prompt=$('edutrack-ai-prompt').value.trim();if(!prompt)return;add('user',prompt);$('edutrack-ai-prompt').value='';$('edutrack-ai-status').textContent='Analyzing authorized EduTrack records…';try{const out=await post('/api/ai/request',{prompt});add('assistant',out.answer);renderScope(out.scope||{});$('edutrack-ai-status').textContent='Generated '+new Date(out.generatedAt).toLocaleString();}catch(err){add('assistant','Unable to answer: '+err.message);$('edutrack-ai-status').textContent='';}});
+  $('edutrack-ai-briefing-btn').addEventListener('click',async function(){const b=$('edutrack-ai-briefing');b.textContent='Generating briefing…';this.disabled=true;try{const out=await post('/api/ai/briefing');b.textContent=out.briefing;renderScope(out.scope||{});}catch(err){b.textContent='Unable to generate briefing: '+err.message;}finally{this.disabled=false;}});
+  window.addEventListener('load',nav);setTimeout(nav,800);window.EDUTRACK_AI_INTELLIGENCE={canUse,renderScope};
 })();
 </script>
 </body></html>

@@ -27,7 +27,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -300,6 +300,7 @@ function normalizeOwnership(value) { const normalized = String(value || '').toUp
 function canonicalDomainPayload(input = {}) { return input && typeof input === 'object' && !Array.isArray(input) ? input : {}; }
 function actorRole(auth) { return auth?.authorization?.roles?.[0] || auth?.user?.role || null; }
 function actorScope(auth) { const memberships = auth?.authorization?.memberships || []; return memberships[0]?.scope || {}; }
+function controlPanelScope(auth){const role=actorRole(auth);const districtIds=new Set(),regionIds=new Set();for(const m of (auth?.authorization?.memberships||[])){const x=m.scope||{};for(const v of (x.districtIds||[]))districtIds.add(String(v));for(const v of (x.regionIds||[]))regionIds.add(String(v));if(x.districtId)districtIds.add(String(x.districtId));if(x.regionId)regionIds.add(String(x.regionId))}return {role,districtIds:[...districtIds],regionIds:[...regionIds]}}
 function inputScope(input = {}) { const scope = {}; for (const key of ['tenantId','regionId','districtId','schoolId','classId']) if (input[key]) scope[key] = String(input[key]); return scope; }
 function requireFields(input, fields) { for (const field of fields) if (typeof input[field] !== 'string' || !input[field].trim()) throw domainInputError(`Missing required field: ${field}`); }
 function canAssignRole(auth, role) { const roleName = actorRole(auth); const allowed = { DEVELOPER_ROOT: ['DEVELOPER_ROOT','SUPER_ADMIN','NATIONAL_ADMIN','REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], SUPER_ADMIN: ['NATIONAL_ADMIN','REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], NATIONAL_ADMIN: ['REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], REGIONAL_ADMIN: ['DISTRICT_ADMIN','HEADTEACHER','TEACHER','PARENT','STUDENT'], DISTRICT_ADMIN: ['HEADTEACHER','TEACHER','PARENT','STUDENT'], HEADTEACHER: ['TEACHER'], TEACHER: [], PARENT: [], STUDENT: [] }; return Boolean(role && (allowed[roleName] || []).includes(role)); }
@@ -703,6 +704,47 @@ async function handler(req, res) {
     if (!record || (auth.user.role !== 'DEVELOPER_ROOT' && auth.user.role !== 'SUPER_ADMIN' && record.ownerUserId !== auth.user.id)) { auditSecurityEvent(db, 'FILE_ACCESS_DENIED', req, { userId: auth.user.id, fileId }); saveDb(db); return json(res, 404, { error: 'File not found' }); }
     let stored; try { stored = await privateStorage.get(record.storageName); } catch { return json(res, 404, { error: 'File not found' }); } if (!stored) return json(res, 404, { error: 'File not found' });
     res.writeHead(200, { 'Content-Type': record.mimeType, 'Content-Disposition': `attachment; filename="${record.id}${path.extname(record.storageName)}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', ...securityHeaders() }); return stored.stream.pipe(res);
+  }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/control-panel/summary') {
+    const query = new URL(req.url, 'http://edutrack.local').searchParams;
+    const auth = await authorize(req, res, db, { permission: 'controlpanel.view' }); if (!auth) return;
+    try {
+      const scope = controlPanelScope(auth);
+      const summary = await relational.multiSchoolSummary({ ...scope, filters: { schoolId: query.get('schoolId') || null, districtId: query.get('districtId') || null, search: query.get('search') || null } });
+      await auditDomainMutation(auth, 'CONTROL_PANEL_ACCESSED', req, { scope: summary.scope, rowCount: summary.schools.length });
+      return json(res, 200, summary);
+    } catch (error) { return domainErrorResponse(res, error); }
+  }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/control-panel/branding') {
+    const auth = await authorize(req, res, db, { permission: 'controlpanel.view' }); if (!auth) return;
+    const scope = controlPanelScope(auth); const role = scope.role;
+    const scopeType = role === 'REGIONAL_ADMIN' ? 'REGION' : role === 'DISTRICT_ADMIN' ? 'DISTRICT' : 'NATIONAL';
+    const scopeId = role === 'REGIONAL_ADMIN' ? (scope.regionIds[0] || 'NATIONAL') : role === 'DISTRICT_ADMIN' ? (scope.districtIds[0] || 'NATIONAL') : 'NATIONAL';
+    try { return json(res, 200, { scopeType, scopeId, branding: await relational.getOrganizationBranding(scopeType, scopeId) }); } catch (error) { return domainErrorResponse(res, error); }
+  }
+  if (req.method === 'POST' && req.url === '/api/control-panel/branding') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = await authorize(req, res, db, { permission: 'branding.manage' }); if (!auth) return;
+    let input; try { input = canonicalDomainPayload(await body(req)); } catch { return json(res, 400, { error: 'Invalid branding payload' }); }
+    const scope = controlPanelScope(auth); const role = scope.role;
+    const scopeType = role === 'REGIONAL_ADMIN' ? 'REGION' : role === 'DISTRICT_ADMIN' ? 'DISTRICT' : 'NATIONAL';
+    const scopeId = role === 'REGIONAL_ADMIN' ? (scope.regionIds[0] || 'NATIONAL') : role === 'DISTRICT_ADMIN' ? (scope.districtIds[0] || 'NATIONAL') : 'NATIONAL';
+    const validColor = value => !value || /^#[0-9a-fA-F]{6}$/.test(String(value));
+    if (!validColor(input.primaryColor) || !validColor(input.accentColor) || String(input.displayName || '').length > 255 || String(input.logoUrl || '').length > 1000) return json(res, 400, { error: 'Invalid branding values' });
+    try { const branding = await relational.setOrganizationBranding({ scopeType, scopeId, displayName: String(input.displayName || '').trim(), logoUrl: String(input.logoUrl || '').trim(), primaryColor: input.primaryColor || null, accentColor: input.accentColor || null }, auth.user.id); await auditDomainMutation(auth, 'BRANDING_UPDATED', req, { scopeType, scopeId }); return json(res, 200, { scopeType, scopeId, branding }); } catch (error) { return domainErrorResponse(res, error); }
+  }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/control-panel/export.csv') {
+    const query = new URL(req.url, 'http://edutrack.local').searchParams;
+    const auth = await authorize(req, res, db, { permission: 'controlpanel.export' }); if (!auth) return;
+    try {
+      const scope = controlPanelScope(auth);
+      const summary = await relational.multiSchoolSummary({ ...scope, filters: { schoolId: query.get('schoolId') || null, districtId: query.get('districtId') || null, search: query.get('search') || null } });
+      const columns = ['school','district','region','students','boys','girls','specialNeeds','teachers','pendingAdmissions'];
+      const quote = value => '"' + String(value == null ? '' : value).replace(/"/g, '""') + '"';
+      const csv = [columns.join(','), ...summary.schools.map(row => columns.map(column => quote(row[column])).join(','))].join('\\n') + '\\n';
+      await auditDomainMutation(auth, 'REPORT_EXPORTED', req, { scope: summary.scope, rowCount: summary.schools.length });
+      res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="edutrack-school-summary.csv"', ...securityHeaders() }); return res.end(csv);
+    } catch (error) { return domainErrorResponse(res, error); }
   }
   if (req.method === 'POST' && req.url === '/api/payments/paystack/initialize') {
     if (!requireSameOrigin(req, res)) return;

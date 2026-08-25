@@ -53,3 +53,5 @@ CREATE TABLE IF NOT EXISTS communication_campaigns (id VARCHAR(80) PRIMARY KEY,t
 
 CREATE TABLE IF NOT EXISTS chat_conversations (id VARCHAR(80) PRIMARY KEY,school_id VARCHAR(80) NOT NULL,tenant_id VARCHAR(80) NULL,participant_a VARCHAR(80) NOT NULL,participant_b VARCHAR(80) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',created_at TIMESTAMP NOT NULL,last_message_at TIMESTAMP NULL);
 CREATE TABLE IF NOT EXISTS chat_messages (id VARCHAR(80) PRIMARY KEY,conversation_id VARCHAR(80) NOT NULL,sender_id VARCHAR(80) NOT NULL,recipient_id VARCHAR(80) NOT NULL,body VARCHAR(4000) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'SENT',sent_at TIMESTAMP NOT NULL,read_at TIMESTAMP NULL,client_nonce VARCHAR(120) NOT NULL);
+
+CREATE TABLE IF NOT EXISTS organization_branding (scope_type VARCHAR(30) NOT NULL,scope_id VARCHAR(80) NOT NULL,tenant_id VARCHAR(80) NULL,display_name VARCHAR(255) NULL,logo_url VARCHAR(1000) NULL,primary_color VARCHAR(20) NULL,accent_color VARCHAR(20) NULL,updated_by VARCHAR(80) NULL,updated_at TIMESTAMP NOT NULL,PRIMARY KEY(scope_type,scope_id));

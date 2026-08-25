@@ -27,7 +27,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -833,6 +833,10 @@ async function handler(req, res) {
     const auth = await authorize(req, res, db, { permission }); if (!auth) return;
     return json(res, 200, { allowed: true, role: auth.user.role, permission });
   }
+  if (req.method === 'GET' && req.url.startsWith('/api/hostel/overview')) { const schoolId=new URL(req.url,'http://localhost').searchParams.get('schoolId'); const auth=await authorize(req,res,db,{permission:'hostel.view',scope:{schoolId}}); if(!auth)return; try{return json(res,200,await relational.hostelOverview(schoolId));}catch(e){return domainErrorResponse(res,e);} }
+  if (req.method === 'POST' && req.url === '/api/hostel/manage') { if(!requireSameOrigin(req,res))return; let input;try{input=canonicalDomainPayload(await body(req));requireFields(input,['kind','schoolId','tenantId','name']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{permission:'hostel.manage',scope:{tenantId:input.tenantId,schoolId:input.schoolId}});if(!auth)return;try{return json(res,201,await relational.hostelCreate(input,auth.user.id));}catch(e){return domainErrorResponse(res,e);} }
+  if (req.method === 'POST' && req.url === '/api/hostel/assign') { if(!requireSameOrigin(req,res))return; let input;try{input=canonicalDomainPayload(await body(req));requireFields(input,['tenantId','schoolId','studentId','hostelId']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{permission:'hostel.manage',scope:{tenantId:input.tenantId,schoolId:input.schoolId}});if(!auth)return;try{return json(res,201,await relational.hostelAssign(input,auth.user.id));}catch(e){return domainErrorResponse(res,e);} }
+  if (req.method === 'POST' && req.url === '/api/hostel/rollcall') { if(!requireSameOrigin(req,res))return; let input;try{input=canonicalDomainPayload(await body(req));requireFields(input,['tenantId','schoolId','studentId']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{permission:'hostel.rollcall',scope:{tenantId:input.tenantId,schoolId:input.schoolId}});if(!auth)return;try{return json(res,201,await relational.hostelRollCall(input,auth.user.id));}catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'GET') {
     const requested = req.url === '/' ? 'index.html' : decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
     const safe = path.resolve(ROOT, requested);

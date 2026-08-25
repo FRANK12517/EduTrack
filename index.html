@@ -37801,6 +37801,8 @@ function fmsLoadFeeTypesPage() {
 
   grid.innerHTML = feeTypes.map(ft => {
     const statusClass = ft.status === 'archived' ? 'fee-status-badge-archived' : ft.status === 'active' ? 'fee-status-badge-active' : 'fee-status-badge-inactive';
+    const publicationStatus = ft.publicationStatus === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED';
+    const canPublish = Boolean(window.FMS_PART2 && typeof window.FMS_PART2.hasPermission === 'function' && window.FMS_PART2.hasPermission('publish_fee'));
     return `
     <div class="fee-type-card" style="${ft.status!=='active'?'opacity:.6':''}">
       <div class="fee-type-icon" style="${ft.status!=='active'?'background:#f3f4f6;color:#9ca3af':''}">
@@ -37812,7 +37814,9 @@ function fmsLoadFeeTypesPage() {
       </div>
       <div style="display:flex;flex-direction:column;gap:.3rem;flex-shrink:0;align-items:flex-end">
         <span class="${statusClass}">${ft.status}</span>
+        <span class="${publicationStatus === 'PUBLISHED' ? 'fee-status-badge-active' : 'fee-status-badge-inactive'}">${publicationStatus}</span>
         <div style="display:flex;gap:.2rem">
+          ${canPublish ? `<button class="btn btn-primary btn-sm" onclick="fmsPublishFee('${ft.id}')" ${publicationStatus === 'PUBLISHED' ? 'disabled' : ''}>${publicationStatus === 'PUBLISHED' ? 'Published' : 'Publish Fee'}</button>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="fmsEditFeeType('${ft.id}')" title="Edit">✏️</button>
           <button class="btn btn-ghost btn-sm" onclick="fmsDuplicateFeeType('${ft.id}')" title="Duplicate">📄</button>
           <button class="btn btn-ghost btn-sm" onclick="fmsArchiveFeeType('${ft.id}')" title="${ft.status==='archived'?'Unarchive':'Archive'}">${ft.status==='archived'?'📤':'📥'}</button>
@@ -37872,7 +37876,8 @@ function fmsSaveFeeType() {
     level,
     scope,
     scopeClass:   scope === 'class'   ? scopeClass   : '',
-    scopeStudent: scope === 'student' ? scopeStudent : ''
+    scopeStudent: scope === 'student' ? scopeStudent : '',
+    publicationStatus: editId ? ((feeTypes.find(f => f.id === editId) || {}).publicationStatus || 'UNPUBLISHED') : 'UNPUBLISHED'
   };
 
   if (fmsFeeTypeIsDuplicate(obj, editId)) { toast('⚠️ A fee with the same name, category, period and assignment already exists','error'); return; }
@@ -37884,10 +37889,36 @@ function fmsSaveFeeType() {
     feeTypes.push(obj);
   }
   fmsSet(FMS_KEYS.feeTypes, feeTypes);
+  fmsSyncFeeToServer(obj);
   fmsAuditLog(editId ? 'FEE_UPDATED' : 'FEE_CREATED', `${name} (${obj.category}) — ${fmsScopeLabel(obj)}`);
   fmsClearFeeTypeForm();
   fmsLoadFeeTypesPage();
   toast('✅ Fee saved', 'success');
+}
+
+async function fmsSyncFeeToServer(fee) {
+  try { await fetch('/api/fees/sync', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({fee}) }); } catch (error) { console.warn('Fee server sync unavailable', error); }
+}
+async function fmsSyncPaymentToServer(payment) {
+  try { await fetch('/api/fees/payments', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({payment}) }); } catch (error) { console.warn('Payment server sync unavailable', error); }
+}
+
+async function fmsPublishFee(id) {
+  const feeTypes = fmsGetFeeTypes();
+  const fee = feeTypes.find(f => f.id === id);
+  if (!fee) { toast('Fee not found', 'error'); return; }
+  if (fee.publicationStatus === 'PUBLISHED') return;
+  try {
+    const response = await fetch('/api/fees/' + encodeURIComponent(id) + '/publish', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': window.__EDUTRACK_CSRF_TOKEN || '' }, credentials: 'same-origin', body: JSON.stringify({ feeId: id }) });
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'Fee publication was denied'); }
+    fee.publicationStatus = 'PUBLISHED';
+    fee.publishedAt = new Date().toISOString();
+    fmsSet(FMS_KEYS.feeTypes, feeTypes);
+    fmsAuditLog('FEE_PUBLISHED', fee.name);
+    fmsLoadFeeTypesPage();
+    toast('Fee published to students and parents', 'success');
+    document.dispatchEvent(new CustomEvent('fms:data-changed', { detail: { type: 'fee-published', fee } }));
+  } catch (error) { toast(error.message || 'Fee publication failed', 'error'); }
 }
 
 function fmsClearFeeTypeForm() {
@@ -38399,6 +38430,7 @@ function fmsSavePayment() {
 
   payments.push(payment);
   fmsSet(FMS_KEYS.payments, payments);
+  fmsSyncPaymentToServer(payment);
   fmsAuditLog('PAYMENT_RECORDED', `${student} paid GH₵${amount.toFixed(2)} — Receipt ${rcptNo}`);
   toast(`✅ Payment recorded! Receipt: ${rcptNo}`, 'success');
 
@@ -92713,7 +92745,8 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
 
     // Get applicable fee structure
     const structure = structures.find(s => s.cls === studentClass);
-    const applicableFees = structure ? structure.items : [];
+    const feeTypesForDashboard = fmsGetFeeTypes();
+    const applicableFees = structure ? structure.items.filter(item => { const fee = feeTypesForDashboard.find(ft => ft.id === item.feeTypeId); return fee && fee.publicationStatus === 'PUBLISHED'; }) : [];
 
     // Calculate totals
     const totalExpected = applicableFees.reduce((sum, f) => sum + (parseFloat(f.amount) || 0), 0);
@@ -92828,7 +92861,8 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
 
     // Get applicable fee structure
     const structure = structures.find(s => s.cls === studentClass);
-    const applicableFees = structure ? structure.items : [];
+    const feeTypesForDashboard = fmsGetFeeTypes();
+    const applicableFees = structure ? structure.items.filter(item => { const fee = feeTypesForDashboard.find(ft => ft.id === item.feeTypeId); return fee && fee.publicationStatus === 'PUBLISHED'; }) : [];
 
     // Calculate totals
     const totalExpected = applicableFees.reduce((sum, f) => sum + (parseFloat(f.amount) || 0), 0);
@@ -93603,6 +93637,7 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
     EDIT_FEE: 'edit_fee',
     DELETE_FEE: 'delete_fee',
     VIEW_FEE_SETUP: 'view_fee_setup',
+    PUBLISH_FEE: 'publish_fee',
 
     // Payments
     RECORD_PAYMENT: 'record_payment',
@@ -93644,7 +93679,7 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
       PERMISSIONS.VIEW_AUDIT_LOG, PERMISSIONS.SEND_NOTIFICATIONS
     ],
     [ROLE_TIERS.HEADTEACHER]: [
-      PERMISSIONS.CREATE_FEE, PERMISSIONS.EDIT_FEE, PERMISSIONS.DELETE_FEE, PERMISSIONS.VIEW_FEE_SETUP,
+      PERMISSIONS.CREATE_FEE, PERMISSIONS.EDIT_FEE, PERMISSIONS.DELETE_FEE, PERMISSIONS.VIEW_FEE_SETUP, PERMISSIONS.PUBLISH_FEE,
       PERMISSIONS.RECORD_PAYMENT, PERMISSIONS.VIEW_PAYMENT_HISTORY,
       PERMISSIONS.VIEW_REPORTS, PERMISSIONS.EXPORT_REPORTS, PERMISSIONS.VIEW_ANALYTICS,
       PERMISSIONS.VIEW_ALL_FEES, PERMISSIONS.VIEW_ALL_PAYMENTS,
@@ -93652,7 +93687,7 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
       PERMISSIONS.VIEW_AUDIT_LOG, PERMISSIONS.SEND_NOTIFICATIONS
     ],
     [ROLE_TIERS.PROPRIETOR]: [
-      PERMISSIONS.CREATE_FEE, PERMISSIONS.EDIT_FEE, PERMISSIONS.DELETE_FEE, PERMISSIONS.VIEW_FEE_SETUP,
+      PERMISSIONS.CREATE_FEE, PERMISSIONS.EDIT_FEE, PERMISSIONS.DELETE_FEE, PERMISSIONS.VIEW_FEE_SETUP, PERMISSIONS.PUBLISH_FEE,
       PERMISSIONS.RECORD_PAYMENT, PERMISSIONS.VIEW_PAYMENT_HISTORY,
       PERMISSIONS.VIEW_REPORTS, PERMISSIONS.EXPORT_REPORTS, PERMISSIONS.VIEW_ANALYTICS,
       PERMISSIONS.VIEW_ALL_FEES, PERMISSIONS.VIEW_ALL_PAYMENTS,
@@ -93660,7 +93695,7 @@ console.log('[EMS v199] Fee Management — Comprehensive Fee Reports (13 types),
       PERMISSIONS.VIEW_AUDIT_LOG, PERMISSIONS.SEND_NOTIFICATIONS
     ],
     [ROLE_TIERS.ACCOUNTANT]: [
-      PERMISSIONS.VIEW_FEE_SETUP,
+      PERMISSIONS.VIEW_FEE_SETUP, PERMISSIONS.PUBLISH_FEE,
       PERMISSIONS.RECORD_PAYMENT, PERMISSIONS.VIEW_PAYMENT_HISTORY,
       PERMISSIONS.VIEW_REPORTS, PERMISSIONS.EXPORT_REPORTS, PERMISSIONS.VIEW_ANALYTICS,
       PERMISSIONS.VIEW_ALL_FEES, PERMISSIONS.VIEW_ALL_PAYMENTS,

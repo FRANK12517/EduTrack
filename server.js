@@ -40,13 +40,13 @@ const PROMPT_INJECTION_PATTERNS = Object.freeze([/ignore\s+(all|any|the|previous
 
 function ensureData() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) saveDb({ version: 3, users: [], schools: [], staff: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [] });
+  if (!fs.existsSync(DB_FILE)) saveDb({ version: 3, users: [], schools: [], staff: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [], schoolFees: [], schoolFeePayments: [] });
 }
 function loadDb() {
   ensureData();
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   db.users ||= []; db.schools ||= []; db.staff ||= []; db.subscriptions ||= []; db.transactions ||= [];
-  db.paymentIntents ||= []; db.paymentEvents ||= []; db.files ||= []; db.sessions ||= []; db.passwordResets ||= []; db.audit ||= [];
+  db.paymentIntents ||= []; db.paymentEvents ||= []; db.files ||= []; db.sessions ||= []; db.passwordResets ||= []; db.audit ||= []; db.schoolFees ||= []; db.schoolFeePayments ||= [];
   return db;
 }
 function saveDb(db) {
@@ -349,6 +349,44 @@ async function handler(req, res) {
   if (!applyCors(req, res)) { auditSecurityEvent(db, 'CORS_REJECTED', req, { endpoint: req.url }); saveDb(db); return json(res, 403, { error: 'Origin not allowed' }); }
   if (req.method === 'OPTIONS') { res.writeHead(204, securityHeaders()); return res.end(); }
   if (req.method === 'GET' && req.url === '/api/health') { try { if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' }); if (relational.isConfigured()) await relational.ensureInitialized(); return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' }); } catch { return json(res, 503, { ok: false, error: 'Service unavailable' }); } }
+  if (req.method === 'POST' && /^\/api\/fees\/[A-Za-z0-9_-]+\/publish$/.test(req.url.split('?')[0])) {
+    if (!requireSameOrigin(req, res)) return;
+    const feeId = req.url.split('/')[3];
+    const auth = await authorize(req, res, db, { roles: ['HEADTEACHER', 'SCHOOL_ACCOUNTANT', 'ACCOUNTANT'], permission: 'fees.manage' });
+    if (!auth) return;
+    const fees = db.schoolFees || (db.schoolFees = []);
+    const fee = fees.find(item => item.id === feeId && (!auth.user.schoolId || item.schoolId === auth.user.schoolId));
+    if (!fee) return json(res, 404, { error: 'Fee not found in your school' });
+    if (fee.publicationStatus === 'PUBLISHED') return json(res, 200, { fee });
+    fee.publicationStatus = 'PUBLISHED'; fee.publishedAt = new Date().toISOString(); fee.publishedBy = auth.user.id;
+    auditSecurityEvent(db, 'FEE_PUBLISHED', req, { userId: auth.user.id, feeId, schoolId: fee.schoolId }); saveDb(db);
+    return json(res, 200, { fee });
+  }
+  if (req.method === 'POST' && req.url === '/api/fees/payments') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = await authorize(req, res, db, { roles: ['HEADTEACHER', 'SCHOOL_ACCOUNTANT', 'ACCOUNTANT'], permission: 'fees.manage' });
+    if (!auth) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment payload' }); }
+    const payment = input && input.payment;
+    if (!payment || !payment.id || !payment.receiptNo || !payment.studentId || !(Number(payment.amount) > 0)) return json(res, 400, { error: 'Invalid payment payload' });
+    db.schoolFeePayments ||= [];
+    const existing = db.schoolFeePayments.find(item => item.receiptNo === String(payment.receiptNo));
+    if (existing) return json(res, 200, { payment: existing });
+    const record = { ...payment, id: String(payment.id), receiptNo: String(payment.receiptNo), amount: Number(payment.amount), status: 'CONFIRMED', schoolId: auth.user.schoolId || payment.schoolId || null, createdBy: auth.user.id, createdAt: new Date().toISOString() };
+    db.schoolFeePayments.push(record); saveDb(db);
+    return json(res, 201, { payment: record });
+  }
+  if (req.method === 'POST' && req.url === '/api/fees/sync') {
+    if (!requireSameOrigin(req, res)) return;
+    const auth = await authorize(req, res, db, { roles: ['HEADTEACHER', 'SCHOOL_ACCOUNTANT', 'ACCOUNTANT'], permission: 'fees.manage' });
+    if (!auth) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid fee payload' }); }
+    const fee = input && input.fee; if (!fee || !fee.id || !fee.name || Number(fee.amount) <= 0) return json(res, 400, { error: 'Invalid fee payload' });
+    db.schoolFees ||= []; const existing = db.schoolFees.find(item => item.id === String(fee.id));
+    const record = { ...fee, id: String(fee.id), amount: Number(fee.amount), schoolId: auth.user.schoolId || fee.schoolId || null, publicationStatus: fee.publicationStatus === 'PUBLISHED' ? 'PUBLISHED' : (existing?.publicationStatus || 'UNPUBLISHED'), updatedAt: new Date().toISOString() };
+    if (existing) Object.assign(existing, record); else db.schoolFees.push(record);
+    saveDb(db); return json(res, 200, { fee: existing || record });
+  }
   if (req.method === 'GET' && req.url === '/api/subscriptions/plans') {
     return json(res, 200, { policyVersion: subscriptionPolicy.POLICY_VERSION, plans: Object.values(subscriptionPolicy.PLANS).map(plan => ({ id: plan.id, name: plan.name, priceGhs: plan.priceGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, capacity: plan.capacity, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, smsAddOn: plan.smsAddOn, termCalendar: plan.termCalendar })) });
   }

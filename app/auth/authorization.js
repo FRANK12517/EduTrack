@@ -5,7 +5,7 @@ const relational = require('../../db/relational');
 
 const GLOBAL_ROLES = new Set(['DEVELOPER_ROOT', 'SUPER_ADMIN']);
 const SCOPE_KEYS = Object.freeze({ tenantId: 'tenantIds', regionId: 'regionIds', districtId: 'districtIds', schoolId: 'schoolIds', classId: 'classIds' });
-const ROLE_LEVEL = Object.freeze({ NATIONAL_ADMIN: 'national', REGIONAL_ADMIN: 'region', DISTRICT_ADMIN: 'district', HEADTEACHER: 'school', TEACHER: 'school', PARENT: 'own', STUDENT: 'own' });
+const ROLE_LEVEL = Object.freeze({ NATIONAL_ADMIN: 'national', REGIONAL_ADMIN: 'region', DISTRICT_ADMIN: 'district', HEADTEACHER: 'school', SCHOOL_ACCOUNTANT: 'school', ACCOUNTANT: 'school', TEACHER: 'school', PARENT: 'own', STUDENT: 'own' });
 
 function requestScope(req) {
   const url = new URL(req.url || '/', 'http://edutrack.local');

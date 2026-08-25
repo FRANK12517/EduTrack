@@ -27,7 +27,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -95,6 +95,7 @@ async function aiComplete(system, user) {
   const payload = await response.json();
   return payload?.choices?.[0]?.message?.content || null;
 }
+function aiNarrativeFallback(facts){const m=facts.metrics||{};if(!m.assessments)return 'A narrative insight is unavailable because published assessment results are not available for this authorized scope. '+((facts.unavailable||[]).join(' ')||'Please review the existing EduTrack rule-based analytics and reports.');let text='The verified records show an average performance of '+m.average+'% with a pass rate of '+m.passRate+'% across '+m.assessments+' assessment records.';if(m.attendanceRate!=null)text+=' Attendance was '+m.attendanceRate+'% and '+(m.attendanceRate<85?'coincides with an area that warrants investigation.':'remained available for comparison.');if(facts.performanceAlerts&&facts.performanceAlerts.length)text+=' Existing rule-based indicators flag: '+facts.performanceAlerts.join('; ')+'.';text+=' Consider targeted review of the affected subjects and learners using the authoritative EduTrack reports.';return text}
 function aiSafeContext(facts) { return JSON.stringify(facts).slice(0, 50000); }
 function aiFallbackAnswer(facts, prompt) {
   const metrics = facts.available.length ? facts.available.map(item => item.label + ': ' + item.count).join('; ') : 'No authorized aggregate metrics are available.';
@@ -824,6 +825,31 @@ async function handler(req, res) {
 
   if (req.method === 'POST' && req.url === '/api/attendance/qr/identity') { if(!requireSameOrigin(req,res))return; let input; try{input=canonicalDomainPayload(await body(req)); requireFields(input,['entityType','entityId']);}catch(e){return domainErrorResponse(res,e);} let relation; try{const table=String(input.entityType).toUpperCase()==='STUDENT'?'students':'staff'; relation=(await relational.domainRows(`SELECT id,tenant_id,school_id,status FROM ${table} WHERE id=? LIMIT 1`,[input.entityId]))[0];}catch(e){return domainErrorResponse(res,e);} if(!relation||String(relation.status).toUpperCase()!=='ACTIVE')return json(res,404,{error:'Active record not found'}); const auth=await authorize(req,res,db,{permission:'attendance.qr.manage',scope:{tenantId:relation.tenant_id,schoolId:relation.school_id}});if(!auth)return;try{return json(res,200,await relational.rotateQrIdentity(input,auth.user.id));}catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'POST' && req.url === '/api/attendance/qr/scan') { if(!requireSameOrigin(req,res))return; let input; try{input=canonicalDomainPayload(await body(req)); requireFields(input,['token','schoolId']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{permission:'attendance.manage',scope:{schoolId:input.schoolId}});if(!auth)return; let identity; try{identity=await relational.resolveQrIdentity(input.token);}catch(e){return domainErrorResponse(res,e);} if(!identity)return json(res,404,{error:'QR code is invalid, disabled, or expired'}); if(String(input.schoolId)!==String(identity.school_id))return json(res,403,{error:'QR code belongs to another school'});try{const result=await relational.recordQrAttendance(input,auth.user.id,{userAgent:req.headers['user-agent'],source:input.source||'camera'});await auditDomainMutation(auth,result.duplicate?'QR_ATTENDANCE_DUPLICATE':'QR_ATTENDANCE_RECORDED',req,{entityType:identity.entity_type,entityId:identity.entity_id,schoolId:identity.school_id,attendanceDate:result.attendanceDate,scanResult:result.duplicate?'DUPLICATE':'RECORDED'});return json(res,200,result);}catch(e){if(e.code==='QR_INVALID')return json(res,404,{error:e.message});if(e.code==='AUTHORIZATION_DENIED')return json(res,403,{error:e.message});return domainErrorResponse(res,e);} }
+  if (req.method === 'POST' && req.url === '/api/ai/narrative') {
+    if (!requireSameOrigin(req, res)) return;
+    let input; try { input = canonicalDomainPayload(await body(req, 64 * 1024)); } catch { return json(res, 400, { error: 'Invalid narrative request' }); }
+    const level = String(input.level || 'school').toLowerCase();
+    const scope = inputScope(input);
+    const auth = await authorize(req, res, db, { permission: 'ai.use', scope }); if (!auth) return;
+    const quota = consumeAiQuota(auth.user); if (!quota.allowed) return json(res, 429, { error: 'AI request limit reached' }, { 'Retry-After': '3600' });
+    const authorized = aiAuthorizedScope(auth);
+    let schoolIds = authorized.schoolIds.map(String);
+    if (level === 'district' || level === 'regional' || level === 'national') {
+      const summary = await relational.multiSchoolSummary({ role: authorized.role, districtIds: authorized.districtIds, regionIds: authorized.regionIds, filters: {} });
+      schoolIds = summary.schools.map(row => String(row.schoolId));
+    }
+    try {
+      const facts = await relational.verifiedNarrativeAnalytics({ level, schoolIds, classId: input.classId, studentId: input.studentId });
+      const system = 'You are EduTrack GES Smart Analytics Narrative Service. Use only the supplied verified analytics JSON. Do not invent statistics, students, causes, policies, interventions, or historical trends. Clearly distinguish observed facts from recommendations. Use cautious language such as coincides with, is associated with, may indicate, suggests, or warrants investigation. Keep the narrative to 2-4 concise sentences and include the actual period label. If data is unavailable, say so clearly. Return plain text only.';
+      const narrative = await aiComplete(system, 'Authorized verified analytics JSON:\
+' + aiSafeContext(facts) + '\
+Write a concise professional education insight for the ' + level + ' level.');
+      const fallback = aiNarrativeFallback(facts);
+      const answer = String(narrative || fallback).trim().slice(0, 2400);
+      await auditDomainMutation(auth, 'AI_ANALYTICS_NARRATIVE', req, { level, scope: authorized });
+      return json(res, 200, { narrative: answer, facts, source: 'EduTrack verified analytics', generatedAt: new Date().toISOString() });
+    } catch (error) { return domainErrorResponse(res, error); }
+  }
   if (req.method === 'POST' && req.url === '/api/ai/request') {
     if (!requireSameOrigin(req, res)) return;
     const auth = await authorize(req, res, db, { permission: 'ai.use', roles: AI_ADMIN_ROLES }); if (!auth) return;

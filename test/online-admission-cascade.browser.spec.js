@@ -28,16 +28,27 @@ const port = 3453;
         const map = window.GH_REGIONS_DISTRICTS || {};
         const region = document.getElementById('oa-region');
         const district = document.getElementById('oa-district');
+        const level = document.getElementById('oa-level');
+        const classSelect = document.getElementById('oa-class');
         const error = document.getElementById('oa-error');
         const firstRegion = Object.keys(map).sort()[0];
         region.value = firstRegion || '';
         region.dispatchEvent(new Event('change', { bubbles: true }));
+        const levelOptions = Array.from(level.options).map(option => option.value).filter(Boolean);
+        const classOptions = {};
+        ['KG', 'LOWER_PRIMARY', 'UPPER_PRIMARY', 'JHS'].forEach(levelValue => {
+          level.value = levelValue;
+          level.dispatchEvent(new Event('change', { bubbles: true }));
+          classOptions[levelValue] = Array.from(classSelect.options).map(option => option.textContent);
+        });
         return {
           firstRegion,
           regionOptions: Array.from(region.options).map(option => option.value).filter(Boolean),
           expectedDistricts: (map[firstRegion] || []).slice().sort(),
           districtOptions: Array.from(district.options).map(option => option.value).filter(Boolean),
           districtDisabled: district.disabled,
+          levelOptions,
+          classOptions,
           errorText: error.textContent.trim()
         };
       });
@@ -46,10 +57,17 @@ const port = 3453;
       assert.deepEqual(state.districtOptions, state.expectedDistricts);
       assert.equal(state.districtDisabled, false);
       assert.equal(state.errorText, '');
+      assert.deepEqual(state.levelOptions, ['KG', 'LOWER_PRIMARY', 'UPPER_PRIMARY', 'JHS']);
+      assert.deepEqual(state.classOptions, {
+        KG: ['Select class', 'KG 1', 'KG 2'],
+        LOWER_PRIMARY: ['Select class', 'Basic 1', 'Basic 2', 'Basic 3'],
+        UPPER_PRIMARY: ['Select class', 'Basic 4', 'Basic 5', 'Basic 6'],
+        JHS: ['Select class', 'JHS 1', 'JHS 2', 'JHS 3']
+      });
       await page.locator('#oa-cancel').click();
       assert.equal(await page.locator('#online-admission-overlay').count(), 0);
       console.log(JSON.stringify(state));
-      console.log('Online Admission Region → District cascade regression passed.');
+      console.log('Online Admission Region → District, level, and class regression passed.');
     } finally { await browser.close(); }
   } finally {
     server.kill('SIGTERM');

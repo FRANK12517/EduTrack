@@ -147588,6 +147588,60 @@ window.SRG_ANNUAL = (function(){
   window.addEventListener('load',nav);setTimeout(nav,800);window.EDUTRACK_AI_INTELLIGENCE={canUse,renderScope};
 })();
 </script>
+
+<!-- EduTrack TiDB Cloud migration bridge: loaded after the legacy app so it can safely wrap existing hooks. -->
+<script src="/edutrack-cloud.js"></script>
+<script>
+(function () {
+  'use strict';
+  function patch() {
+    if (!window.EduTrackCloud || window.__EDUTRACK_CLOUD_PATCHED__) return;
+    window.__EDUTRACK_CLOUD_PATCHED__ = true;
+    var originalSaveConfig = window.saveConfig;
+    window.saveConfig = function () {
+      var result = typeof originalSaveConfig === 'function' ? originalSaveConfig.apply(this, arguments) : undefined;
+      window.EduTrackCloud.saveConfig(window.CONFIG || {}).catch(function (error) { console.warn('[EduTrack] Config cloud save deferred:', error.message); });
+      return result;
+    };
+    var originalLoad = window.loadPersistedData;
+    window.loadPersistedData = function () {
+      var result = typeof originalLoad === 'function' ? originalLoad.apply(this, arguments) : undefined;
+      window.EduTrackCloud.loadConfig().then(function (remote) {
+        if (!remote || !window.CONFIG) return;
+        Object.assign(window.CONFIG, remote);
+        try { localStorage.setItem('ems_config', JSON.stringify(window.CONFIG)); } catch (_) {}
+        if (typeof window.renderAll === 'function') window.renderAll();
+      }).catch(function (error) { console.warn('[EduTrack] Offline config fallback active:', error.message); });
+      return result;
+    };
+    window.getStudentsFromCloud = window.EduTrackCloud.getStudents;
+    window.saveStudentToCloud = window.EduTrackCloud.saveStudent;
+    window.cloudSync = async function (batches) {
+      var result = await window.EduTrackCloud.sync({ config: window.CONFIG, batches: batches || [] });
+      var message = result.errors.length ? 'Cloud sync completed with ' + result.errors.length + ' warning(s).' : 'Cloud sync completed successfully.';
+      if (typeof window.toast === 'function') window.toast(message, result.errors.length ? 'error' : 'success');
+      return result;
+    };
+    var login = window.EDUTRACK_ENHANCEMENT_PART1 && window.EDUTRACK_ENHANCEMENT_PART1.schoolLogin;
+    if (typeof login === 'function' && !login._cloud) {
+      var wrappedLogin = function (event) {
+        var result = login.call(this, event);
+        var schoolCode = String((window.CONFIG && (CONFIG.schoolNo || CONFIG.schoolCode)) || document.getElementById('v43-school-access-code') && document.getElementById('v43-school-access-code').value || '').trim();
+        var staffId = String(document.getElementById('v43-staffId') && document.getElementById('v43-staffId').value || '').trim();
+        var password = String(document.getElementById('v43-password') && document.getElementById('v43-password').value || document.getElementById('v43-access-code') && document.getElementById('v43-access-code').value || '').trim();
+        if (schoolCode && staffId && password) window.EduTrackCloud.login({ schoolCode: schoolCode, staffId: staffId, password: password }).catch(function (error) { console.warn('[EduTrack] API auth unavailable; legacy UI remains active:', error.message); });
+        return result;
+      };
+      wrappedLogin._cloud = true;
+      window.EDUTRACK_ENHANCEMENT_PART1.schoolLogin = wrappedLogin;
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', patch); else patch();
+  setTimeout(patch, 0);
+})();
+</script>
+<script src="/edutrack-cloud-sync.js"></script>
+
 </body></html>
 <!--
 ================================================================================

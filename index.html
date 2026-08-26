@@ -25342,9 +25342,12 @@ function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
 
     // Rule 8/10 — Staff must belong to THIS school (the one identified by
     // the Access Code just validated above), never merely "some" school.
-    const tSchool = String((teacher && teacher.school) || '').trim().toLowerCase();
-    const targetSchool = String(school.name || '').trim().toLowerCase();
-    if (!tSchool || !targetSchool || tSchool !== targetSchool) return GENERIC_FAIL;
+    const normSchoolName = value => String(value || '')
+      .trim().toLowerCase().replace(/\s+/g, ' ').replace(/[^\w\s]/g, '');
+    const teacherSchoolId = String((teacher && teacher.schoolId) || '').trim();
+    const schoolIdMatches = teacherSchoolId && teacherSchoolId === String(school.id);
+    const nameMatches = normSchoolName(teacher && teacher.school) === normSchoolName(school && school.name);
+    if (!(teacherSchoolId ? schoolIdMatches : nameMatches)) return GENERIC_FAIL;
 
     return { ok: true, isDevDefault: false, school, teacher, accessRecord };
   } catch (e) {
@@ -27174,7 +27177,8 @@ function saveTeacher() {
   const record = {
     name, staffId, teacher_staff_id: staffId, phone, designation, appointed, subject,
     gender, department, appointmentStatus,
-    school: CONFIG.school || '', circuit: CONFIG.circuit || '', district: CONFIG.district || '', region: CONFIG.region || '',
+    school: CONFIG.school || '', schoolId: (window._v43SchoolLoginContext && window._v43SchoolLoginContext.school && window._v43SchoolLoginContext.school.id) || CONFIG.schoolId || '',
+    circuit: CONFIG.circuit || '', district: CONFIG.district || '', region: CONFIG.region || '',
     class_assigned: assignedClass || subject,
     registeredAt: (existingTeacher && existingTeacher.registeredAt) ? existingTeacher.registeredAt : new Date().toISOString(),
     status: (existingTeacher && existingTeacher.status) ? existingTeacher.status : 'Active'
@@ -149515,6 +149519,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   function arr(k){try{var x=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(x)?x:[]}catch(e){return[]}}
   function norm(v){return String(v||'').trim().toLowerCase()}
   function normDistrict(v){return String(v||'').trim().toLowerCase().replace(/[\/]+/g,' ').replace(/\s+/g,' ')}
+  function normSchool(v){return String(v||'').trim().toLowerCase().replace(/\s+/g,' ').replace(/[^\w\s]/g,'')}
   function schools(){try{if(typeof subGetArr==='function'&&typeof SUB_KEYS!=='undefined')return subGetArr(SUB_KEYS.schools)||[]}catch(e){}return arr('sub_v60_schools')}
   function registry(){try{if(typeof sacRefreshExpiry==='function')sacRefreshExpiry();if(typeof sacReadRegistry==='function')return sacReadRegistry()||[]}catch(e){}return arr('ems_school_access_code_registry_v1')}
   function validate(region,district,code,staffId){try{var c=String(code||'').trim(),sid=String(staffId||'').trim();var key=Object.keys(window.GH_REGIONS_DISTRICTS||{}).find(function(k){return norm(k).replace(/\s+region$/,'')===norm(region).replace(/\s+region$/,'')});if(!key||!(window.GH_REGIONS_DISTRICTS[key]||[]).some(function(x){return normDistrict(x)===normDistrict(district)}))return FAIL;var ar=registry().find(function(x){return String(x.accessCode||'').trim()===c&&String(x.status||'').toUpperCase()==='ACTIVE'});if(!ar)return FAIL;var school=schools().find(function(x){return String(x.id)===String(ar.schoolId)});if(!school)return FAIL;if(typeof subIsLocked==='function'&&subIsLocked(school))return FAIL;if(school.expiryDate&&new Date(school.expiryDate).getTime()<=Date.now())return FAIL;if(['expired','locked','inactive'].includes(norm(school.status)))return FAIL;if(norm(school.region).replace(/\s+region$/,'')!==norm(key).replace(/\s+region$/,'')||normDistrict(school.district)!==normDistrict(district))return FAIL;var pool=arr('ems_teachers').concat(arr('edutrack_staff_v3_teachers'));var t = pool.find(function(x){
@@ -149522,7 +149527,7 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   if (!sidMatch) return false;
   var belongs = x.schoolId
     ? String(x.schoolId) === String(school.id)
-    : String(x.school||x.schoolName||'').trim().toLowerCase() === String(school.name||'').trim().toLowerCase();
+    : normSchool(x.school||x.schoolName||'') === normSchool(school.name||'');
   if (!belongs) return false;
   var st = String(x.status||'ACTIVE').toUpperCase();
   return st !== 'REMOVED' && st !== 'INACTIVE' && !x.revoked;

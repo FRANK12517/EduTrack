@@ -5060,15 +5060,15 @@ td input, td select, td textarea, td button {
     <!-- AI_PROTECTED_ZONE_END: LOGIN_PAGE_COMPONENTS -->
 
     <!-- Login Button -->
-    <button class="login-enter-btn" data-ai-protected="true" data-ai-protected="true" id="v43LoginBtn" type="button" onclick="EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)">
+    <button class="login-enter-btn" data-ai-protected="true" id="v43LoginBtn" type="button" onclick="EDUTRACK_ENHANCEMENT_PART1.schoolLogin(event)">
       Enter System
     </button>
 
     <!-- Trial / Subscription Status Banner -->
-    <div id="sub-trial-banner" data-ai-protected="true" data-ai-protected="true" style="display:none"></div>
+    <div id="sub-trial-banner" data-ai-protected="true" style="display:none"></div>
 
     <!-- Subscribe Button -->
-    <button class="sub-login-btn" data-ai-protected="true" data-ai-protected="true" id="sub-btn" onclick="(function(){try{if(typeof subEntryOpen==='function'){subEntryOpen();}else{subOpenModal();}}catch(e){document.getElementById('sub-modal-overlay').classList.add('open');}})()">
+    <button class="sub-login-btn" data-ai-protected="true" id="sub-btn" onclick="(function(){try{if(typeof subEntryOpen==='function'){subEntryOpen();}else{subOpenModal();}}catch(e){document.getElementById('sub-modal-overlay').classList.add('open');}})()">
       🏫 Subscribe / Register School
     </button>
 
@@ -5370,17 +5370,17 @@ td input, td select, td textarea, td button {
       <div id="admin-login-attempts" style="font-size:.72rem;color:#c0392b;margin-bottom:.5rem;display:none"></div>
       <div class="sub-form-group" style="margin-bottom:.75rem">
         <label>Administrator Name</label>
-        <input id="admin-login-name" type="text" placeholder="Enter administrator name" autocomplete="off" onkeydown="if(event.key==='Enter')subAdminLogin()"/>
+        <input id="admin-login-name" type="text" placeholder="Enter administrator name" autocomplete="off"/>
       </div>
       <div class="sub-form-group" style="margin-bottom:.75rem">
         <label>Administrator Email</label>
-        <input id="admin-login-email" type="email" placeholder="Enter administrator email" autocomplete="off" onkeydown="if(event.key==='Enter')subAdminLogin()"/>
+        <input id="admin-login-email" type="email" placeholder="Enter administrator email" autocomplete="off"/>
       </div>
       <div class="sub-form-group" style="margin-bottom:1rem">
         <label>Password</label>
-        <input id="admin-login-password" type="password" placeholder="Enter administrator password" autocomplete="off" onkeydown="if(event.key==='Enter')subAdminLogin()"/>
+        <input id="admin-login-password" type="password" placeholder="Enter administrator password" autocomplete="off"/>
       </div>
-      <button class="login-enter-btn" data-ai-protected="true" data-ai-protected="true" id="admin-login-submit-btn" onclick="subAdminLogin()" style="margin-bottom:.5rem">
+      <button class="login-enter-btn" data-ai-protected="true" id="admin-login-submit-btn" style="margin-bottom:.5rem">
         🛡️ Login
       </button>
       <button class="btn btn-ghost" onclick="document.getElementById('sub-admin-login-overlay').style.display='none'" style="width:100%;margin-top:.5rem">
@@ -41177,60 +41177,7 @@ function subCheckExpiryAlerts() {
 }
 
 // ── Admin system ──────────────────────────────────────────────────
-let subAdminAuthenticated = false;
-let adminLoginAttempts = 0;
-
-// Accepted admin credentials — name is case-insensitive (all variants accepted)
-const ADMIN_ACCEPTED_NAMES  = ['frank abban'];
-const ADMIN_ACCEPTED_EMAIL  = 'acquahk50@gmail.com';
-
-function subAdminTrigger() {
-  // Always show the administrator login form when ADMIN button is clicked
-  subAdminAuthenticated = false;
-  document.getElementById('admin-login-name').value  = '';
-  document.getElementById('admin-login-email').value = '';
-  document.getElementById('admin-login-error').style.display  = 'none';
-  document.getElementById('admin-login-attempts').style.display = 'none';
-  const submitBtn = document.getElementById('admin-login-submit-btn');
-  if (submitBtn) submitBtn.disabled = false;
-  document.getElementById('sub-admin-login-overlay').style.display = 'flex';
-  setTimeout(function(){ document.getElementById('admin-login-name').focus(); }, 120);
-}
-
-function subAdminLogin() {
-  const name  = document.getElementById('admin-login-name').value.trim();
-  const email = document.getElementById('admin-login-email').value.trim().toLowerCase();
-  const errEl = document.getElementById('admin-login-error');
-  const attEl = document.getElementById('admin-login-attempts');
-
-  adminLoginAttempts++;
-
-  // Strict name + email validation (name comparison is case-insensitive)
-  const nameMatch  = ADMIN_ACCEPTED_NAMES.includes(name.toLowerCase());
-  const emailMatch = (email === ADMIN_ACCEPTED_EMAIL.toLowerCase());
-
-  if (!nameMatch || !emailMatch) {
-    errEl.textContent   = '🚫 Unauthorized Administrator Access';
-    errEl.style.display = '';
-    const remaining = Math.max(0, 5 - adminLoginAttempts);
-    attEl.textContent   = `⚠ Attempt ${adminLoginAttempts}/5. ${remaining > 0 ? remaining + ' attempt(s) remaining.' : 'Account temporarily locked.'}`;
-    attEl.style.display = '';
-
-    if (adminLoginAttempts >= 5) {
-      const submitBtn = document.getElementById('admin-login-submit-btn');
-      if (submitBtn) submitBtn.disabled = true;
-      errEl.textContent = '🔒 Too many failed attempts. Login temporarily locked. Reload the page to try again.';
-    }
-    return;
-  }
-
-  // Success — credentials match, open admin dashboard
-  subAdminAuthenticated = true;
-  adminLoginAttempts = 0;
-  document.getElementById('sub-admin-login-overlay').style.display = 'none';
-  subAdminOpen();
-}
-
+// Super Administrator authentication is owned by the backend-backed final controller below.
 function subAdminOpen() {
   subAdminRefresh();
   document.getElementById('sub-admin-overlay').style.display = 'flex';
@@ -43375,15 +43322,11 @@ window.addEventListener('load', function v61Init() {
   'use strict';
 
   var KEYS = {
-    password: 'ems_super_admin_active_password_v1',
     session: 'ems_super_admin_session_v1',
     audit: 'ems_super_admin_access_audit_v1',
     centralAudit: 'ems_sa_central_audit_trail_v1',
     rebuildAudit: 'ems_sa_rebuild_audit_v1'
   };
-  var AUTH_NAMES = ['FRANK ABBAN','Frank Abban','frank abban'];
-  var AUTH_EMAIL = 'acquahk50@gmail.com';
-  var DEFAULT_PASSWORD = 'frank1987';
   // V344 FIX: routes the v343 sidebar's Support/System static links are allowed to open
   // (SMS Configuration, User Guide, Developer, Acknowledgement) without being bounced
   // back into the Control Engine Room by the routing guard below.
@@ -43394,20 +43337,20 @@ window.addEventListener('load', function v61Init() {
   function write(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
   function arr(k){var v=read(k,[]);return Array.isArray(v)?v:[];}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function activePassword(){return localStorage.getItem(KEYS.password)||DEFAULT_PASSWORD;}
   function nowParts(){var d=new Date();return {date:d.toISOString().slice(0,10),time:d.toTimeString().slice(0,8),ts:d.toISOString()};}
   function deviceInfo(){return ((/Mobi|Android/i.test(navigator.userAgent||'')?'Mobile':'Desktop')+' | '+(navigator.platform||'Unknown platform')+' | '+(navigator.userAgent||'Unknown browser'));}
   function ipAddress(){return 'local/offline';}
   function toastMsg(msg,type){try{if(window.toast)window.toast(msg,type||'success');else alert(msg);}catch(e){alert(msg);}}
   function isSessionActive(){var s=read(KEYS.session,null);return !!(s&&s.authenticated&&s.role==='Super Administrator');}
-  function clearSchoolLevelSession(){
+  function clearSchoolLevelSession(user){
     ['ems_login_role','v43_login_level','v43_login_role','v43_login_staffid','v43_login_staffId','ems_login_region','ems_login_district','uld_active_level'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
     try{
+      var email=(user&&user.email)||'';
       localStorage.setItem('ems_login_role','super_admin');
       localStorage.setItem('v43_login_level','SUPER_ADMIN');
       localStorage.setItem('v43_login_role','Super Administrator');
-      localStorage.setItem('v43_login_name','Frank Abban');
-      window.EMS_CURRENT_USER={name:'Frank Abban',email:AUTH_EMAIL,role:'Super Administrator',level:'SUPER_ADMIN'};
+      localStorage.setItem('v43_login_name','Super Administrator');
+      window.EMS_CURRENT_USER={name:'Super Administrator',email:email,role:'Super Administrator',level:'SUPER_ADMIN'};
     }catch(e){}
   }
   function audit(action, detail, extra){
@@ -43465,9 +43408,6 @@ window.addEventListener('load', function v61Init() {
     var err=byId('admin-login-error');
     if(err){err.textContent=msg;err.style.display='';}
   }
-  function validCredentials(name,email,pwd){
-    return AUTH_NAMES.indexOf(name)!==-1 && email===AUTH_EMAIL && pwd===activePassword();
-  }
   function hideNonSuperDashboards(){
     var login=byId('login-screen'), top=document.querySelector('.topbar'), shell=document.querySelector('.shell'), upper=byId('upper-level-dashboard');
     if(login){login.classList.add('fade-out');login.style.display='none';}
@@ -43475,37 +43415,58 @@ window.addEventListener('load', function v61Init() {
     if(shell)shell.style.display='none';
     if(upper)upper.style.display='none';
   }
-  function openDashboard(){
-    clearSchoolLevelSession();
-    write(KEYS.session,{authenticated:true,name:'Frank Abban',email:AUTH_EMAIL,role:'Super Administrator',level:'SUPER_ADMIN',loginAt:new Date().toISOString()});
+  var loginInFlight=false;
+  var loginAttempts=0;
+  function backendRequest(url,options){
+    var request=Object.assign({credentials:'same-origin',headers:{'Content-Type':'application/json'}},options||{});
+    request.headers=Object.assign({'Content-Type':'application/json'},(options&&options.headers)||{});
+    return fetch(url,request).then(function(response){
+      return response.json().catch(function(){return {};}).then(function(payload){
+        if(!response.ok){var error=new Error(payload.error||'Authentication failed');error.status=response.status;throw error;}
+        return payload;
+      });
+    });
+  }
+  function openDashboard(user){
+    user=user||{};
+    clearSchoolLevelSession(user);
+    write(KEYS.session,{authenticated:true,name:'Super Administrator',email:user.email||'',role:'Super Administrator',level:'SUPER_ADMIN',loginAt:new Date().toISOString()});
     hideNonSuperDashboards();
     var loginOl=byId('sub-admin-login-overlay');if(loginOl)loginOl.style.display='none';
     try{if(window.EMS_SA_REBUILD&&typeof EMS_SA_REBUILD.init==='function')EMS_SA_REBUILD.init();}catch(e){}
     try{if(window.EMS_PART3&&typeof EMS_PART3.init==='function')EMS_PART3.init();}catch(e){}
     try{if(typeof v61InjectAdminExtensions==='function')v61InjectAdminExtensions();}catch(e){}
     try{if(typeof v67InjectAdminModules==='function')v67InjectAdminModules();}catch(e){}
-    if(typeof window.subAdminOpen==='function'){
-      window.subAdminOpen();
-    }else{
-      var dash=byId('sub-admin-overlay');if(dash)dash.style.display='flex';
-    }
-    setTimeout(function(){ensurePasswordMenu();audit('SUPER_ADMIN_LOGIN_SUCCESS','Super Administrator authenticated successfully',{enteredEmail:AUTH_EMAIL});},120);
+    try{if(typeof window.subAdminOpen==='function')window.subAdminOpen();}catch(e){try{console.warn('Super Administrator dashboard refresh failed after authentication:',e);}catch(ignore){}}
+    var dash=byId('sub-admin-overlay');
+    if(dash){dash.style.display='flex';dash.style.alignItems='flex-start';}
+    setTimeout(function(){ensurePasswordMenu();audit('SUPER_ADMIN_LOGIN_SUCCESS','Super Administrator authenticated successfully',{enteredEmail:user.email||''});},120);
   }
   function login(){
+    if(loginInFlight)return;
     var name=(byId('admin-login-name')||{}).value||'';
     var email=(byId('admin-login-email')||{}).value||'';
     var pwd=(byId('admin-login-password')||{}).value||'';
     name=name.trim();email=email.trim().toLowerCase();pwd=pwd.trim();
-    if(!validCredentials(name,email,pwd)){
+    if(!name||!email||!pwd){
       showLoginError('Invalid Super Administrator Credentials');
-      audit('SUPER_ADMIN_LOGIN_FAILED','Invalid Super Administrator Credentials',{enteredEmail:email});
       return;
     }
-    openDashboard();
+    loginInFlight=true;loginAttempts++;
+    var btn=byId('admin-login-submit-btn');if(btn){btn.disabled=true;btn.dataset.originalText=btn.textContent;btn.textContent='Signing in…';}
+    backendRequest('/api/auth/super-admin-login',{method:'POST',body:JSON.stringify({name:name,email:email,password:pwd})})
+      .then(function(payload){loginAttempts=0;openDashboard(payload.user||{});})
+      .catch(function(error){
+        showLoginError(error&&error.message==='Invalid Super Administrator Credentials'?'Invalid Super Administrator Credentials':'Super Administrator authentication is temporarily unavailable.');
+        audit('SUPER_ADMIN_LOGIN_FAILED','Invalid Super Administrator Credentials',{enteredEmail:email});
+        var attempts=byId('admin-login-attempts');if(attempts){attempts.textContent=error&&error.status===429?'Too many attempts. Please try again later.':'Attempt '+loginAttempts+'/5.';attempts.style.display='';}
+        if(btn){btn.disabled=false;btn.textContent=btn.dataset.originalText||'Login';}
+      })
+      .finally(function(){loginInFlight=false;});
   }
   function ensurePasswordMenu(){
     if(!isSessionActive())return;
-    var overlay=byId('sub-admin-overlay'), tabs=overlay&&overlay.querySelector('.admin-tabs'), body=overlay&&overlay.querySelector('div[style*="padding:1.25rem"]');
+    var overlay=byId('sub-admin-overlay'), tabs=overlay&&overlay.querySelector('.admin-tabs'), body=tabs&&tabs.parentElement;
     if(!tabs||!body)return;
     if(!byId('tab-sa-change-password')){
       var b=document.createElement('button');b.id='tab-sa-change-password';b.className='admin-tab';b.textContent='Change Super Admin Password';b.onclick=function(){openPasswordTab(b);};tabs.appendChild(b);
@@ -43538,14 +43499,21 @@ window.addEventListener('load', function v61Init() {
   function changePassword(){
     if(!isSessionActive()){passwordMessage('Super Administrator session required.',false);return;}
     var cur=(byId('sa-current-password')||{}).value||'', np=(byId('sa-new-password')||{}).value||'', cp=(byId('sa-confirm-password')||{}).value||'';
-    if(cur!==activePassword()){passwordMessage('Current password is incorrect.',false);return;}
+    if(!cur){passwordMessage('Current password is required.',false);return;}
     if(!np){passwordMessage('New password is required.',false);return;}
+    if(np.length<12){passwordMessage('New password must be at least 12 characters.',false);return;}
     if(np!==cp){passwordMessage('New Password and Confirm New Password must match.',false);return;}
-    localStorage.setItem(KEYS.password,np);
-    ['sa-current-password','sa-new-password','sa-confirm-password'].forEach(function(id){var el=byId(id);if(el)el.value='';});
-    audit('SUPER_ADMIN_PASSWORD_CHANGED','Super Administrator password changed',{superAdministratorName:'Frank Abban'});
-    passwordMessage('Super Admin password updated successfully.',true);
-    toastMsg('Super Admin password updated successfully.','success');
+    var button=document.querySelector('#panel-sa-change-password .sa-actions button');if(button)button.disabled=true;
+    backendRequest('/api/auth/password-change',{method:'POST',body:JSON.stringify({currentPassword:cur,newPassword:np})})
+      .then(function(){
+        ['sa-current-password','sa-new-password','sa-confirm-password'].forEach(function(id){var el=byId(id);if(el)el.value='';});
+        localStorage.removeItem(KEYS.session);
+        audit('SUPER_ADMIN_PASSWORD_CHANGED','Super Administrator password changed',{superAdministratorName:'Super Administrator'});
+        passwordMessage('Super Admin password updated successfully. Please sign in again on this device.',true);
+        toastMsg('Super Admin password updated successfully.','success');
+        setTimeout(function(){window.location.reload();},700);
+      })
+      .catch(function(error){passwordMessage(error&&error.message==='Password change could not be completed'?'Password change could not be completed':'Super Administrator password service is temporarily unavailable.',false);if(button)button.disabled=false;});
   }
   function guardRouting(){
     if(window.showPage&&!window.showPage._superAdminGuardFinal){
@@ -43702,7 +43670,7 @@ window.addEventListener('load', function v61Init() {
 
   function ensureShell(){
     injectStyle();
-    var overlay=byId('sub-admin-overlay'), tabs=overlay&&overlay.querySelector('.admin-tabs'), body=overlay&&overlay.querySelector('div[style*="padding:1.25rem"]');
+    var overlay=byId('sub-admin-overlay'), tabs=overlay&&overlay.querySelector('.admin-tabs'), body=tabs&&tabs.parentElement;
     if(!overlay||!tabs||!body)return false;
     var box=overlay.firstElementChild;if(box)box.style.maxWidth='1280px';
     var defs=[
@@ -50679,104 +50647,8 @@ window.addEventListener('load', function v61Init() {
 (function v64Fixes() {
   'use strict';
 
-  /* ── ADMIN CREDENTIALS ───────────────────────────────────────── */
-  var ADMIN_NAMES = ['frank abban'];          // lowercase comparison
-  var ADMIN_EMAIL = 'acquahk50@gmail.com';
-  var ADMIN_PWDS  = ['frank1987','FRANK1987','Frank1987'];
+  /* Super Administrator authentication is owned by EMS_SUPER_ADMIN_ACCESS. */
 
-  var _attempts = 0;
-
-  /* ── STEP 1: Open admin login form ──────────────────────────── */
-  window.subAdminTrigger = function() {
-    _attempts = 0;
-    _resetAdminForm();
-    var ol = document.getElementById('sub-admin-login-overlay');
-    if (ol) {
-      ol.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100002;display:flex;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(4px)';
-    }
-    setTimeout(function(){ var n=document.getElementById('admin-login-name'); if(n) n.focus(); }, 120);
-  };
-
-  function _resetAdminForm() {
-    ['admin-login-name','admin-login-email','admin-login-password'].forEach(function(id){
-      var el = document.getElementById(id); if(el) el.value = '';
-    });
-    var errEl = document.getElementById('admin-login-error');
-    var attEl = document.getElementById('admin-login-attempts');
-    var btn   = document.getElementById('admin-login-submit-btn');
-    if(errEl){ errEl.textContent=''; errEl.style.display='none'; }
-    if(attEl){ attEl.textContent=''; attEl.style.display='none'; }
-    if(btn)  { btn.disabled = false; }
-  }
-
-  /* ── STEP 2: Validate + open dashboard ──────────────────────── */
-  window.subAdminLogin = function() {
-    var nameEl  = document.getElementById('admin-login-name');
-    var emailEl = document.getElementById('admin-login-email');
-    var pwdEl   = document.getElementById('admin-login-password');
-    var errEl   = document.getElementById('admin-login-error');
-    var attEl   = document.getElementById('admin-login-attempts');
-    var btn     = document.getElementById('admin-login-submit-btn');
-
-    var name  = nameEl  ? nameEl.value.trim()              : '';
-    var email = emailEl ? emailEl.value.trim().toLowerCase(): '';
-    var pwd   = pwdEl   ? pwdEl.value.trim()               : '';
-
-    _attempts++;
-
-    var ok = ADMIN_NAMES.indexOf(name.toLowerCase()) !== -1
-          && email === ADMIN_EMAIL
-          && ADMIN_PWDS.indexOf(pwd) !== -1;
-
-    if (!ok) {
-      /* Show error */
-      if(errEl){ errEl.textContent='🚫 Unauthorized Administrator Access'; errEl.style.display=''; }
-      var left = Math.max(0, 5 - _attempts);
-      if(attEl){
-        attEl.textContent = '⚠ Attempt '+_attempts+'/5. '+(left>0 ? left+' attempt(s) remaining.' : 'Account temporarily locked.');
-        attEl.style.display='';
-      }
-      if(_attempts >= 5){
-        if(btn) btn.disabled = true;
-        if(errEl) errEl.textContent = '🔒 Too many failed attempts. Reload the page to try again.';
-      }
-      return;
-    }
-
-    /* ── SUCCESS — close login overlay, open dashboard ─────────── */
-    _attempts = 0;
-    window.subAdminAuthenticated = true;
-
-    /* Hide login overlay */
-    var loginOl = document.getElementById('sub-admin-login-overlay');
-    if(loginOl) loginOl.style.display = 'none';
-
-    /* Open admin dashboard — wrapped in try/catch so a render
-       error doesn't prevent the panel from appearing            */
-    _openAdminDashboard();
-  };
-
-  function _openAdminDashboard() {
-    /* Safely refresh KPIs / tables — ignore individual errors */
-    var refreshFns = [
-      'subAdminRenderKPIs','subAdminRenderSchools','subAdminRenderPayments',
-      'subAdminRenderPending','subAdminRenderLocked','subAdminRenderExpired'
-    ];
-    refreshFns.forEach(function(fn){
-      try{ if(typeof window[fn]==='function') window[fn](); }catch(e){ /* non-fatal */ }
-    });
-
-    /* Show the dashboard overlay */
-    var dashOl = document.getElementById('sub-admin-overlay');
-    if(dashOl){
-      dashOl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100001;display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;backdrop-filter:blur(3px)';
-    }
-
-    /* Inject extra admin tabs (analytics, teachers, notifications, reports) */
-    try{ if(typeof v61InjectAdminExtensions==='function') v61InjectAdminExtensions(); }catch(e){}
-  }
-
-  /* Keep window.subAdminOpen in sync so other callers still work */
   /* ── SUBSCRIPTION MODAL: reliable opener ────────────────────── */
   function _openSubModal() {
     /* PART 2: prefer the New Registration / Renew Subscription entry choice */
@@ -50882,26 +50754,11 @@ window.addEventListener('load', function v61Init() {
 
   /* ── WIRE ALL BUTTONS ────────────────────────────────────────── */
   function _wire() {
-    /* ADMIN login button */
-    document.querySelectorAll('.login-level-btn[data-level="ADMIN"]').forEach(function(btn){
-      btn.onclick = function(e){ e.preventDefault(); e.stopPropagation(); window.subAdminTrigger(); };
-    });
-
     /* Subscribe / Register School button */
     var subBtn = document.getElementById('sub-btn');
     if(subBtn){
       subBtn.onclick = function(e){ e.preventDefault(); e.stopPropagation(); _openSubModal(); };
     }
-
-    /* Admin form submit button */
-    var adminSubmit = document.getElementById('admin-login-submit-btn');
-    if(adminSubmit) adminSubmit.onclick = function(){ window.subAdminLogin(); };
-
-    /* Admin form Enter key */
-    ['admin-login-name','admin-login-email','admin-login-password'].forEach(function(id){
-      var el = document.getElementById(id);
-      if(el) el.onkeydown = function(e){ if(e.key==='Enter') window.subAdminLogin(); };
-    });
 
     /* Subscription Next / Back buttons */
     var btnNext = document.getElementById('sub-btn-next');
@@ -51906,7 +51763,7 @@ function v67Init() {
     setTimeout(v67InjectAdminModules, 150);
   };
 
-  // Patch subAdminTrigger / subAdminLogin to inject after open
+  // Patch subAdminTrigger to inject after open
   ['subAdminTrigger', 'subAdminClose'].forEach(fnName => {
     const orig = window[fnName];
     if (typeof orig === 'function') {

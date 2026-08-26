@@ -20,6 +20,7 @@ const RESET_TTL_MS = 15 * 60 * 1000;
 const COOKIE_NAME = 'edutrack_session';
 const CSRF_HEADER = 'x-csrf-token';
 const GENERIC_AUTH_ERROR = 'Authentication failed';
+const SUPER_ADMIN_AUTH_ERROR = 'Invalid Super Administrator Credentials';
 const GENERIC_RESET_MESSAGE = 'If the account is eligible, reset instructions will be sent.';
 const DEV_ACCESS_ENABLED = process.env.NODE_ENV !== 'production' && process.env.EDUTRACK_ENABLE_DEV_ACCESS === 'true';
 const LOGIN_LIMIT = { windowMs: 15 * 60 * 1000, maxFailures: 8, blockMs: 15 * 60 * 1000 };
@@ -561,6 +562,37 @@ async function handler(req, res) {
     });
     saveDb(db);
     return json(res, 200, { user: publicUser(principal), authorization: roleContext(principal) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
+  }
+  if (req.method === 'POST' && req.url === '/api/auth/super-admin-login') {
+    if (!requireSameOrigin(req, res)) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: SUPER_ADMIN_AUTH_ERROR }); }
+    if (Object.keys(input || {}).some(key => !['name', 'email', 'password'].includes(key))) return json(res, 400, { error: SUPER_ADMIN_AUTH_ERROR });
+    const displayName = validateText(input.name, { required: true, max: 160, pattern: /^[A-Za-z][A-Za-z0-9 .'-]*$/ });
+    const identifier = validateText(input.email, { required: true, max: 254, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ });
+    const password = validateText(input.password, { required: true, max: 256 });
+    const ipKey = limitKey(req, 'super-admin-login');
+    const accountKey = limitKey(req, `super-admin-account:${identifier || 'unknown'}`);
+    const ipState = checkLimit(ipKey, LOGIN_LIMIT); const accountState = checkLimit(accountKey, LOGIN_LIMIT);
+    if (ipState.blocked || accountState.blocked) {
+      const retryAfter = Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0);
+      return json(res, 429, { error: SUPER_ADMIN_AUTH_ERROR, retryAfter }, { 'Retry-After': String(Math.max(retryAfter, 1)) });
+    }
+    const user = db.users.find(item => item.active && String(item.role || '').toUpperCase() === 'SUPER_ADMIN' && item.email.toLowerCase() === String(identifier || '').toLowerCase() && (!item.developmentFixture || DEV_ACCESS_ENABLED));
+    const locked = user && user.lockedUntil && new Date(user.lockedUntil) > new Date();
+    const valid = Boolean(displayName && identifier && password && user && !locked && verifyPassword(password, user.passwordHash));
+    if (!valid) {
+      registerFailure(ipKey, LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT);
+      const rejectedAudit = { id: id('audit'), action: 'SUPER_ADMIN_LOGIN_REJECTED', at: new Date().toISOString(), ip: clientIp(req), severity: 'high' };
+      if (relational.isConfigured()) await relational.appendAudit(rejectedAudit); else { db.audit.push(rejectedAudit); saveDb(db); }
+      return json(res, 401, { error: SUPER_ADMIN_AUTH_ERROR });
+    }
+    clearLimit(ipKey); clearLimit(accountKey); user.failedLoginCount = 0; user.lockedUntil = null;
+    const rawToken = randomToken(); const now = new Date();
+    const session = { id: id('ses'), tokenHash: tokenHash(rawToken), userId: user.id, createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString() };
+    if (relational.isConfigured()) await relational.createSession(session); else db.sessions.push(session);
+    const loginAudit = { id: id('audit'), userId: user.id, action: 'SUPER_ADMIN_LOGIN_SUCCESS', at: now.toISOString(), ip: clientIp(req), severity: 'high' };
+    if (relational.isConfigured()) await relational.appendAudit(loginAudit); else { db.audit.push(loginAudit); saveDb(db); }
+    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
   }
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }

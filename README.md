@@ -118,3 +118,4 @@ Part 38 inspected the connected deployment integrations rather than assuming tha
 
 The live response also exposed `access-control-allow-origin: *`, so the connected deployment fails the exact-origin security requirement. Part 38 therefore does not push the dirty local tree or relabel the static deployment as a complete production release. See `PART38_EXTERNAL_RESOURCE_DISCOVERY.md`, `PART38_REAL_DEPLOYMENT_EXECUTION_REPORT.md`, `PART38_PRODUCTION_GATE_RESULTS.json`, `PART38_DEPLOYMENT_EVIDENCE_MATRIX.md`, and `PART38_OPERATOR_NEXT_ACTIONS.md` for the verified evidence and remediation sequence. Part 39 was not started.
  
+Deployment trigger marker: 2026-08-26T01:02:00Z.

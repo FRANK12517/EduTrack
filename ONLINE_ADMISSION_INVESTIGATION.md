@@ -41,3 +41,9 @@ The local isolated browser harness also exposed pre-existing legacy-script synta
 ## Conclusion
 
 No Online Admission source change was justified by the current evidence: the reported defect is not reproducible locally or on the live production deployment, and the active module is loaded and connected. The safe deliverable is this evidence-based investigation report, retained as an audit artifact; the existing Online Admission implementation should not be replaced or rebuilt.
+
+## Release record
+
+The report was committed on `main` as `7d2d248763071b583a7c4bdce47de1d500622063` (`Document online admission integration audit`) using `FRANK12517 <acquahk50@gmail.com>`, then pushed successfully to `origin/main`. Vercel created production deployment `dpl_BExJ7XShbRSRWh4Jg3tya6VLY4Eq` for that commit. The deployment completed with state `READY`, had no alias error, and was assigned to `www.edutrackgh.online`, `edutrackgh.online`, and the EduTrack Vercel aliases.
+
+The Vercel deployment metadata shows the verified author identity `FRANK12517 <acquahk50@gmail.com>` and commit SHA `7d2d248763071b583a7c4bdce47de1d500622063`. The metadata’s GitHub verification field remains `unverified`, but this did not block deployment; the previous author-email configuration block is resolved.

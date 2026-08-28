@@ -105,6 +105,17 @@ function validatePrivateTermDates(startDate, endDate) {
   return { startDate: String(startDate), endDate: String(endDate), durationDays: calculateTermDurationDays(startDate, endDate), maximumEndDate: maximum.toISOString().slice(0, 10) };
 }
 
+function validatePrivateAcademicYearDates(academicYear, termNumber, startDate, endDate) {
+  const match = String(academicYear || '').match(/^(\d{4})\/(\d{4})$/);
+  if (!match) throw new Error('academicYear must use YYYY/YYYY format');
+  const firstYear = Number(match[1]); const secondYear = Number(match[2]);
+  if (secondYear !== firstYear + 1) throw new Error('academicYear must contain consecutive years');
+  const start = parseDate(startDate, 'startDate'); const end = parseDate(endDate, 'endDate');
+  const lower = Date.UTC(firstYear, 7, 1); const upper = Date.UTC(secondYear, 8, 30, 23, 59, 59);
+  if (start.getTime() < lower || end.getTime() > upper) throw new Error(`Private term ${termNumber} dates must belong to academic year ${academicYear}`);
+  return true;
+}
+
 function validateTermConfiguration({ schoolType, academicYear, termNumber, startDate, endDate, governmentTermId = null }) {
   const type = normalizeSchoolType(schoolType);
   if (!type) throw new Error('schoolType must be government or private');
@@ -118,6 +129,7 @@ function validateTermConfiguration({ schoolType, academicYear, termNumber, start
     return { schoolType: type, academicYear: year, termNumber: term, termId: String(governmentTermId), governmentTermId: String(governmentTermId), startDate: null, endDate: null, durationDays: null };
   }
   const privateDates = validatePrivateTermDates(startDate, endDate);
+  validatePrivateAcademicYearDates(year, term, privateDates.startDate, privateDates.endDate);
   return { schoolType: type, academicYear: year, termNumber: term, termId: `${year}:term_${term}`, governmentTermId: null, startDate: privateDates.startDate, endDate: privateDates.endDate, durationDays: privateDates.durationDays, maximumEndDate: privateDates.maximumEndDate };
 }
 
@@ -198,6 +210,7 @@ module.exports = {
   calculateSubscriptionAmount,
   calculateTermDurationDays,
   validatePrivateTermDates,
+  validatePrivateAcademicYearDates,
   validateTermConfiguration,
   validateCapacity,
   firstTermFreeEligibility,

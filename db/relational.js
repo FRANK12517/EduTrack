@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
 
 const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL || '';
-const SCHEMA_VERSION = 23;
+const SCHEMA_VERSION = 24;
 let pool;
 let initialized;
 
@@ -68,6 +68,9 @@ const PART59_TABLES = [
 ];
 const PART60_TABLES = [
   `CREATE TABLE IF NOT EXISTS subscription_carry_forward_records (id VARCHAR(80) PRIMARY KEY, school_id VARCHAR(80) NOT NULL, tenant_id VARCHAR(80) NULL, previous_subscription_id VARCHAR(80) NOT NULL, previous_baseline_population INT NOT NULL, previous_end_population INT NOT NULL, verified_carry_forward INT NOT NULL, next_subscription_id VARCHAR(80) NULL, next_subscription_population INT NULL, carry_forward_status VARCHAR(32) NOT NULL DEFAULT 'CALCULATED', calculation_timestamp TIMESTAMP NOT NULL, created_by VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, UNIQUE KEY carry_forward_previous_unique (previous_subscription_id), KEY carry_forward_school (school_id,calculation_timestamp), CONSTRAINT carry_forward_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE, CONSTRAINT carry_forward_previous_fk FOREIGN KEY (previous_subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE, CONSTRAINT carry_forward_next_fk FOREIGN KEY (next_subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL, CONSTRAINT carry_forward_creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL) ENGINE=InnoDB`
+];
+const PART61_TABLES = [
+  `CREATE TABLE IF NOT EXISTS private_subscription_year_controls (school_id VARCHAR(80) NOT NULL, academic_year VARCHAR(32) NOT NULL, private_subscription_count_for_academic_year TINYINT NOT NULL DEFAULT 0, updated_at TIMESTAMP NOT NULL, PRIMARY KEY (school_id,academic_year), CONSTRAINT private_year_control_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE, CHECK (private_subscription_count_for_academic_year BETWEEN 0 AND 3)) ENGINE=InnoDB`
 ];
 const ACADEMIC_TABLES = [
   `CREATE TABLE IF NOT EXISTS academic_configurations (id VARCHAR(80) PRIMARY KEY, tenant_id VARCHAR(80) NOT NULL, school_id VARCHAR(80) NOT NULL, academic_year VARCHAR(32) NOT NULL, term VARCHAR(64) NOT NULL, week INT NULL, opening_date DATE NOT NULL, closing_date DATE NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'DRAFT', metadata_json JSON NULL, created_by VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, UNIQUE KEY academic_config_unique (school_id,academic_year,term), CONSTRAINT acad_cfg_tenant_fk FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT, CONSTRAINT acad_cfg_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE RESTRICT, CONSTRAINT acad_cfg_creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL, CHECK (closing_date >= opening_date)) ENGINE=InnoDB`,
@@ -151,7 +154,8 @@ async function migrate() {
         for (const column of ['subscription_start_date DATE NULL', 'subscription_end_date DATE NULL', 'active_student_count_at_subscription INT NULL', 'payment_status VARCHAR(32) NULL']) await conn.query(`ALTER TABLE subscriptions ADD COLUMN ${column}`).catch(() => {});
       }
       for (const statement of PART60_TABLES) await conn.query(statement);
-      await conn.query('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [SCHEMA_VERSION, 'part60-automatic-carry-forward-billing-migration']);
+      for (const statement of PART61_TABLES) await conn.query(statement);
+      await conn.query('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [SCHEMA_VERSION, 'part61-private-school-three-term-subscription-control-migration']);
     }
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
@@ -227,7 +231,8 @@ async function getSubscriptionCycleState(schoolId,academicYear){
   await ensureInitialized();
   const [subscriptions]=await getPool().query("SELECT COUNT(*) AS count, COALESCE(MAX(subscription_sequence),0) AS max_sequence FROM subscriptions WHERE school_id=? AND school_type='private' AND academic_year=? AND status IN ('ACTIVE','RENEWED')",[schoolId,academicYear]);
   const [intents]=await getPool().query("SELECT COUNT(*) AS count, COALESCE(MAX(subscription_sequence),0) AS max_sequence FROM payment_intents WHERE school_id=? AND school_type='private' AND academic_year=? AND status IN ('initialized','pending')",[schoolId,academicYear]);
-  return {count:Number(subscriptions[0]?.count||0)+Number(intents[0]?.count||0),maxSequence:Math.max(Number(subscriptions[0]?.max_sequence||0),Number(intents[0]?.max_sequence||0))};
+  const count=Number(subscriptions[0]?.count||0)+Number(intents[0]?.count||0);
+  return {count,privateSubscriptionCountForAcademicYear:count,maxSequence:Math.max(Number(subscriptions[0]?.max_sequence||0),Number(intents[0]?.max_sequence||0))};
 }
 async function updatePaymentIntentStatus(reference,status){await ensureInitialized();await getPool().query('UPDATE payment_intents SET status=?,updated_at=? WHERE reference=?',[status,iso(new Date()),reference]);}
 async function findPaymentIntentByReference(userId,reference){await ensureInitialized();const [rows]=await getPool().query('SELECT * FROM payment_intents WHERE user_id=? AND reference=? LIMIT 1',[userId,reference]);return rows[0]||null;}
@@ -250,6 +255,8 @@ async function recordVerifiedPayment(input){
       const completed=Number(cycleRows[0]?.count||0);
       const sequence=Number(intent.subscription_sequence||completed+1);
       if(sequence<1||sequence>3||completed>=3||sequence!==completed+1)throw Object.assign(new Error('Private school must complete exactly three subscription periods in an academic year'),{code:'PRIVATE_SUBSCRIPTION_SEQUENCE_INVALID'});
+      const [overlaps]=await conn.query("SELECT id FROM subscriptions WHERE school_id=? AND school_type='private' AND academic_year=? AND term_start_date IS NOT NULL AND term_end_date IS NOT NULL AND term_start_date<=? AND term_end_date>=? UNION ALL SELECT id FROM payment_intents WHERE school_id=? AND school_type='private' AND academic_year=? AND id<>? AND status IN ('initialized','pending') AND term_start_date IS NOT NULL AND term_end_date IS NOT NULL AND term_start_date<=? AND term_end_date>=? LIMIT 1",[schoolId,intent.academic_year,intent.term_end_date,intent.term_start_date,schoolId,intent.academic_year,intent.id,intent.term_end_date,intent.term_start_date]);
+      if(overlaps.length)throw Object.assign(new Error('Private subscription dates overlap an existing subscription period'),{code:'PRIVATE_SUBSCRIPTION_PERIOD_OVERLAP'});
     }
     const now=new Date();
     const durationDays=Number(intent.duration_days||input.durationDays||90);
@@ -265,6 +272,7 @@ async function recordVerifiedPayment(input){
     if(subs.length) await conn.query(`UPDATE subscriptions SET status='RENEWED',updated_at=? WHERE id=?`,[iso(now),subs[0].id]);
     await conn.query('INSERT INTO subscriptions (id,user_id,school_id,plan_id,school_type,term_id,academic_year,term_number,government_term_reference,private_reopening_date,private_vacation_date,subscription_sequence,status,starts_at,expires_at,subscription_start_date,subscription_end_date,active_student_count_at_subscription,price_per_student,subscription_amount,economic_value,currency,payment_status,payment_reference,payment_provider,last_transaction_id,renewal_state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[subId,snapshot.user_id,snapshot.school_id,snapshot.plan_id,snapshot.school_type,snapshot.term_id,snapshot.academic_year,snapshot.term_number,snapshot.government_term_reference,snapshot.private_reopening_date,snapshot.private_vacation_date,snapshot.subscription_sequence,snapshot.status,snapshot.starts_at,snapshot.expires_at,snapshot.subscription_start_date,snapshot.subscription_end_date,snapshot.active_student_count_at_subscription,snapshot.price_per_student,snapshot.subscription_amount,snapshot.economic_value,snapshot.currency,snapshot.payment_status,snapshot.payment_reference,snapshot.payment_provider,snapshot.last_transaction_id,snapshot.renewal_state,snapshot.created_at,snapshot.updated_at]);
     if(subs.length)await conn.query("UPDATE subscription_carry_forward_records SET next_subscription_id=?,next_subscription_population=?,carry_forward_status='APPLIED' WHERE previous_subscription_id=? AND next_subscription_id IS NULL",[subId,activeStudentCount,subs[0].id]);
+    if(String(intent.school_type||'').toLowerCase()==='private') await conn.query("INSERT INTO private_subscription_year_controls (school_id,academic_year,private_subscription_count_for_academic_year,updated_at) SELECT ?,?,COUNT(*),? FROM subscriptions WHERE school_id=? AND school_type='private' AND academic_year=? AND status IN ('ACTIVE','RENEWED') ON DUPLICATE KEY UPDATE private_subscription_count_for_academic_year=VALUES(private_subscription_count_for_academic_year),updated_at=VALUES(updated_at)",[schoolId,intent.academic_year,iso(now),schoolId,intent.academic_year]);
     if(input.eventId)await conn.query('INSERT INTO payment_events (id,event_id,reference,event_type,payload_json,received_at) VALUES (?,?,?,?,?,?)',[newId('payevent'),input.eventId,input.reference,input.eventType||'charge.success',json(input.payload||null),iso(now)]);
     await conn.query(`UPDATE payment_intents SET status='verified',updated_at=? WHERE id=?`,[iso(now),intent.id]);
     await conn.commit();

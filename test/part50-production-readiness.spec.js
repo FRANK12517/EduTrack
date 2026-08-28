@@ -6,8 +6,8 @@ const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
 const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
 
 assert.deepEqual(Object.keys(policy.PLANS).sort(), ['government', 'private']);
-assert.deepEqual({ price: policy.PLANS.government.priceGhs, currency: policy.PLANS.government.currency, period: policy.PLANS.government.billingPeriod, students: policy.PLANS.government.capacity.students, staff: policy.PLANS.government.capacity.staff, free: policy.PLANS.government.firstTermFree, sms: policy.PLANS.government.smsIncluded }, { price: 130, currency: 'GHS', period: 'term', students: 300, staff: 15, free: true, sms: 0 });
-assert.deepEqual({ price: policy.PLANS.private.priceGhs, currency: policy.PLANS.private.currency, period: policy.PLANS.private.billingPeriod, students: policy.PLANS.private.capacity.students, staff: policy.PLANS.private.capacity.staff, free: policy.PLANS.private.firstTermFree, sms: policy.PLANS.private.smsIncluded }, { price: 200, currency: 'GHS', period: 'term', students: 300, staff: 15, free: false, sms: 500 });
+assert.deepEqual({ price: policy.PLANS.government.pricePerStudentGhs, currency: policy.PLANS.government.currency, period: policy.PLANS.government.billingPeriod, students: policy.PLANS.government.capacity.students, staff: policy.PLANS.government.capacity.staff, free: policy.PLANS.government.firstTermFree, sms: policy.PLANS.government.smsIncluded }, { price: 1, currency: 'GHS', period: 'term', students: 300, staff: 15, free: true, sms: 0 });
+assert.deepEqual({ price: policy.PLANS.private.pricePerStudentGhs, currency: policy.PLANS.private.currency, period: policy.PLANS.private.billingPeriod, students: policy.PLANS.private.capacity.students, staff: policy.PLANS.private.capacity.staff, free: policy.PLANS.private.firstTermFree, sms: policy.PLANS.private.smsIncluded }, { price: 1, currency: 'GHS', period: 'term', students: 300, staff: 15, free: false, sms: 500 });
 assert.match(server, /subscriptionPolicy\.planForSchoolType/);
 assert.match(server, /claimFirstTermFree\(schoolId, \{ userId: auth\.user\.id/);
 assert.match(server, /FIRST_TERM_FREE/);

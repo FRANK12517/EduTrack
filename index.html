@@ -5155,15 +5155,15 @@ td input, td select, td textarea, td button {
           <div class="pkg-card" id="pkg-government" onclick="subSelectPkg('government',this)">
             <div class="pkg-icon">🏛️</div>
             <div class="pkg-name">Government/Public School</div>
-            <div class="pkg-price">GH₵130</div>
-            <div class="pkg-period">Per School · Per Term</div>
+            <div class="pkg-price">GH₵1 per active student / term</div>
+            <div class="pkg-period">Per Active Student · Per Academic Term</div>
             <ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Central government calendar</li><li>First term free once</li></ul>
           </div>
           <div class="pkg-card" id="pkg-private" onclick="subSelectPkg('private',this)">
             <div class="pkg-icon">🏫</div>
             <div class="pkg-name">Private School</div>
-            <div class="pkg-price">GH₵200</div>
-            <div class="pkg-period">Per School · Per Term</div>
+            <div class="pkg-price">GH₵1 per active student / term</div>
+            <div class="pkg-period">Per Active Student · Per Academic Term</div>
             <ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed calendar</li></ul>
           </div>
         </div>
@@ -6067,6 +6067,32 @@ td input, td select, td textarea, td button {
           </div>
         </div>
       </div>
+      <section id="edutrack-part59-population-panel" class="card" style="margin-top:1rem" aria-labelledby="edutrack-part59-title">
+        <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;flex-wrap:wrap">
+          <div><h3 id="edutrack-part59-title" style="margin:0">Subscription Population Verification</h3><p style="margin:.35rem 0 0;color:var(--muted);font-size:.8rem">Server-verified examination-input and report-card population checkpoints for the selected school.</p></div>
+          <button id="edutrack-part59-refresh" class="btn btn-secondary" type="button">Refresh verification</button>
+        </div>
+        <div id="edutrack-part59-status" style="min-height:1.2rem;margin:.65rem 0;color:var(--muted);font-size:.8rem">No verification checkpoint loaded.</div>
+        <div id="edutrack-part59-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.55rem"></div>
+        <div class="tbl-wrap" style="margin-top:.8rem;overflow-x:auto">
+          <table id="edutrack-part59-class-table" style="min-width:760px">
+            <thead><tr><th class="left">Class</th><th>Active at Subscription</th><th>Current Active</th><th>Exam Input</th><th>Report Cards</th><th>Difference</th><th>Status</th></tr></thead>
+            <tbody id="edutrack-part59-class-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted)">No server checkpoint loaded.</td></tr></tbody>
+          </table>
+        </div>
+        <div id="edutrack-part59-flags" style="margin-top:.7rem;font-size:.8rem"></div>
+        <section id="edutrack-part60-carry-panel" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)" aria-labelledby="edutrack-part60-title">
+          <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;flex-wrap:wrap"><div><h3 id="edutrack-part60-title" style="margin:0">Automatic Carry-Forward Billing</h3><p style="margin:.35rem 0 0;color:var(--muted);font-size:.8rem">The next subscription uses the verified current active population. Carry-forward is an audit adjustment and does not compound.</p></div><button id="edutrack-part60-refresh" class="btn btn-secondary" type="button">Refresh billing summary</button></div>
+          <div id="edutrack-part60-status" style="min-height:1.2rem;margin:.65rem 0;color:var(--muted);font-size:.8rem">No carry-forward calculation loaded.</div>
+          <div id="edutrack-part60-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.55rem"></div>
+          <section id="edutrack-part61-private-panel" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)" aria-labelledby="edutrack-part61-title">
+            <h3 id="edutrack-part61-title" style="margin:0">Private School Three-Term Subscription Control</h3>
+            <p id="edutrack-part61-status" style="margin:.35rem 0;color:var(--muted);font-size:.8rem">No private subscription cycle status loaded.</p>
+            <div id="edutrack-part61-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.55rem"></div>
+            <div class="tbl-wrap" style="margin-top:.8rem;overflow-x:auto"><table id="edutrack-part61-table" style="min-width:820px"><thead><tr><th>Academic Year</th><th>Current Term</th><th>Subscription</th><th>Reopening Date</th><th>Vacation Date</th><th>Duration</th><th>Active Students</th><th>Amount Due</th><th>Status</th></tr></thead><tbody id="edutrack-part61-tbody"><tr><td colspan="9" style="text-align:center;color:var(--muted)">No private subscription records loaded.</td></tr></tbody></table></div>
+          </section>
+        </section>
+      </section>
     </div>
 
     <div id="page-rso-dashboard" class="hidden">
@@ -38972,6 +38998,7 @@ function fmsPrintOutstanding() {
 <\/script>
 
 
+
 </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);
@@ -40678,7 +40705,7 @@ function subGetSchoolStatus(school) {
 }
 
 function subGetPackagePrice(pkg) {
-  const map = { government:'GH₵130', private:'GH₵200' };
+  const map = { government:'GH₵1 per active student / term', private:'GH₵1 per active student / term' };
   return map[pkg] || '—';
 }
 
@@ -45308,8 +45335,8 @@ window.addEventListener('load', function v61Init() {
   };
 
   var PACKAGE_DEFS = {
-    government: { id:'government', code:'GOVERNMENT', name:'Government/Public School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'One free first term for eligible Government/Public schools; subsequent terms are GH₵130.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','Central government calendar','Optional paid SMS credits'], restrictions:[] },
-    private: { id:'private', code:'PRIVATE', name:'Private School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'Paid term renewal at GH₵200 with 500 SMS credits.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','School-managed calendar','500 SMS credits per term'], restrictions:[] }
+    government: { id:'government', code:'GOVERNMENT', name:'Government/Public School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'One free first term for eligible Government/Public schools; subsequent terms are GH₵1 per active student / term.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','Central government calendar','Optional paid SMS credits'], restrictions:[] },
+    private: { id:'private', code:'PRIVATE', name:'Private School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'Paid term renewal at GH₵1 per active student / term with 500 SMS credits.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','School-managed calendar','500 SMS credits per term'], restrictions:[] }
   };var CLASS_OPTIONS = ['KG 1','KG 2','Basic 1','Basic 2','Basic 3','Basic 4','Basic 5','Basic 6','JHS 1','JHS 2','JHS 3'];
 
   function get(k, fallback){ try{ var v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?fallback:v; }catch(e){ return fallback; } }
@@ -50982,109 +51009,33 @@ const GH_REGIONS_DISTRICTS = {
 // ─────────────────────────────────────────────────────────────────
 
 function v67GetPrices() {
-  const stored = v67Get(V67_KEYS.prices) || {};
-  const normalized = {
-    government: { amount: Number(stored.government?.amount ?? 130), label: 'Government/Public School' },
-    private:    { amount: Number(stored.private?.amount ?? 200), label: 'Private School' },
-    updatedBy: stored.updatedBy || '', updatedAt: stored.updatedAt || ''
+  return {
+    government: { amount: 1, pricePerStudentGhs: 1, label: 'Government/Public School' },
+    private: { amount: 1, pricePerStudentGhs: 1, label: 'Private School' },
+    updatedBy: 'EduTrack pricing policy', updatedAt: ''
   };
-  v67Set(V67_KEYS.prices, normalized);
-  return normalized;
 }
 
 function v67SavePrices() {
-  const governmentAmt = parseFloat(document.getElementById('v67-price-government')?.value) || 130;
-  const privateAmt = parseFloat(document.getElementById('v67-price-private')?.value) || 200;
-
-  const prices = {
-    government: { amount: governmentAmt, label: 'Government/Public School' },
-    private:    { amount: privateAmt, label: 'Private School' },
-    updatedBy: 'Frank Abban (Super Admin)',
-    updatedAt: new Date().toISOString()
-  };
-  v67Set(V67_KEYS.prices, prices);
-
-  // Sync to v60 rebuild storage if present
-  if (window.EMS_SA_REBUILD && window.STORE && STORE.prices) {
-    let saPrices = arr(STORE.prices);
-    ['government','private'].forEach(id => {
-      saPrices.unshift({
-        id: 'price_'+id+'_'+Date.now(),
-        packageId: id,
-        currentPrice: prices[id].amount,
-        newPrice: prices[id].amount,
-        effectiveDate: new Date().toISOString().slice(0,10),
-        effectiveTime: '00:00',
-        status: 'active',
-        createdAt: new Date().toISOString()
-      });
-    });
-    write(STORE.prices, saPrices.slice(0, 100));
-  }
-
-  // Sync to subscription page immediately
-  v67SyncPricesToUI();
-  if (typeof toast === 'function') toast('✅ Package prices updated and synced!', 'success');
+  if (typeof toast === 'function') toast('Pricing is fixed at GH₵1 per active student per academic term and is calculated by the server.', 'info');
   v67RenderPriceControlModule();
 }
 
 function v67SyncPricesToUI() {
-  const prices = v67GetPrices();
-  // Sync current Government/Public and Private term-plan prices to the UI.
-  const priceMap = {
-    government: { selectors: ['#pkg-government .pkg-price', '#subv2-renew-price-government'], val: `GHC ${prices.government.amount}` },
-    private:    { selectors: ['#pkg-private .pkg-price', '#subv2-renew-price-private'], val: `GHC ${prices.private.amount}` },
-  };
-  Object.values(priceMap).forEach(function(entry){
-    entry.selectors.forEach(function(selector){document.querySelectorAll(selector).forEach(function(el){el.textContent=entry.val;});});
+  ['#pkg-government .pkg-price', '#subv2-renew-price-government', '#pkg-private .pkg-price', '#subv2-renew-price-private'].forEach(function(selector) {
+    document.querySelectorAll(selector).forEach(function(el) { el.textContent = 'GH₵1 per active student / term'; });
   });
-  // Also update the payment amount display if visible
   const amtEl = document.getElementById('sub-pay-amount-val');
-  if (amtEl && window.subSelectedPkg) {
-    amtEl.textContent = `GHC ${prices[window.subSelectedPkg]?.amount || '—'}`;
-  }
+  if (amtEl && window.subSelectedPkg) amtEl.textContent = 'Calculated from active students at checkout';
 }
 
-// Override subGetPackagePrice to use dynamic prices
 const _origSubGetPackagePrice = window.subGetPackagePrice;
-window.subGetPackagePrice = function(pkg) {
-  const prices = v67GetPrices();
-  if (prices[pkg]) return `GHC ${prices[pkg].amount}`;
-  return _origSubGetPackagePrice ? _origSubGetPackagePrice(pkg) : '—';
-};
+window.subGetPackagePrice = function() { return 'GH₵1 per active student / term'; };
 
 function v67RenderPriceControlModule() {
   const container = document.getElementById('v67-price-control-module');
   if (!container) return;
-  const prices = v67GetPrices();
-  const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('en-GH') : 'Never';
-
-  container.innerHTML = `
-    <div style="background:linear-gradient(135deg,#0d1b3e,#1a3a6b);color:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem">
-      <h3 style="font-size:.95rem;font-weight:800;margin-bottom:.25rem">💰 Package Price Control</h3>
-      <p style="font-size:.72rem;opacity:.75">Changes take effect immediately on the subscription registration page</p>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-bottom:1rem">
-      ${['government','private'].map(pkg => `
-      <div style="background:#f5f7fb;border:1px solid #d0d8e8;border-radius:10px;padding:1rem">
-        <div style="font-size:.8rem;font-weight:700;color:#0d1b3e;margin-bottom:.5rem">${prices[pkg].label}</div>
-        <div style="font-size:.68rem;color:#8090b0;margin-bottom:.35rem">Current Price</div>
-        <div style="font-size:1.3rem;font-weight:800;color:#0e7c86;font-family:monospace;margin-bottom:.5rem">GHC ${prices[pkg].amount}</div>
-        <div style="display:flex;flex-direction:column;gap:.25rem">
-          <label style="font-size:.68rem;font-weight:700;color:#8090b0;text-transform:uppercase">New Price (GHC)</label>
-          <input id="v67-price-${pkg}" type="number" min="0" step="0.01" value="${prices[pkg].amount}"
-            style="border:1px solid #d0d8e8;border-radius:6px;padding:.4rem .6rem;font-size:.9rem;font-family:monospace;font-weight:700;width:100%;color:#0d1b3e"/>
-        </div>
-      </div>`).join('')}
-    </div>
-    <div style="background:#fef9e7;border:1px solid #f0c842;border-radius:8px;padding:.65rem 1rem;margin-bottom:.75rem;font-size:.78rem;color:#8B6914">
-      <strong>Last Updated:</strong> ${fmtDate(prices.updatedAt)} &nbsp;|&nbsp;
-      <strong>By:</strong> ${prices.updatedBy || 'Not yet updated'}
-    </div>
-    <button onclick="v67SavePrices()" style="background:#d4a017;color:#0d1b3e;border:none;border-radius:8px;padding:.65rem 1.5rem;font-weight:800;font-size:.88rem;cursor:pointer;width:100%">
-      💾 Save & Apply New Prices Instantly
-    </button>
-  `;
+  container.innerHTML = '<div style="background:linear-gradient(135deg,#0d1b3e,#1a3a6b);color:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem"><h3 style="font-size:.95rem;font-weight:800;margin-bottom:.25rem">Subscription Pricing Policy</h3><p style="font-size:.78rem;opacity:.9">GH₵1 per active student per academic term. The server calculates the active-student count when a payment is initialized; client-side prices and administrator overrides are not accepted.</p></div>';
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -51950,65 +51901,17 @@ const V70_PACKAGES = [
 
 // ── GET ACTIVE PRICES (merged: v70 active overrides v67) ─────────────────
 function v70GetActivePrices() {
-  // Fix: Prioritize Super Admin Price Control Engine prices
-  const sa = window.EMS_SA_REBUILD;
-  if (sa && typeof sa.activePrice === 'function') {
-    return {
-      government: sa.activePrice('government'),
-      private:    sa.activePrice('private')
-    };
-  }
-  const v70Active = v70Get(V70_ACTIVE_PRICES_KEY) || {};
-  const v67Prices = (typeof v67GetPrices === 'function') ? v67GetPrices() : { government:{amount:130}, private:{amount:200} };
-  return {
-    government: v70Active.government ?? v67Prices.government?.amount ?? 130,
-    private:    v70Active.private    ?? v67Prices.private?.amount    ?? 200,
-  };
+  return { government: 1, private: 1 };
 }
 
 // ── APPLY ACTIVE PRICES TO UI (subscription pages) ────────────────────────
 function v70SyncPricesToUI() {
-  const p = v70GetActivePrices();
-  const history = v70GetArr(V70_PRICE_HISTORY_KEY);
-  const map = { government: '#pkg-government', private: '#pkg-private' };
-
-  Object.entries(map).forEach(([k, id]) => {
-    const el = document.querySelector(`${id} .pkg-price`);
-    if (el) el.textContent = `GHC ${Number(p[k]).toFixed(2)}`;
-
-    // V378: Show scheduled price notice in the registration modal
-    const card = document.querySelector(id);
-    if (card) {
-      const scheduled = history.find(r => r.package === k && r.status === 'Scheduled');
-      let notice = card.querySelector('.scheduled-price-notice');
-      if (scheduled) {
-        if (!notice) {
-          notice = document.createElement('div');
-          notice.className = 'scheduled-price-notice';
-          notice.style = 'font-size:.65rem;color:#d4a017;font-weight:700;margin-top:.25rem;background:#fff9e6;padding:.2rem .4rem;border-radius:4px;border:1px solid #ffeeba';
-          card.querySelector('.pkg-price').after(notice);
-        }
-        notice.textContent = `⏳ GHC ${Number(scheduled.newPrice).toFixed(2)} from ${scheduled.effectiveDate}`;
-        notice.style.display = 'block';
-      } else if (notice) {
-        notice.style.display = 'none';
-      }
-    }
+  ['#pkg-government .pkg-price', '#subv2-renew-price-government', '#pkg-private .pkg-price', '#subv2-renew-price-private'].forEach(function(selector) {
+    document.querySelectorAll(selector).forEach(function(el) { el.textContent = 'GH₵1 per active student / term'; });
   });
-
   const amtEl = document.getElementById('sub-pay-amount-val');
-  if (amtEl && window.subSelectedPkg) {
-    amtEl.textContent = `GHC ${Number(p[window.subSelectedPkg]||0).toFixed(2)}`;
-  }
+  if (amtEl && window.subSelectedPkg) amtEl.textContent = 'Calculated from active students at checkout';
 }
-
-// Override subGetPackagePrice globally
-const _origV70GetPkg = window.subGetPackagePrice;
-window.subGetPackagePrice = function(pkg) {
-  const p = v70GetActivePrices();
-  if (p[pkg] !== undefined) return `GHC ${Number(p[pkg]).toFixed(2)}`;
-  return _origV70GetPkg ? _origV70GetPkg(pkg) : '—';
-};
 
 // ── CHECK SCHEDULED PRICES — runs on init and every 30 s ─────────────────
 function v70CheckScheduledPrices() {
@@ -52173,21 +52076,8 @@ function v70ActivatePrice(recId) {
 }
 
 // ── SAVE FORM HANDLER ─────────────────────────────────────────────────────
-window.v70SavePriceForm = function(pkg) {
-  const price    = parseFloat(document.getElementById(`v70-new-price-${pkg}`)?.value);
-  const date     = document.getElementById(`v70-eff-date-${pkg}`)?.value;
-  const time     = document.getElementById(`v70-eff-time-${pkg}`)?.value;
-  const admin    = (document.getElementById('v70-admin-name')?.value || 'Super Administrator').trim();
-  const schoolId = document.getElementById(`v70-pending-school-${pkg}`)?.value;
-
-  if (isNaN(price) || price < 0) { alert('❌ Price cannot be negative or empty.'); return; }
-  if (!date)  { alert('❌ Effective date cannot be empty.'); return; }
-  if (!time)  { alert('❌ Effective time cannot be empty.'); return; }
-  if (!admin) { alert('❌ Administrator name is required.'); return; }
-
-  v70AddPriceRecord(pkg, price, date, time, admin, schoolId);
-  if (typeof toast === 'function') toast(`✅ Price saved for ${V70_PACKAGES.find(p=>p.id===pkg)?.label}!`, 'success');
-  v70RenderPriceManagementPanel();
+window.v70SavePriceForm = function() {
+  if (typeof toast === 'function') toast('Pricing is fixed at GH₵1 per active student per academic term. Use the server quote for the payable amount.', 'info');
 };
 
 window.v70DeactivatePrice = v70DeactivatePrice;
@@ -147504,6 +147394,48 @@ window.SRG_ANNUAL = (function(){
 </script>
 <script src="/edutrack-cloud-sync.js"></script>
 
+
+<script id="edutrack-part59-population-ui">
+(function(){
+  'use strict';
+  if(window.__EDUTRACK_PART59_POPULATION_UI__)return;
+  window.__EDUTRACK_PART59_POPULATION_UI__=true;
+  function el(id){return document.getElementById(id)}
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function schoolId(){try{var cfg=window.CONFIG||{};return String(cfg.schoolId||cfg.school_id||cfg.schoolCode||cfg.schoolNo||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(e){return ''}}
+  function request(url){return fetch(url,{credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return {}}).then(function(p){if(!r.ok)throw new Error(p.error||'Verification unavailable');return p})})}
+  function render(d){var summary=d&&d.summary||{};var cards=[['Subscription baseline',summary.subscriptionPopulation],['Current active',summary.currentActivePopulation],['Admissions after subscription',summary.newAdmissionsAfterSubscription],['Exam input',summary.examinationPopulation],['Report cards',summary.reportCardPopulation],['Net additional',summary.netAdditionalStudents],['Carry-forward',summary.carryForwardStudents]];el('edutrack-part59-summary').innerHTML=cards.map(function(c){return '<div style="border:1px solid var(--border);border-radius:8px;padding:.65rem;background:var(--white)"><strong style="display:block;font-size:1.15rem">'+esc(c[1])+'</strong><span style="font-size:.72rem;color:var(--muted)">'+esc(c[0])+'</span></div>'}).join('');var rows=(d&&d.classes)||[];el('edutrack-part59-class-tbody').innerHTML=rows.length?rows.map(function(row){var status=Number(row.difference||0)===0?'Matched':'Review';return '<tr><td class="left">'+esc(row.className||row.classId)+'</td><td>'+esc(row.activeAtSubscription)+'</td><td>'+esc(row.currentActive)+'</td><td>'+esc(row.examInput)+'</td><td>'+esc(row.reportCards)+'</td><td>'+esc(row.difference)+'</td><td><span style="color:'+(status==='Matched'?'#176b45':'#9a3412')+';font-weight:700">'+status+'</span></td></tr>'}).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted)">No server checkpoint loaded.</td></tr>';var flags=[];if(Number(summary.activeWithoutReportCards||0))flags.push(summary.activeWithoutReportCards+' active students without report cards');if(Number(summary.reportCardsForInactiveStudents||0))flags.push(summary.reportCardsForInactiveStudents+' report cards linked to inactive students');if(Number(summary.reportCardsOutsideSchoolTenant||0))flags.push(summary.reportCardsOutsideSchoolTenant+' report cards outside the authorized school/tenant');el('edutrack-part59-flags').innerHTML=flags.length?'<strong style="color:#9a3412">Flags:</strong> '+flags.map(esc).join(' · '):'<span style="color:#176b45">No reconciliation flags in the latest server snapshot.</span>'}
+  function refresh(){var s=schoolId();if(!s){el('edutrack-part59-status').textContent='School context is not available for server verification.';return}el('edutrack-part59-status').textContent='Loading server verification…';request('/api/subscriptions/population-dashboard?schoolId='+encodeURIComponent(s)).then(function(out){render(out.dashboard||{});el('edutrack-part59-status').textContent='Loaded from the authenticated server scope at '+new Date().toLocaleString();}).catch(function(err){el('edutrack-part59-status').textContent=err.message;})}
+  function install(){var b=el('edutrack-part59-refresh');if(b&&!b.dataset.part59){b.dataset.part59='1';b.addEventListener('click',refresh)}var page=el('page-dashboard');if(page&&!page.dataset.part59){page.dataset.part59='1';refresh()}}
+  window.EDUTRACK_PART59_POPULATION_UI={refresh:refresh};
+  if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,800);
+})();
+</script>
+
+<script id="edutrack-part60-carry-forward-ui">
+(function(){'use strict';if(window.__EDUTRACK_PART60_CARRY_UI__)return;window.__EDUTRACK_PART60_CARRY_UI__=true;function e(id){return document.getElementById(id)}function x(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}function school(){try{var c=window.CONFIG||{};return String(c.schoolId||c.school_id||c.schoolCode||c.schoolNo||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(_){return ''}}function render(d){var names=[['Previous subscription population',d.previousSubscriptionPopulation],['Verified additional students',d.verifiedAdditionalStudents],['Carry-forward population',d.carryForwardPopulation],['Current active population',d.currentActivePopulation],['Next subscription billable population',d.nextSubscriptionBillablePopulation],['Amount due',('GH₵'+Number(d.amountDueGhs||0).toFixed(2))]];e('edutrack-part60-summary').innerHTML=names.map(function(n){return '<div style="border:1px solid var(--border);border-radius:8px;padding:.65rem;background:var(--white)"><strong style="display:block;font-size:1.15rem">'+x(n[1])+'</strong><span style="font-size:.72rem;color:var(--muted)">'+x(n[0])+'</span></div>'}).join('')}function refresh(){var s=school();if(!s){e('edutrack-part60-status').textContent='School context is not available for billing reconciliation.';return}e('edutrack-part60-status').textContent='Calculating from the authenticated server scope…';fetch('/api/subscriptions/carry-forward/dashboard?schoolId='+encodeURIComponent(s),{credentials:'same-origin'}).then(function(r){return r.json().then(function(v){if(!r.ok)throw Error(v.error||'Carry-forward dashboard unavailable');return v.dashboard||{}})}).then(function(d){render(d);e('edutrack-part60-status').textContent='Server-calculated billing summary loaded at '+new Date().toLocaleString()}).catch(function(err){e('edutrack-part60-status').textContent=err.message})}function install(){var b=e('edutrack-part60-refresh');if(b&&!b.dataset.part60){b.dataset.part60='1';b.addEventListener('click',refresh)}var p=e('page-dashboard');if(p&&!p.dataset.part60){p.dataset.part60='1';refresh()}}if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,900);window.EDUTRACK_PART60_CARRY_FORWARD={refresh:refresh}})();
+</script>
+<script id="edutrack-part61-private-dashboard-ui">
+(function(){'use strict';if(window.__EDUTRACK_PART61_PRIVATE_UI__)return;window.__EDUTRACK_PART61_PRIVATE_UI__=true;function e(id){return document.getElementById(id)}function x(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}function school(){try{var c=window.CONFIG||{};return String(c.schoolId||c.school_id||c.schoolCode||c.schoolNo||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(_){return ''}}function tile(label,value){return '<div style="border:1px solid var(--border);border-radius:8px;padding:.65rem;background:var(--white)"><strong style="display:block;font-size:1.1rem">'+x(value)+'</strong><span style="font-size:.72rem;color:var(--muted)">'+x(label)+'</span></div>'}function refresh(){var s=school();if(!s)return;var status=e('edutrack-part61-status');if(!status)return;fetch('/api/subscriptions/private-dashboard?schoolId='+encodeURIComponent(s),{credentials:'same-origin'}).then(function(r){return r.json().then(function(v){if(!r.ok)throw Error(v.error||'Private subscription dashboard unavailable');return v.dashboard||{}})}).then(function(d){e('edutrack-part61-summary').innerHTML=[tile('Academic Year',d.academicYear||'—'),tile('Current Term',d.currentTerm||'—'),tile('Completed Cycles',(d.privateSubscriptionCountForAcademicYear||0)+'/3'),tile('Cycles Remaining',d.cyclesRemaining||0),tile('Active Students',d.activeStudents||0)].join('');e('edutrack-part61-tbody').innerHTML=(d.subscriptions||[]).map(function(r){return '<tr><td>'+x(r.academicYear)+'</td><td>'+x(r.termNumber)+'</td><td>'+x(r.subscriptionLabel)+'</td><td>'+x(r.reopeningDate||'—')+'</td><td>'+x(r.vacationDate||'—')+'</td><td>'+x(r.durationDays==null?'—':r.durationDays+' days')+'</td><td>'+x(r.activeStudents)+'</td><td>GH₵'+Number(r.amountDue||0).toFixed(2)+'</td><td>'+x(r.status)+'</td></tr>'}).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--muted)">No private subscription records loaded.</td></tr>';status.textContent=d.cyclesRemaining>0?'Private school subscription cycles remaining: '+d.cyclesRemaining:'Three private subscription cycles completed for this academic year.'}).catch(function(err){status.textContent=err.message})}function install(){if(e('edutrack-part61-private-panel')&&!e('edutrack-part61-private-panel').dataset.ready){e('edutrack-part61-private-panel').dataset.ready='1';refresh()}}if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,900);window.EDUTRACK_PART61_PRIVATE_DASHBOARD={refresh:refresh}})();
+</script>
+<script id="edutrack-part62-government-calendar-ui">
+(function(){'use strict';if(window.__EDUTRACK_PART62_GOV_UI__)return;window.__EDUTRACK_PART62_GOV_UI__=true;function e(id){return document.getElementById(id)}function school(){try{var c=window.CONFIG||{};return String(c.schoolId||c.school_id||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(_){return ''}}function selectedSchoolType(){var s=e('subv2-renew-school');if(s&&s.value)return String(s.value).toLowerCase();try{var raw=localStorage.getItem('ems_schools')||localStorage.getItem('v43_schools')||'[]',rows=JSON.parse(raw);var id=school();var r=rows.find(function(x){return String(x.id||x.schoolId)===id});return String(r&&(r.schoolType||r.ownershipType||r.ownership_type)||'').toLowerCase()}catch(_){return ''}}function setReadOnly(){var type=selectedSchoolType(),gov=type==='government'||type==='government school'||type==='public';['subv2-renew-reopening-date','subv2-renew-closing-date'].forEach(function(id){var el=e(id);if(el){el.readOnly=gov;el.disabled=gov;el.title=gov?'Government dates are centrally controlled by the Super Administrator.':''}});var open=e('subv2-renew-reopening-date'),close=e('subv2-renew-closing-date');if(gov&&open&&close){var ay=e('subv2-renew-academic-year');var term=e('subv2-renew-term-number');if(ay&&term)fetch('/api/subscriptions/government-calendar?schoolId='+encodeURIComponent(school())+'&academicYear='+encodeURIComponent(ay.value||'')+'&termNumber='+encodeURIComponent(term.value||''),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(v){var c=v.calendar;if(c){open.value=c.reopening_date||c.reopeningDate||'';close.value=c.vacation_date||c.vacationDate||'';open.setAttribute('aria-label','Official Government reopening date');close.setAttribute('aria-label','Official Government vacation date')}}).catch(function(){})}}function install(){setReadOnly();var p=e('subv2-renew-package-grid');if(p&&!p.dataset.part62){p.dataset.part62='1';p.addEventListener('click',function(){setTimeout(setReadOnly,50)})}}if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,800);window.EDUTRACK_PART62_GOVERNMENT_CALENDAR={refresh:setReadOnly}})();
+</script>
+<script id="edutrack-part62-superadmin-calendar-ui">
+(function(){'use strict';if(window.__EDUTRACK_PART62_SA_UI__)return;window.__EDUTRACK_PART62_SA_UI__=true;function x(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}function refresh(root){fetch('/api/admin/government-academic-calendar/dashboard',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(v){var rows=(v.activeGovernmentAcademicCalendar||[]);root.querySelector('[data-part62-body]').innerHTML=rows.map(function(c){return '<tr><td>'+x(c.academic_year||c.academicYear)+'</td><td>'+x(c.term_number||c.termNumber)+'</td><td>'+x(c.reopening_date||c.reopeningDate)+'</td><td>'+x(c.vacation_date||c.vacationDate)+'</td><td>'+x(c.status)+'</td><td>'+x(c.version||1)+'</td></tr>'}).join('')||'<tr><td colspan="6">No active Government calendar published.</td></tr>';root.querySelector('[data-part62-status]').textContent='Active Government academic calendar loaded.'}).catch(function(err){root.querySelector('[data-part62-status]').textContent=err.message||'Government calendar unavailable.'})}function install(){var host=document.getElementById('panel-sa-terms');if(!host||!host.parentNode||document.getElementById('panel-sa-government-calendar'))return;if(!document.body.innerText.match(/Super Administrator|Control Engine Room/i))return;var root=document.createElement('section');root.id='panel-sa-government-calendar';root.style.cssText='margin:1rem 0;padding:1rem;border:1px solid var(--border);border-radius:10px;background:var(--white)';root.innerHTML='<div style="display:flex;justify-content:space-between;gap:.75rem;align-items:center;flex-wrap:wrap"><div><h3 style="margin:0">Active Government Academic Calendar</h3><p data-part62-status style="margin:.35rem 0;color:var(--muted);font-size:.8rem">Loading official calendar…</p></div><button type="button" class="btn btn-ghost btn-sm">Refresh</button></div><div class="tbl-wrap" style="overflow-x:auto;margin-top:.75rem"><table style="min-width:650px"><thead><tr><th>Academic Year</th><th>Term</th><th>Official Reopening</th><th>Official Vacation</th><th>Status</th><th>Version</th></tr></thead><tbody data-part62-body><tr><td colspan="6">Loading…</td></tr></tbody></table></div>';host.parentNode.insertBefore(root,host.nextSibling);root.querySelector('button').addEventListener('click',function(){refresh(root)})}if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,900)})();
+</script>
+<script id="edutrack-part64-population-notification">
+(function(){'use strict';if(window.__EDUTRACK_PART64_UI__)return;window.__EDUTRACK_PART64_UI__=true;
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function school(){try{var c=window.CONFIG||{};return String(c.schoolId||c.school_id||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(_){return ''}}
+function n(v){var x=Number(v);return Number.isFinite(x)?x:0}
+function card(label,value){return '<div style="min-width:0;border:1px solid var(--border);border-radius:8px;padding:.7rem;background:var(--white)"><strong style="display:block;font-size:1.05rem;overflow-wrap:anywhere">'+esc(value)+'</strong><span style="font-size:.72rem;color:var(--muted)">'+esc(label)+'</span></div>'}
+function render(root,d){var s=d.summary||{},note=d.notification||{},check=d.reportCardCheck||{},tot=d.totals||{};var state=note.state||s.notificationState||'no_difference';var color=state==='positive_difference'?'#8a5300':state==='negative_difference'?'#7f1d1d':'#176b45';var bg=state==='positive_difference'?'#fff7e6':state==='negative_difference'?'#fff1f2':'#effbfd';root.querySelector('[data-p64-note]').innerHTML='<div style="font-weight:900;color:'+color+'">'+esc(note.message||s.notificationMessage||'Your subscription population matches the current active population.')+'</div><div style="margin-top:.25rem;color:#52627d;font-size:.78rem">This is server-generated and non-blocking. Negative differences are retained for administrative review and do not create automatic credits.</div>';root.querySelector('[data-p64-note]').style.background=bg;root.querySelector('[data-p64-summary]').innerHTML=[card('Students at subscription',n(note.subscriptionPopulation||s.subscriptionPopulation)),card('New active students',n(note.newActiveStudents||note.carryForwardStudents||s.carryForwardStudents)),card('Current active students',n(note.currentActiveStudents||s.currentActivePopulation)),card('Carry-forward to next subscription',n(note.carryForwardStudents||s.carryForwardStudents)),card('Next subscription amount','GH₵'+n(note.nextSubscriptionAmountGhs||s.nextSubscriptionAmountGhs||s.currentActivePopulation).toFixed(2)),card('Report-card status',check.status==='matched'?'Matched':(n(check.difference)+' discrepancy'))].join('');root.querySelector('[data-p64-body]').innerHTML=(d.classes||[]).map(function(r){return '<tr><td>'+esc(r.class||r.className||r.classId||'Unassigned')+'</td><td>'+n(r.subscriptionPopulation)+'</td><td>'+n(r.currentActive)+'</td><td>'+n(r.examPopulation)+'</td><td>'+n(r.reportCards)+'</td><td>'+n(r.newAdmissions)+'</td><td>'+n(r.withdrawalsTransfersStoppages)+'</td><td>'+n(r.netDifference)+'</td></tr>'}).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted)">No class-level checkpoint rows are available.</td></tr>';root.querySelector('[data-p64-total]').innerHTML='<td><strong>Totals</strong></td><td><strong>'+n(tot.subscriptionPopulation)+'</strong></td><td><strong>'+n(tot.currentActive)+'</strong></td><td><strong>'+n(tot.examPopulation)+'</strong></td><td><strong>'+n(tot.reportCards)+'</strong></td><td><strong>'+n(tot.newAdmissions)+'</strong></td><td><strong>'+n(tot.withdrawalsTransfersStoppages)+'</strong></td><td><strong>'+n(tot.netDifference)+'</strong></td>';root.querySelector('[data-p64-report]').textContent='Report-card check: '+n(check.expected)+' active expected / '+n(check.received)+' received · '+(check.status==='matched'?'Matched':n(check.difference)+' discrepancy')}
+function refresh(root){var s=school();if(!s){root.querySelector('[data-p64-status]').textContent='School context is not available.';return}root.querySelector('[data-p64-status]').textContent='Loading server reconciliation…';fetch('/api/subscriptions/population-dashboard?schoolId='+encodeURIComponent(s),{credentials:'same-origin'}).then(function(r){return r.json().then(function(v){if(!r.ok)throw Error(v.error||'Population reconciliation unavailable');return v.dashboard||{}})}).then(function(d){render(root,d);root.querySelector('[data-p64-status]').textContent='Server-generated reconciliation loaded at '+new Date().toLocaleString()}).catch(function(e){root.querySelector('[data-p64-status]').textContent=e.message||'Population reconciliation unavailable.'})}
+function install(){var page=document.getElementById('page-dashboard');if(!page||document.getElementById('edutrack-part64-population-notification-panel'))return;var root=document.createElement('section');root.id='edutrack-part64-population-notification-panel';root.style.cssText='margin:1rem 0;max-width:100%;overflow:hidden';root.innerHTML='<div data-p64-note style="border:1px solid #8bcbd2;border-radius:10px;padding:1rem;margin-bottom:.75rem"></div><div data-p64-summary style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.55rem;margin-bottom:.75rem"></div><div style="border:1px solid var(--border);border-radius:10px;padding:.8rem;background:var(--white)"><div style="display:flex;justify-content:space-between;gap:.5rem;align-items:center;flex-wrap:wrap"><strong>Class-by-class reconciliation</strong><button type="button" class="btn btn-ghost btn-sm" data-p64-refresh>Refresh</button></div><p data-p64-report style="font-size:.78rem;color:var(--muted);margin:.4rem 0"></p><div style="overflow-x:auto;max-width:100%"><table style="min-width:860px;width:100%;font-size:.76rem"><thead><tr><th>Class</th><th>Subscription Population</th><th>Current Active</th><th>Exam Population</th><th>Report Cards</th><th>New Admissions</th><th>Withdrawals/Transfers/Stoppages</th><th>Net Difference</th></tr></thead><tbody data-p64-body></tbody><tfoot><tr data-p64-total style="font-weight:800;border-top:2px solid var(--border)"></tr></tfoot></table></div></div><p data-p64-status style="font-size:.72rem;color:var(--muted);margin-top:.45rem">Waiting for server reconciliation…</p>';page.appendChild(root);root.querySelector('[data-p64-refresh]').addEventListener('click',function(){refresh(root)});refresh(root)}
+if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,900);window.EDUTRACK_PART64_POPULATION={refresh:function(){var r=document.getElementById('edutrack-part64-population-notification-panel');if(r)refresh(r)}}})();
+</script>
 </body></html>
 <!--
 ================================================================================
@@ -147742,6 +147674,7 @@ window.SRG_ANNUAL = (function(){
               '<div class="sub-form-group"><label>Region <span class="sub-req-star">*</span></label><select id="subv2-renew-region" onchange="ghCascadeDistricts(\'subv2-renew-region\',\'subv2-renew-district\')"><option value="">— Select Region —</option></select></div>' +
               '<div class="sub-form-group"><label>District <span class="sub-req-star">*</span></label><select id="subv2-renew-district" disabled><option value="">— Select Region first —</option></select></div>' +
               '<div class="sub-form-group" style="grid-column:1/-1"><label>Current Access Code <span class="sub-req-star">*</span></label><input id="subv2-renew-code" type="text" placeholder="Your current School Access Code" style="font-family:\'JetBrains Mono\',monospace"/></div>' +
+              '<div class="sub-form-group" style="grid-column:1/-1"><label for="subv2-renew-school-type">School Type <span class="sub-req-star">*</span></label><select id="subv2-renew-school-type" name="schoolType" required aria-describedby="subv2-renew-school-type-help"><option value="">— Select School Type —</option><option value="government">Government School</option><option value="private">Private School</option></select><small id="subv2-renew-school-type-help" style="display:block;margin-top:.3rem;color:#52627d">Select exactly one. The server compares it with the registered school type.</small></div>' +
             '</div>' +
             '<div class="sub-section-title" style="margin-top:1rem">👤 Contact Person</div>' +
             '<div class="sub-form-grid">' +
@@ -147751,11 +147684,11 @@ window.SRG_ANNUAL = (function(){
             '<div class="sub-section-title" style="margin-top:1rem">② Select Subscription Package</div>' +
             '<div id="subv2-renew-package-grid" class="pkg-grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">' +
               '<div class="pkg-card" id="subv2-renew-pkg-government" onclick="subv2RenewSelectPackage(\'government\',this)">' +
-                '<div class="pkg-icon">🏛️</div><div class="pkg-name">Government/Public School</div><div class="pkg-price" id="subv2-renew-price-government">GH₵130</div><div class="pkg-period">Per School · Per Term</div>' +
+                '<div class="pkg-icon">🏛️</div><div class="pkg-name">Government/Public School</div><div class="pkg-price" id="subv2-renew-price-government">GH₵1 per active student / term</div><div class="pkg-period">Per Active Student · Per Academic Term</div>' +
                 '<ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Centrally controlled government calendar</li><li>Optional paid SMS credits</li></ul>' +
               '</div>' +
               '<div class="pkg-card" id="subv2-renew-pkg-private" onclick="subv2RenewSelectPackage(\'private\',this)">' +
-                '<div class="pkg-icon">🏫</div><div class="pkg-name">Private School</div><div class="pkg-price" id="subv2-renew-price-private">GH₵200</div><div class="pkg-period">Per School · Per Term</div>' +
+                '<div class="pkg-icon">🏫</div><div class="pkg-name">Private School</div><div class="pkg-price" id="subv2-renew-price-private">GH₵1 per active student / term</div><div class="pkg-period">Per Active Student · Per Academic Term</div>' +
                 '<ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed academic calendar</li></ul>' +
               '</div>' +
             '</div>' +
@@ -148810,12 +148743,12 @@ window.SRG_ANNUAL = (function(){
     if(!period()){setAmount(null);setStatus('Ready to Pay.','Select a subscription term to load the current amount.');return;}
     setStatus('Loading Amount.','Retrieving the current subscription price from the server.');
     try{
-      var qschool=schoolLookup(); var qsid=qschool ? '&schoolId='+encodeURIComponent(qschool.id) : ''; var qay=val('subv2-renew-academic-year'); var r=await fetch('/api/payments/paystack/renewal-quote?period='+encodeURIComponent(period())+'&packageId='+encodeURIComponent(selectedPackage)+'&academicYear='+encodeURIComponent(qay)+qsid,{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
+      var qschool=schoolLookup(); var qsid=qschool ? '&schoolId='+encodeURIComponent(qschool.id) : ''; var qtype=val('subv2-renew-school-type'); var qay=val('subv2-renew-academic-year'); var qstart=val('subv2-renew-reopening-date'); var qend=val('subv2-renew-closing-date'); var r=await fetch('/api/payments/paystack/renewal-quote?period='+encodeURIComponent(period())+'&packageId='+encodeURIComponent(selectedPackage)+'&schoolType='+encodeURIComponent(qtype)+'&academicYear='+encodeURIComponent(qay)+'&reopeningDate='+encodeURIComponent(qstart)+'&closingDate='+encodeURIComponent(qend)+qsid,{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
       if(!r.ok || !Number.isFinite(Number(d.amount))) throw new Error(d.message||'Unable to load the current subscription amount.');
-      setAmount(d.amount); setStatus('Ready to Pay.','Payment method: Paystack.');
+      setAmount(d.amount); state.activeStudentCount=Number(d.activeStudentCount||0); setStatus('Ready to Pay.','Active students: '+state.activeStudentCount+' · Amount due: GH₵'+Number(d.amount).toFixed(2)+' · Payment method: Paystack.');
     }catch(e){ setAmount(null); setStatus('Amount Pending.','The server will confirm the authoritative amount when payment starts.'); }
   }
-  function payload(school){ var storedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); var type=storedType==='public'||storedType==='government'?'government':'private'; selectedPackage=type; window.subv2RenewSelectedPackage=type; return {schoolId:school.id,schoolType:type,schoolName:school.name,region:val('subv2-renew-region'),district:val('subv2-renew-district'),currentAccessCode:val('subv2-renew-code'),planId:type,subscriptionPackageId:type,packageId:type,packageName:packageName(),period:period(),academicYear:val('subv2-renew-academic-year'),reopeningDate:val('subv2-renew-reopening-date'),closingDate:val('subv2-renew-closing-date'),contactPerson:val('subv2-renew-contact'),phone:val('subv2-renew-phone'),email:val('subv2-renew-email') || school.email || '',paymentPurpose:'subscription_renewal'}; }
+  function payload(school){ var submittedType=String(val('subv2-renew-school-type')||'').toLowerCase(); var storedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); var type=submittedType; selectedPackage=type; window.subv2RenewSelectedPackage=type; return {schoolId:school.id,schoolType:type,schoolName:school.name,region:val('subv2-renew-region'),district:val('subv2-renew-district'),currentAccessCode:val('subv2-renew-code'),planId:type,subscriptionPackageId:type,packageId:type,packageName:packageName(),period:period(),academicYear:val('subv2-renew-academic-year'),reopeningDate:val('subv2-renew-reopening-date'),closingDate:val('subv2-renew-closing-date'),contactPerson:val('subv2-renew-contact'),phone:val('subv2-renew-phone'),email:val('subv2-renew-email') || school.email || '',paymentPurpose:'subscription_renewal'}; }
   async function verify(reference){
     var r=await fetch('/api/payments/paystack/verify/'+encodeURIComponent(reference),{credentials:'same-origin'}); var d=await r.json().catch(()=>({}));
     if(!r.ok || d.status!=='verified' || !d.transaction) throw new Error(d.message||'Payment could not be verified.');
@@ -148835,7 +148768,7 @@ window.SRG_ANNUAL = (function(){
     var err=el('subv2-renew-error'); if(err)err.style.display='none';
     var school=schoolLookup();
     if(!val('subv2-renew-school')||!val('subv2-renew-region')||!val('subv2-renew-district')||!val('subv2-renew-code')||!selectedPackage||!period()||!val('subv2-renew-academic-year')||!val('subv2-renew-contact')||!val('subv2-renew-phone')) return fail(!selectedPackage ? 'Please select a subscription package before payment.' : 'Please complete all required renewal fields.');
-    if(!school) return fail('School not found for the selected Name / Region / District.'); var selectedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); if((selectedType==='private'||selectedType==='private school') && (!val('subv2-renew-reopening-date')||!val('subv2-renew-closing-date'))) return fail('Private schools must provide reopening and term-closing dates.');
+    if(!school) return fail('School not found for the selected Name / Region / District.'); var submittedType=String(val('subv2-renew-school-type')||'').toLowerCase(); if(submittedType!=='government'&&submittedType!=='private') return fail('Please select exactly one School Type.'); var selectedType=String(school.schoolType||school.ownershipType||school.ownership_type||'').toLowerCase(); selectedType=selectedType==='public'||selectedType==='government school'?'government':selectedType; if(selectedType!==submittedType) return fail('School Type does not match the registered school record. Request an authorized correction.'); if((submittedType==='private') && (!val('subv2-renew-reopening-date')||!val('subv2-renew-closing-date'))) return fail('Private schools must provide reopening and term-closing dates.');
     var active=(typeof window.getActiveSchoolAccessCode==='function')?window.getActiveSchoolAccessCode(school.id):null;
     if(!active || String(active.accessCode||'').toUpperCase()!==val('subv2-renew-code').toUpperCase()) return fail('Current Access Code is incorrect or no longer active.');
     var data=payload(school); if(!data.email) return fail('A school/contact email is required for Paystack checkout.');
@@ -148864,7 +148797,7 @@ window.SRG_ANNUAL = (function(){
   'use strict';
   function currentPrices(){
     if(typeof window.v70GetActivePrices==='function') return window.v70GetActivePrices();
-    return {government:130,private:200};
+    return {government:1,private:1};
   }
   function syncRenewalCards(){
     var p=currentPrices();
@@ -148872,13 +148805,13 @@ window.SRG_ANNUAL = (function(){
       var price=pkg in p ? Number(p[pkg]) : NaN;
       if(!Number.isFinite(price)) return;
       var renewalTarget=document.getElementById('subv2-renew-price-'+pkg);
-      if(renewalTarget) renewalTarget.textContent='GHC '+price.toFixed(2);
+      if(renewalTarget) renewalTarget.textContent='GH₵1 per active student / term';
       var registrationTarget=document.querySelector('#pkg-'+pkg+' .pkg-price');
-      if(registrationTarget) registrationTarget.textContent='GHC '+price.toFixed(2);
+      if(registrationTarget) registrationTarget.textContent='GH₵1 per active student / term';
     });
     var selectedAmount=document.getElementById('sub-pay-amount-val');
     var selected=window.subSelectedPkg;
-    if(selectedAmount && selected && Number.isFinite(Number(p[selected]))) selectedAmount.textContent='GHC '+Number(p[selected]).toFixed(2);
+    if(selectedAmount && selected && Number.isFinite(Number(p[selected]))) selectedAmount.textContent='GH₵1 per active student / term';
   }
   window.emsSyncRenewalPackagePrices=syncRenewalCards;
   var originalSave=window.v70SavePriceForm;
@@ -149369,27 +149302,28 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   'use strict';
   if(window.EDUTRACK_SUBSCRIPTION_POLICY) return;
   var MODEL={
-    government:{id:'government',name:'EduTrack Government School Plan',priceGhs:130,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:true,smsIncluded:0,termCalendar:'central'},
-    private:{id:'private',name:'EduTrack Private School Plan',priceGhs:200,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:false,smsIncluded:500,termCalendar:'school'}
+    government:{id:'government',name:'EduTrack Government School Plan',pricePerStudentGhs:1,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:true,smsIncluded:0,termCalendar:'central'},
+    private:{id:'private',name:'EduTrack Private School Plan',pricePerStudentGhs:1,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:false,smsIncluded:500,termCalendar:'school'}
   };
   function byId(id){return document.getElementById(id)}
   function val(id){var el=byId(id);return el?String(el.value||'').trim():''}
   function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(ch){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])})}
   function normalized(value){return String(value||'').trim().toLowerCase()}
-  function getType(){return val('subv2-sch-school-type')||'government'}
+  function getType(){return val('subv2-sch-school-type')}
   function planFor(type){return MODEL[type]||null}
   function daysBetween(start,end){var s=new Date(start+'T00:00:00Z'),e=new Date(end+'T00:00:00Z');return Math.round((e-s)/86400000)+1}
-  function getTerm(){var type=getType(),year=val('subv2-sch-academic-year'),number=Number(val('subv2-sch-term-number')||1),start=val('subv2-sch-start-date'),end=val('subv2-sch-end-date');if(type==='government')return{schoolType:type,academicYear:year,termNumber:number,governmentTermId:val('subv2-sch-government-term')||'central-current',startDate:null,endDate:null,durationDays:null};return{schoolType:type,academicYear:year,termNumber:number,governmentTermId:null,startDate:start,endDate:end,durationDays:start&&end?daysBetween(start,end):null}}
+  function addMonths(date,months){var d=new Date(date+'T00:00:00Z'),day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+months);d.setUTCDate(Math.min(day,new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate()));return d}
+  function getTerm(){var type=getType(),year=val('subv2-sch-academic-year'),number=Number(val('subv2-sch-term-number')||1),start=val('subv2-sch-start-date'),end=val('subv2-sch-end-date');if(type==='government')return{schoolType:type,academicYear:year,termNumber:number,governmentTermId:null,startDate:null,endDate:null,durationDays:null};return{schoolType:type,academicYear:year,termNumber:number,governmentTermId:null,startDate:start,endDate:end,durationDays:start&&end?daysBetween(start,end):null}}
   function showError(message){var el=byId('subv2-schoolreg-error');if(el){el.textContent='⚠ '+message;el.style.display=''}return false}
-  function validRegistration(){var type=getType(),term=getTerm();if(!planFor(type))return showError('Select Government School or Private School.');if(!/^\d{4}\/\d{4}$/.test(term.academicYear))return showError('Enter the academic year in YYYY/YYYY format.');if([1,2,3].indexOf(term.termNumber)<0)return showError('Select Term 1, Term 2, or Term 3.');if(type==='private'){if(!/^\d{4}-\d{2}-\d{2}$/.test(term.startDate)||!/^\d{4}-\d{2}-\d{2}$/.test(term.endDate))return showError('Private schools must provide reopening and vacation dates.');if(!Number.isInteger(term.durationDays)||term.durationDays<1)return showError('Private-school vacation date must be on or after the reopening date.');}return true}
+  function validRegistration(){var type=getType(),term=getTerm();if(!planFor(type))return showError('Select Government School or Private School.');if(!/^\d{4}\/\d{4}$/.test(term.academicYear))return showError('Enter the academic year in YYYY/YYYY format.');if([1,2,3].indexOf(term.termNumber)<0)return showError('Select Term 1, Term 2, or Term 3.');if(type==='private'){if(!/^\d{4}-\d{2}-\d{2}$/.test(term.startDate)||!/^\d{4}-\d{2}-\d{2}$/.test(term.endDate))return showError('Private schools must provide reopening and vacation dates.');if(!Number.isInteger(term.durationDays)||term.durationDays<1)return showError('Private-school vacation date must be later than the reopening date.');if(new Date(term.endDate+'T00:00:00Z').getTime()>addMonths(term.startDate,4).getTime())return showError('Private subscription terms may not exceed 4 months.');}return true}
   function identityKey(school){return [school.name,school.region,school.district].map(normalized).join('|')}
   function newestSchool(){try{var rows=typeof v2GetArr==='function'?v2GetArr(SUB_KEYS.schools):[];return rows.slice().sort(function(a,b){return String(b.registeredAt||'').localeCompare(String(a.registeredAt||''))})[0]||null}catch(e){return null}}
-  function updateStoredSchool(){var school=newestSchool();if(!school)return null;var type=getType(),plan=planFor(type),term=getTerm(),now=new Date().toISOString();school.schoolType=type;school.subscriptionPlan=type;school.type=type==='government'?'GOVERNMENT':'PRIVATE';school.planName=plan.name;school.priceAtSubscription=plan.firstTermFree?0:plan.priceGhs;school.currency=plan.currency;school.billingPeriod='term';school.capacityLimits={students:plan.capacity.students,staff:plan.capacity.staff};school.smsCreditsIncluded=plan.smsIncluded;school.smsCreditsRemaining=plan.smsIncluded;school.termCalendar=plan.termCalendar;school.academicYear=term.academicYear;school.termNumber=term.termNumber;school.termStartDate=term.startDate;school.termEndDate=term.endDate;school.governmentTermId=term.governmentTermId;school.termDurationDays=term.durationDays;school.firstTermFreeIdentityKey=identityKey(school);school.firstTermFreeUsed=type==='government'?(school.firstTermFreeUsed!==false):false;school.firstTermFreeUsedAt=type==='government'?now:null;school.paymentStatus=type==='government'?'free_term':'pending';school.paymentRequired=type==='private';if(type==='private'){school.status='pending_payment';school.expiryDate=term.endDate?new Date(term.endDate+'T23:59:59.999Z').toISOString():school.expiryDate}else{school.status='trial';if(term.endDate)school.expiryDate=new Date(term.endDate+'T23:59:59.999Z').toISOString()}var rows=v2GetArr(SUB_KEYS.schools);var index=rows.findIndex(function(item){return item.id===school.id});if(index>=0){rows[index]=school;v2SetArr(SUB_KEYS.schools,rows)}return school}
-  function summary(type){var plan=planFor(type),term=getTerm();if(!plan)return '';var lines=['<strong>'+esc(plan.name)+'</strong> · <strong>GH₵'+plan.priceGhs+'/term</strong>','Up to '+plan.capacity.students+' students · '+plan.capacity.staff+' teachers/staff'];if(plan.firstTermFree)lines.push('<span style="color:#176b45;font-weight:800">First complete term free once per school</span>');if(plan.smsIncluded)lines.push('<span style="color:#0e7c86;font-weight:800">'+plan.smsIncluded+' SMS credits included per term</span>');lines.push(plan.termCalendar==='central'?'Government term dates are centrally controlled.':'Private school chooses reopening and vacation dates.');if(type==='private'&&term.durationDays)lines.push('Selected term: '+term.durationDays+' days');return lines.join('<br>')}
-  function render(){var form=byId('subv2-schoolreg-form');if(!form)return;var grid=form.querySelector('.sub-form-grid');if(!grid)return;var type=byId('subv2-sch-school-type');if(!type){var block=document.createElement('div');block.className='sub-form-group';block.style.gridColumn='1/-1';block.innerHTML='<label>School Type <span class="sub-req-star">*</span></label><select id="subv2-sch-school-type"><option value="government">Government / Public School</option><option value="private">Private School</option></select><div id="edutrack-plan-summary" style="margin-top:.55rem;padding:.65rem .75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd;color:#234;font-size:.78rem;line-height:1.45"></div>';grid.insertBefore(block,grid.firstChild);type=byId('subv2-sch-school-type');type.addEventListener('change',render);['subv2-sch-academic-year','subv2-sch-term-number','subv2-sch-government-term','subv2-sch-start-date','subv2-sch-end-date'].forEach(function(id){var holder=document.createElement('div');holder.className='sub-form-group';holder.dataset.policyField=id;var label=id==='subv2-sch-academic-year'?'Academic Year':id==='subv2-sch-term-number'?'Term':id==='subv2-sch-government-term'?'Government Calendar Term':id==='subv2-sch-start-date'?'Reopening Date':'Vacation / Closing Date';var input=id==='subv2-sch-term-number'?'<select id="'+id+'"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>':id==='subv2-sch-government-term'?'<input id="'+id+'" type="text" value="central-current" readonly>':'<input id="'+id+'" type="'+(id.indexOf('date')>=0?'date':'text')+'" '+(id==='subv2-sch-academic-year'?'value="2026/2027" placeholder="YYYY/YYYY"':'')+'>';holder.innerHTML='<label>'+label+' <span class="sub-req-star">*</span></label>'+input;grid.insertBefore(holder,grid.children[1]);var inputEl=byId(id);if(inputEl)inputEl.addEventListener('input',render)});}
+  function updateStoredSchool(){var school=newestSchool();if(!school)return null;var type=getType(),plan=planFor(type),term=getTerm(),now=new Date().toISOString();school.schoolType=type;school.subscriptionPlan=type;school.type=type==='government'?'GOVERNMENT':'PRIVATE';school.planName=plan.name;school.pricePerStudentGhs=plan.pricePerStudentGhs;school.priceAtSubscription=null;school.currency=plan.currency;school.billingPeriod='term';school.capacityLimits={students:plan.capacity.students,staff:plan.capacity.staff};school.smsCreditsIncluded=plan.smsIncluded;school.smsCreditsRemaining=plan.smsIncluded;school.termCalendar=plan.termCalendar;school.academicYear=term.academicYear;school.termNumber=term.termNumber;school.termStartDate=term.startDate;school.termEndDate=term.endDate;school.governmentTermId=term.governmentTermId;school.termDurationDays=term.durationDays;school.firstTermFreeIdentityKey=identityKey(school);school.firstTermFreeUsed=type==='government'?(school.firstTermFreeUsed!==false):false;school.firstTermFreeUsedAt=type==='government'?now:null;school.paymentStatus=type==='government'?'free_term':'pending';school.paymentRequired=type==='private';if(type==='private'){school.status='pending_payment';school.expiryDate=term.endDate?new Date(term.endDate+'T23:59:59.999Z').toISOString():school.expiryDate}else{school.status='trial';if(term.endDate)school.expiryDate=new Date(term.endDate+'T23:59:59.999Z').toISOString()}var rows=v2GetArr(SUB_KEYS.schools);var index=rows.findIndex(function(item){return item.id===school.id});if(index>=0){rows[index]=school;v2SetArr(SUB_KEYS.schools,rows)}return school}
+  function summary(type){var plan=planFor(type),term=getTerm();if(!plan)return '<strong>Select one school type.</strong>';var lines=['<strong>'+esc(plan.name)+'</strong> · <strong>GH₵'+plan.pricePerStudentGhs+' per active student / term</strong>','Amount due: the server calculates GH₵1 × the current active-student count before payment.'];if(plan.firstTermFree)lines.push('<span style="color:#176b45;font-weight:800">First complete term free once per school</span>');if(plan.smsIncluded)lines.push('<span style="color:#0e7c86;font-weight:800">'+plan.smsIncluded+' SMS credits included per term</span>');lines.push(plan.termCalendar==='central'?'Government term dates are centrally controlled.':'Private school chooses reopening and vacation dates.');if(type==='private'&&term.durationDays)lines.push('Selected term: '+term.durationDays+' days');return lines.join('<br>')}
+  function render(){var form=byId('subv2-schoolreg-form');if(!form)return;var grid=form.querySelector('.sub-form-grid');if(!grid)return;var type=byId('subv2-sch-school-type');if(!type){var block=document.createElement('div');block.className='sub-form-group';block.style.gridColumn='1/-1';block.innerHTML='<label>School Type <span class="sub-req-star">*</span></label><select id="subv2-sch-school-type"><option value="" selected disabled>Select school type</option><option value="government">Government / Public School</option><option value="private">Private School</option></select><div id="edutrack-plan-summary" style="margin-top:.55rem;padding:.65rem .75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd;color:#234;font-size:.78rem;line-height:1.45"></div>';grid.insertBefore(block,grid.firstChild);type=byId('subv2-sch-school-type');type.addEventListener('change',render);['subv2-sch-academic-year','subv2-sch-term-number','subv2-sch-government-term','subv2-sch-start-date','subv2-sch-end-date'].forEach(function(id){var holder=document.createElement('div');holder.className='sub-form-group';holder.dataset.policyField=id;var label=id==='subv2-sch-academic-year'?'Academic Year':id==='subv2-sch-term-number'?'Term':id==='subv2-sch-government-term'?'Government Calendar Term':id==='subv2-sch-start-date'?'Reopening Date':'Vacation / Closing Date';var input=id==='subv2-sch-term-number'?'<select id="'+id+'"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>':id==='subv2-sch-government-term'?'<input id="'+id+'" type="text" value="central-current" readonly>':'<input id="'+id+'" type="'+(id.indexOf('date')>=0?'date':'text')+'" '+(id==='subv2-sch-academic-year'?'value="2026/2027" placeholder="YYYY/YYYY"':'')+'>';holder.innerHTML='<label>'+label+' <span class="sub-req-star">*</span></label>'+input;grid.insertBefore(holder,grid.children[1]);var inputEl=byId(id);if(inputEl)inputEl.addEventListener('input',render)});}
     var isPrivate=(type.value==='private');document.querySelectorAll('[data-policy-field]').forEach(function(el){var id=el.dataset.policyField;el.style.display=(isPrivate||id==='subv2-sch-academic-year'||id==='subv2-sch-term-number'||id==='subv2-sch-government-term')?'':'none'});var sum=byId('edutrack-plan-summary'),summaryHtml=summary(type.value);if(sum&&sum.innerHTML!==summaryHtml)sum.innerHTML=summaryHtml;var government=byId('subv2-sch-government-term');if(government)government.parentElement.style.display=isPrivate?'none':'';}
-  function install(){render();var submit=window.subv2SchoolRegSubmit;if(typeof submit==='function'&&!submit.__part46){var wrapped=function(){if(!validRegistration())return false;var result=submit.apply(this,arguments);var school=updateStoredSchool();if(school){var details=byId('subv2-schoolreg-success-details');if(details){details.insertAdjacentHTML('beforeend','<div class="school-detail-row"><span class="label">Plan</span><span class="value">'+esc(school.planName)+' · GH₵'+school.priceAtSubscription+'/term</span></div><div class="school-detail-row"><span class="label">Term</span><span class="value">'+esc(school.academicYear)+' · Term '+esc(school.termNumber)+'</span></div><div class="school-detail-row"><span class="label">Capacity</span><span class="value">'+school.capacityLimits.students+' students · '+school.capacityLimits.staff+' teachers/staff</span></div>'+(school.schoolType==='private'?'<div class="school-detail-row"><span class="label">SMS</span><span class="value">'+school.smsCreditsIncluded+' credits included</span></div><div style="margin-top:.7rem;padding:.7rem;background:#fff4e5;border:1px solid #e8a33d;border-radius:8px;color:#8a5300;font-weight:700">Payment required before private-school activation. Use the Paystack renewal flow after registration to activate this school.</div>':'<div class="school-detail-row"><span class="label">First Term</span><span class="value" style="color:#176b45">FREE — one-time school offer</span></div>'));}}return result};wrapped.__part46=true;window.subv2SchoolRegSubmit=wrapped;}}
-  window.EDUTRACK_SUBSCRIPTION_POLICY={version:'part46-government-private-term-v1',plans:MODEL,planFor:planFor,term:getTerm,validateRegistration:validRegistration,install:install};
+  function install(){render();var submit=window.subv2SchoolRegSubmit;if(typeof submit==='function'&&!submit.__part46){var wrapped=function(){if(!validRegistration())return false;var result=submit.apply(this,arguments);var school=updateStoredSchool();if(school){var details=byId('subv2-schoolreg-success-details');if(details){details.insertAdjacentHTML('beforeend','<div class="school-detail-row"><span class="label">Plan</span><span class="value">'+esc(school.planName)+' · GH₵'+(school.pricePerStudentGhs||1)+' per active student / term</span></div><div class="school-detail-row"><span class="label">Term</span><span class="value">'+esc(school.academicYear)+' · Term '+esc(school.termNumber)+'</span></div><div class="school-detail-row"><span class="label">Capacity</span><span class="value">'+school.capacityLimits.students+' students · '+school.capacityLimits.staff+' teachers/staff</span></div>'+(school.schoolType==='private'?'<div class="school-detail-row"><span class="label">SMS</span><span class="value">'+school.smsCreditsIncluded+' credits included</span></div><div style="margin-top:.7rem;padding:.7rem;background:#fff4e5;border:1px solid #e8a33d;border-radius:8px;color:#8a5300;font-weight:700">Payment required before private-school activation. Use the Paystack renewal flow after registration to activate this school.</div>':'<div class="school-detail-row"><span class="label">First Term</span><span class="value" style="color:#176b45">FREE — one-time school offer</span></div>'));}}return result};wrapped.__part46=true;window.subv2SchoolRegSubmit=wrapped;}}
+  window.EDUTRACK_SUBSCRIPTION_POLICY={version:'part57-active-student-term-v1',pricePerStudentGhs:1,plans:MODEL,planFor:planFor,term:getTerm,validateRegistration:validRegistration,install:install};
   var observer=new MutationObserver(install);if(document.body)observer.observe(document.body,{childList:true,subtree:true});setTimeout(install,200);setTimeout(install,1000);setTimeout(install,2500);
 })();
 </script>

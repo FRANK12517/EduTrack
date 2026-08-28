@@ -6081,6 +6081,11 @@ td input, td select, td textarea, td button {
           </table>
         </div>
         <div id="edutrack-part59-flags" style="margin-top:.7rem;font-size:.8rem"></div>
+        <section id="edutrack-part60-carry-panel" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)" aria-labelledby="edutrack-part60-title">
+          <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;flex-wrap:wrap"><div><h3 id="edutrack-part60-title" style="margin:0">Automatic Carry-Forward Billing</h3><p style="margin:.35rem 0 0;color:var(--muted);font-size:.8rem">The next subscription uses the verified current active population. Carry-forward is an audit adjustment and does not compound.</p></div><button id="edutrack-part60-refresh" class="btn btn-secondary" type="button">Refresh billing summary</button></div>
+          <div id="edutrack-part60-status" style="min-height:1.2rem;margin:.65rem 0;color:var(--muted);font-size:.8rem">No carry-forward calculation loaded.</div>
+          <div id="edutrack-part60-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.55rem"></div>
+        </section>
       </section>
     </div>
 
@@ -38985,6 +38990,7 @@ function fmsPrintOutstanding() {
     <table><thead><tr><th>Student</th><th>ID</th><th>Class</th><th>Term</th><th>Total Fees</th><th>Paid</th><th>Balance</th><th>Due Date</th><th>Overdue</th><th>Status</th></tr></thead>
     <tbody>${rowsHTML}</tbody></table>
 <\/script>
+
 
 
 </body></html>`);
@@ -147401,6 +147407,9 @@ window.SRG_ANNUAL = (function(){
 })();
 </script>
 
+<script id="edutrack-part60-carry-forward-ui">
+(function(){'use strict';if(window.__EDUTRACK_PART60_CARRY_UI__)return;window.__EDUTRACK_PART60_CARRY_UI__=true;function e(id){return document.getElementById(id)}function x(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}function school(){try{var c=window.CONFIG||{};return String(c.schoolId||c.school_id||c.schoolCode||c.schoolNo||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(_){return ''}}function render(d){var names=[['Previous subscription population',d.previousSubscriptionPopulation],['Verified additional students',d.verifiedAdditionalStudents],['Carry-forward population',d.carryForwardPopulation],['Current active population',d.currentActivePopulation],['Next subscription billable population',d.nextSubscriptionBillablePopulation],['Amount due',('GH₵'+Number(d.amountDueGhs||0).toFixed(2))]];e('edutrack-part60-summary').innerHTML=names.map(function(n){return '<div style="border:1px solid var(--border);border-radius:8px;padding:.65rem;background:var(--white)"><strong style="display:block;font-size:1.15rem">'+x(n[1])+'</strong><span style="font-size:.72rem;color:var(--muted)">'+x(n[0])+'</span></div>'}).join('')}function refresh(){var s=school();if(!s){e('edutrack-part60-status').textContent='School context is not available for billing reconciliation.';return}e('edutrack-part60-status').textContent='Calculating from the authenticated server scope…';fetch('/api/subscriptions/carry-forward/dashboard?schoolId='+encodeURIComponent(s),{credentials:'same-origin'}).then(function(r){return r.json().then(function(v){if(!r.ok)throw Error(v.error||'Carry-forward dashboard unavailable');return v.dashboard||{}})}).then(function(d){render(d);e('edutrack-part60-status').textContent='Server-calculated billing summary loaded at '+new Date().toLocaleString()}).catch(function(err){e('edutrack-part60-status').textContent=err.message})}function install(){var b=e('edutrack-part60-refresh');if(b&&!b.dataset.part60){b.dataset.part60='1';b.addEventListener('click',refresh)}var p=e('page-dashboard');if(p&&!p.dataset.part60){p.dataset.part60='1';refresh()}}if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,900);window.EDUTRACK_PART60_CARRY_FORWARD={refresh:refresh}})();
+</script>
 </body></html>
 <!--
 ================================================================================

@@ -995,6 +995,9 @@ async function handler(req, res) {
     const context = await authoritativeSchoolContext(auth, requestedSchoolId, db);
     if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
     const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+    const submittedSchoolType = input.schoolType == null ? null : subscriptionPolicy.normalizeSchoolType(input.schoolType);
+    if (!submittedSchoolType) return json(res, 400, { error: 'schoolType is required and must be Government or Private' });
+    if (submittedSchoolType !== schoolType) return json(res, 400, { error: 'School type does not match the persistent school record' });
     const suppliedPlanId = validateText(input.planId || input.packageId || input.subscriptionPackageId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
     if (suppliedPlanId && subscriptionPolicy.normalizeSchoolType(suppliedPlanId) !== schoolType) return json(res, 400, { error: 'Payment plan does not match the persistent school record' });
     const plan = planFor(schoolType); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
@@ -1025,6 +1028,9 @@ async function handler(req, res) {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment request' }); }
     const context = await authoritativeSchoolContext(auth, validateText(input.schoolId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ }), db); if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
     const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+    const submittedSchoolType = input.schoolType == null ? null : subscriptionPolicy.normalizeSchoolType(input.schoolType);
+    if (!submittedSchoolType) return json(res, 400, { error: 'schoolType is required and must be Government or Private' });
+    if (submittedSchoolType !== schoolType) return json(res, 400, { error: 'School type does not match the persistent school record' });
     const planId = validateText(input.planId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ }); if (planId && subscriptionPolicy.normalizeSchoolType(planId) !== schoolType) return json(res, 400, { error: 'Payment plan does not match the persistent school record' });
     const plan = planFor(schoolType); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
     let paymentContext; try { paymentContext = await resolvePaymentContext(input, context, plan); } catch (error) { return json(res, 400, { error: error.message || 'Invalid subscription context' }); }

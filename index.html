@@ -6067,6 +6067,21 @@ td input, td select, td textarea, td button {
           </div>
         </div>
       </div>
+      <section id="edutrack-part59-population-panel" class="card" style="margin-top:1rem" aria-labelledby="edutrack-part59-title">
+        <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;flex-wrap:wrap">
+          <div><h3 id="edutrack-part59-title" style="margin:0">Subscription Population Verification</h3><p style="margin:.35rem 0 0;color:var(--muted);font-size:.8rem">Server-verified examination-input and report-card population checkpoints for the selected school.</p></div>
+          <button id="edutrack-part59-refresh" class="btn btn-secondary" type="button">Refresh verification</button>
+        </div>
+        <div id="edutrack-part59-status" style="min-height:1.2rem;margin:.65rem 0;color:var(--muted);font-size:.8rem">No verification checkpoint loaded.</div>
+        <div id="edutrack-part59-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.55rem"></div>
+        <div class="tbl-wrap" style="margin-top:.8rem;overflow-x:auto">
+          <table id="edutrack-part59-class-table" style="min-width:760px">
+            <thead><tr><th class="left">Class</th><th>Active at Subscription</th><th>Current Active</th><th>Exam Input</th><th>Report Cards</th><th>Difference</th><th>Status</th></tr></thead>
+            <tbody id="edutrack-part59-class-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted)">No server checkpoint loaded.</td></tr></tbody>
+          </table>
+        </div>
+        <div id="edutrack-part59-flags" style="margin-top:.7rem;font-size:.8rem"></div>
+      </section>
     </div>
 
     <div id="page-rso-dashboard" class="hidden">
@@ -147366,6 +147381,25 @@ window.SRG_ANNUAL = (function(){
 })();
 </script>
 <script src="/edutrack-cloud-sync.js"></script>
+
+
+<script id="edutrack-part59-population-ui">
+(function(){
+  'use strict';
+  if(window.__EDUTRACK_PART59_POPULATION_UI__)return;
+  window.__EDUTRACK_PART59_POPULATION_UI__=true;
+  function el(id){return document.getElementById(id)}
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function schoolId(){try{var cfg=window.CONFIG||{};return String(cfg.schoolId||cfg.school_id||cfg.schoolCode||cfg.schoolNo||localStorage.getItem('ems_school_id')||localStorage.getItem('v43_login_school_id')||'').trim()}catch(e){return ''}}
+  function request(url){return fetch(url,{credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return {}}).then(function(p){if(!r.ok)throw new Error(p.error||'Verification unavailable');return p})})}
+  function render(d){var summary=d&&d.summary||{};var cards=[['Subscription baseline',summary.subscriptionPopulation],['Current active',summary.currentActivePopulation],['Admissions after subscription',summary.newAdmissionsAfterSubscription],['Exam input',summary.examinationPopulation],['Report cards',summary.reportCardPopulation],['Net additional',summary.netAdditionalStudents],['Carry-forward',summary.carryForwardStudents]];el('edutrack-part59-summary').innerHTML=cards.map(function(c){return '<div style="border:1px solid var(--border);border-radius:8px;padding:.65rem;background:var(--white)"><strong style="display:block;font-size:1.15rem">'+esc(c[1])+'</strong><span style="font-size:.72rem;color:var(--muted)">'+esc(c[0])+'</span></div>'}).join('');var rows=(d&&d.classes)||[];el('edutrack-part59-class-tbody').innerHTML=rows.length?rows.map(function(row){var status=Number(row.difference||0)===0?'Matched':'Review';return '<tr><td class="left">'+esc(row.className||row.classId)+'</td><td>'+esc(row.activeAtSubscription)+'</td><td>'+esc(row.currentActive)+'</td><td>'+esc(row.examInput)+'</td><td>'+esc(row.reportCards)+'</td><td>'+esc(row.difference)+'</td><td><span style="color:'+(status==='Matched'?'#176b45':'#9a3412')+';font-weight:700">'+status+'</span></td></tr>'}).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted)">No server checkpoint loaded.</td></tr>';var flags=[];if(Number(summary.activeWithoutReportCards||0))flags.push(summary.activeWithoutReportCards+' active students without report cards');if(Number(summary.reportCardsForInactiveStudents||0))flags.push(summary.reportCardsForInactiveStudents+' report cards linked to inactive students');if(Number(summary.reportCardsOutsideSchoolTenant||0))flags.push(summary.reportCardsOutsideSchoolTenant+' report cards outside the authorized school/tenant');el('edutrack-part59-flags').innerHTML=flags.length?'<strong style="color:#9a3412">Flags:</strong> '+flags.map(esc).join(' · '):'<span style="color:#176b45">No reconciliation flags in the latest server snapshot.</span>'}
+  function refresh(){var s=schoolId();if(!s){el('edutrack-part59-status').textContent='School context is not available for server verification.';return}el('edutrack-part59-status').textContent='Loading server verification…';request('/api/subscriptions/population-dashboard?schoolId='+encodeURIComponent(s)).then(function(out){render(out.dashboard||{});el('edutrack-part59-status').textContent='Loaded from the authenticated server scope at '+new Date().toLocaleString();}).catch(function(err){el('edutrack-part59-status').textContent=err.message;})}
+  function install(){var b=el('edutrack-part59-refresh');if(b&&!b.dataset.part59){b.dataset.part59='1';b.addEventListener('click',refresh)}var page=el('page-dashboard');if(page&&!page.dataset.part59){page.dataset.part59='1';refresh()}}
+  window.EDUTRACK_PART59_POPULATION_UI={refresh:refresh};
+  if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,800);
+})();
+</script>
 
 </body></html>
 <!--

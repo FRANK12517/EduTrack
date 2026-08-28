@@ -1,0 +1,21 @@
+PART 47 PRODUCTION RUNTIME EVIDENCE
+
+Repository: FRANK12517/EduTrack
+Branch: main
+Origin/main SHA: 3b9ba70e8ad7e8f4351c1fdb9655a6323f48db6f
+Production deployment: dpl_GGPmQqsjB2duNyLKaaM5C1LCmfdk
+Deployment state: READY
+Deployed SHA: 3b9ba70e8ad7e8f4351c1fdb9655a6323f48db6f
+SHA match: PASS
+
+Vercel project-reported runtime: Node.js 24.x
+Part 47 required runtime: Node.js 22.x
+Runtime gate: FAIL
+
+Production serverless import behavior after repair:
+NODE_ENV=production VERCEL=1 importing ./api/index.js succeeds without crashing solely because required production configuration is unavailable.
+
+Production request behavior after repair:
+GET /api/health returns HTTP 503 with the generic Service unavailable response. This confirms the import-time failure is no longer present and the configuration guard remains fail-closed.
+
+No authorized Vercel operation to change the project runtime was used. No workaround was invented.

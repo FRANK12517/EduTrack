@@ -1,0 +1,9 @@
+Part 42 live HTTPS evidence
+
+The available connected target was the Vercel preview associated with the Part 41 staging branch. A temporary authorized Vercel access mechanism was used in Part 41 without disabling SSO; its URL and cookie are not stored here.
+
+The preview root served over HTTPS, but the backend function failed before application request handling because required exact HTTPS origin configuration was absent. The observed `/api/health` and `/api/auth/session` result was HTTP 500 `FUNCTION_INVOCATION_FAILED`. This is retained as FAIL/BLOCKED evidence, not a pass.
+
+Part 42 could not configure a new isolated environment because no authorized environment-variable management operation or staging database/storage/payment credentials were available. No Part 42 application-level health, session, CORS, preflight, or security-header PASS was claimed.
+
+No access tokens, cookies, passwords, database credentials, S3 credentials, Paystack secrets, reset tokens, or temporary SSO URLs are recorded.

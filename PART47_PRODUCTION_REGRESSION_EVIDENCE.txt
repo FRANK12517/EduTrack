@@ -1,0 +1,17 @@
+PART 47 PRODUCTION REPAIR REGRESSION EVIDENCE
+
+Pre-repair focused test:
+node test/part47-production-function-failure.spec.js
+Result: FAIL as expected. The serverless adapter import threw because assertProductionConfiguration() ran during module import.
+
+Post-repair focused test:
+node test/part47-production-function-failure.spec.js
+Result: PASS. The adapter imports under NODE_ENV=production and VERCEL=1 without crashing solely because production configuration is unavailable.
+
+Repository validation:
+- npm run check: PASS
+- npm test: PASS
+- npm audit --omit=dev --audit-level=moderate: PASS
+- All preserved Part 39–47 focused suites: completed; external-resource checks remain BLOCKED or NOT_PROVEN where applicable.
+
+The production guard is now invoked at request time and remains fail-closed. No JSON or local-filesystem persistence fallback was introduced for production, and relational persistence remains mandatory in production.

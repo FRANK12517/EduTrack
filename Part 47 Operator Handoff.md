@@ -1,0 +1,3 @@
+# Part 47 Operator Handoff
+
+Authorize a provider/plugin that supports secret/environment management and isolated Node.js 22 deployment, relational database, private storage, Paystack sandbox, delivery sink, monitoring, encrypted backup/recovery, rollback, and controlled test accounts. Configure staging-only values, deploy the exact Part 46 lineage, verify SHA/runtime, then run real HTTPS backend, CORS/security, database, storage, payment, authentication, RBAC, tenant, mobile, performance, backup/restore, and rollback checks. Never use production resources or live Paystack. **PART 48 WAS NOT STARTED.**

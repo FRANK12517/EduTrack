@@ -1,0 +1,17 @@
+Part 40 staging release metadata
+
+Part 39 immutable release SHA: ca64f8c6b23fb9397eda256cf27ea7e40be14aa3
+Git branch: part39-staging
+Deployment provider: Vercel
+Deployment ID: dpl_4f3FGEebd6u7a2pRmgqn64rMPCPU
+Deployment URL: https://edutrack-2wiim5pdk-frank12517s-projects.vercel.app
+Deployment state: READY
+Deployment source: GitHub pull request preview
+Deployment commit verified: PASS
+Deployment timestamp: 2026-08-23T11:33:08Z (provider check completion)
+Required runtime: Node.js 22.x
+Observed connected project runtime: Node.js 24.x
+Runtime result: FAIL
+Staging isolation: Separate preview target; production deployment not overwritten
+Secret values printed: false
+External application validation: BLOCKED/FAIL because API invocation returned FUNCTION_INVOCATION_FAILED

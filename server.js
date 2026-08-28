@@ -111,12 +111,12 @@ function aiFallbackBriefing(facts) {
 
 function ensureData() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) saveDb({ version: 3, users: [], schools: [], staff: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [], schoolFees: [], schoolFeePayments: [] });
+  if (!fs.existsSync(DB_FILE)) saveDb({ version: 3, users: [], schools: [], staff: [], students: [], academicConfigurations: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [], schoolFees: [], schoolFeePayments: [] });
 }
 function loadDb() {
   ensureData();
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  db.users ||= []; db.schools ||= []; db.staff ||= []; db.subscriptions ||= []; db.transactions ||= [];
+  db.users ||= []; db.schools ||= []; db.staff ||= []; db.students ||= []; db.academicConfigurations ||= []; db.subscriptions ||= []; db.transactions ||= [];
   db.paymentIntents ||= []; db.paymentEvents ||= []; db.files ||= []; db.sessions ||= []; db.passwordResets ||= []; db.audit ||= []; db.schoolFees ||= []; db.schoolFeePayments ||= [];
   return db;
 }
@@ -380,32 +380,108 @@ async function storePrivateFile(file, owner) {
 function planFor(planId) {
   const plan = subscriptionPolicy.planForSchoolType(planId);
   if (!plan) return null;
-  return { id: plan.id, amount: plan.amountMinor, currency: plan.currency, billingPeriod: plan.billingPeriod, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, capacity: plan.capacity, durationDays: null };
+  return { id: plan.id, pricePerStudentGhs: plan.pricePerStudentGhs, pricePerStudentMinor: plan.pricePerStudentMinor, currency: plan.currency, billingPeriod: plan.billingPeriod, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, capacity: plan.capacity, durationDays: null };
 }
-function paymentTerm(input, plan) {
+function schoolIdFromAuth(auth) {
+  const direct = auth?.user?.schoolId || auth?.user?.school_id;
+  if (direct) return String(direct);
+  const ids = new Set();
+  for (const membership of auth?.authorization?.memberships || []) {
+    const scope = membership.scope || {};
+    for (const value of scope.schoolIds || []) ids.add(String(value));
+    if (scope.schoolId) ids.add(String(scope.schoolId));
+  }
+  return ids.size === 1 ? [...ids][0] : null;
+}
+async function authoritativeSchoolContext(auth, requestedSchoolId, db) {
+  const schoolId = schoolIdFromAuth(auth);
+  if (!schoolId || (requestedSchoolId && String(requestedSchoolId) !== schoolId)) return null;
+  if (relational.isConfigured()) {
+    const schools = await relational.domainRows('SELECT id,tenant_id,ownership_type,first_term_free_used,active FROM schools WHERE id=? AND active=TRUE LIMIT 1', [schoolId]);
+    if (!schools.length) return null;
+    const counts = await relational.domainRows("SELECT COUNT(*) AS count FROM students WHERE school_id=? AND status='ACTIVE'", [schoolId]);
+    return { school: schools[0], schoolId, activeStudentCount: Number(counts[0]?.count || 0) };
+  }
+  const school = (db.schools || []).find(row => String(row.id) === schoolId && row.active !== false);
+  if (!school) return null;
+  const count = (db.students || []).filter(row => String(row.schoolId || row.school_id) === schoolId && String(row.status || 'ACTIVE').toUpperCase() === 'ACTIVE').length;
+  return { school, schoolId, activeStudentCount: count, db };
+}
+function subscriptionDates(term, now = new Date()) {
+  const start = term?.startDate || now.toISOString().slice(0, 10);
+  const durationDays = Number(term?.durationDays || 90);
+  const end = term?.endDate || new Date(new Date(`${start}T00:00:00.000Z`).getTime() + (durationDays - 1) * 86400000).toISOString().slice(0, 10);
+  return { startDate: start, endDate: end, durationDays };
+}
+async function centralizedGovernmentTerm(context, academicYear, termNumber) {
+  if (relational.isConfigured()) {
+    const rows = await relational.domainRows("SELECT id,academic_year,term,opening_date,closing_date,status FROM academic_configurations WHERE school_id=? AND academic_year=? AND LOWER(term) IN (?,?,?) AND UPPER(status) IN ('PUBLISHED','ACTIVE','APPROVED') ORDER BY updated_at DESC LIMIT 1", [context.schoolId, academicYear, `term ${termNumber}`, `term_${termNumber}`, `term${termNumber}`]);
+    const row = rows[0];
+    if (!row) throw new Error('No centrally controlled Government academic term is configured for this school and academic year');
+    const durationDays = subscriptionPolicy.calculateTermDurationDays(row.opening_date, row.closing_date);
+    return { schoolType: 'government', academicYear, termNumber, termId: String(row.id), governmentTermReference: String(row.id), startDate: String(row.opening_date), endDate: String(row.closing_date), durationDays, source: 'centralized_academic_configuration' };
+  }
+  const rows = context.db?.academicConfigurations || context.db?.academic_configs || [];
+  const row = rows.find(item => String(item.schoolId || item.school_id) === context.schoolId && String(item.academicYear || item.academic_year) === academicYear && String(item.termNumber || item.term_number || item.term).replace(/[^0-9]/g, '') === String(termNumber) && ['PUBLISHED','ACTIVE','APPROVED'].includes(String(item.status || '').toUpperCase()));
+  if (!row) throw new Error('No centrally controlled Government academic term is configured for this school and academic year');
+  const startDate = row.openingDate || row.opening_date; const endDate = row.closingDate || row.closing_date; const durationDays = subscriptionPolicy.calculateTermDurationDays(startDate, endDate);
+  return { schoolType: 'government', academicYear, termNumber, termId: String(row.id), governmentTermReference: String(row.id), startDate, endDate, durationDays, source: 'centralized_academic_configuration' };
+}
+async function paymentTerm(input, plan, context) {
   const rawPeriod = String(input.period || input.termNumber || '').trim().toLowerCase();
   const termNumber = Number(rawPeriod.replace(/[^0-9]/g, ''));
   if (![1, 2, 3].includes(termNumber)) throw new Error('A valid term is required');
   const academicYear = String(input.academicYear || '').trim();
   if (!/^\d{4}\/\d{4}$/.test(academicYear)) throw new Error('academicYear must use YYYY/YYYY format');
-  if (plan.id === 'private') {
-    return subscriptionPolicy.validateTermConfiguration({ schoolType: 'private', academicYear, termNumber, startDate: input.reopeningDate, endDate: input.closingDate });
+  if (plan.id === 'private') return subscriptionPolicy.validateTermConfiguration({ schoolType: 'private', academicYear, termNumber, startDate: input.reopeningDate, endDate: input.closingDate });
+  return centralizedGovernmentTerm(context, academicYear, termNumber);
+}
+async function privateSubscriptionCycleState(context, academicYear) {
+  if (relational.isConfigured()) return relational.getSubscriptionCycleState(context.schoolId, academicYear);
+  const subscriptions = (context.db?.subscriptions || []).filter(item => String(item.schoolId || item.school_id) === context.schoolId && String(item.schoolType || item.school_type || '').toLowerCase() === 'private' && String(item.academicYear || item.academic_year) === academicYear && ['ACTIVE','RENEWED','SUCCESS'].includes(String(item.status || item.subscriptionStatus || '').toUpperCase()));
+  const intents = (context.db?.paymentIntents || []).filter(item => String(item.schoolId || item.school_id) === context.schoolId && String(item.schoolType || item.school_type || '').toLowerCase() === 'private' && String(item.academicYear || item.academic_year) === academicYear && ['initialized','pending'].includes(String(item.status || '').toLowerCase()));
+  const rows = [...subscriptions, ...intents];
+  return { count: rows.length, maxSequence: rows.reduce((max, row) => Math.max(max, Number(row.subscriptionSequence || row.subscription_sequence || 0)), 0) };
+}
+async function resolvePaymentContext(input, context, plan) {
+  const requestedType = input.schoolType == null ? null : subscriptionPolicy.normalizeSchoolType(input.schoolType);
+  if (!requestedType) throw new Error('schoolType is required and must be Government or Private');
+  const persistentType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+  if (!persistentType || requestedType !== persistentType) throw new Error('schoolType does not match the persistent school record');
+  if (plan.id !== requestedType) throw new Error('Payment plan does not match school type');
+  if (requestedType === 'government' && (input.reopeningDate || input.closingDate || input.governmentTermId)) throw new Error('Government term dates and references are centrally controlled and cannot be supplied by a school');
+  const term = await paymentTerm(input, plan, context);
+  let subscriptionSequence = null;
+  if (requestedType === 'private') {
+    const cycle = await privateSubscriptionCycleState(context, term.academicYear);
+    if (cycle.count >= 3) throw new Error('Private school has already used all three subscription periods for this academic year');
+    subscriptionSequence = cycle.count + 1;
+    if (subscriptionSequence !== term.termNumber) throw new Error(`Private subscription must be sequence ${subscriptionSequence} for this academic year`);
   }
-  const governmentTermId = String(input.governmentTermId || `${academicYear}:term_${termNumber}`).trim();
-  return subscriptionPolicy.validateTermConfiguration({ schoolType: 'government', academicYear, termNumber, governmentTermId });
+  return { schoolType: requestedType, term, subscriptionSequence };
 }
 function paymentRef(input) { return validateText(input, { required: true, max: 120, pattern: /^[A-Za-z0-9._-]+$/ }); }
-function applyTrustedPayment(db, { reference, user, plan, amount, currency, eventId = null }) {
+function applyTrustedPayment(db, { reference, user, plan, amount, currency, eventId = null, schoolId = null, intent = null }) {
   if (db.transactions.some(tx => tx.reference === reference) || (eventId && db.paymentEvents.some(event => event.eventId === eventId))) return { duplicate: true };
-  const now = new Date(); const subscription = db.subscriptions.find(s => s.userId === user.id && s.active);
-  const start = subscription && new Date(subscription.expiresAt) > now ? new Date(subscription.expiresAt) : now;
-  const expiresAt = new Date(start.getTime() + plan.durationDays * 86400000).toISOString();
-  const transaction = { id: id('txn'), reference, userId: user.id, amount, currency, planId: plan.id, status: 'success', createdAt: now.toISOString(), eventId };
+  const now = new Date(); const intentSchoolId = schoolId || intent?.school_id || intent?.schoolId || null;
+  const schoolType = String(intent?.school_type || intent?.schoolType || plan.id).toLowerCase();
+  const academicYear = intent?.academic_year || intent?.academicYear || null;
+  const activeSubscriptions = db.subscriptions.filter(item => String(item.schoolId || item.school_id) === String(intentSchoolId) && String(item.schoolType || item.school_type || '').toLowerCase() === schoolType && String(item.academicYear || item.academic_year || '') === String(academicYear || '') && ['ACTIVE','RENEWED','SUCCESS'].includes(String(item.status || item.subscriptionStatus || '').toUpperCase()));
+  const requestedSequence = Number(intent?.subscription_sequence || intent?.subscriptionSequence || 0);
+  const subscriptionSequence = schoolType === 'private' ? (requestedSequence || activeSubscriptions.length + 1) : null;
+  if (schoolType === 'private' && (activeSubscriptions.length >= 3 || subscriptionSequence !== activeSubscriptions.length + 1)) throw Object.assign(new Error('Private school must complete exactly three subscription periods in an academic year'), { code: 'PRIVATE_SUBSCRIPTION_SEQUENCE_INVALID' });
+  const durationDays = Number(intent?.duration_days || intent?.durationDays || plan.durationDays || 90);
+  const subscription = db.subscriptions.find(s => String(s.userId || s.user_id) === String(user.id) && String(s.schoolId || s.school_id) === String(intentSchoolId) && String(s.status || '').toUpperCase() === 'ACTIVE');
+  const start = subscription && new Date(subscription.expiresAt || subscription.expires_at) > now ? new Date(subscription.expiresAt || subscription.expires_at) : now;
+  const expiresAt = new Date(start.getTime() + durationDays * 86400000).toISOString();
+  const transaction = { id: id('txn'), reference, userId: user.id, schoolId: intentSchoolId, amount, currency, planId: plan.id, schoolType, termId: intent?.term_id ?? intent?.termId ?? null, academicYear, termNumber: intent?.term_number ?? intent?.termNumber ?? null, governmentTermReference: intent?.government_term_reference ?? intent?.governmentTermReference ?? null, privateReopeningDate: intent?.private_reopening_date ?? intent?.privateReopeningDate ?? null, privateVacationDate: intent?.private_vacation_date ?? intent?.privateVacationDate ?? null, subscriptionSequence, activeStudentCount: intent?.active_student_count ?? intent?.activeStudentCount ?? null, pricePerStudent: intent?.price_per_student ?? intent?.pricePerStudent ?? subscriptionPolicy.PRICE_PER_STUDENT_GHS, subscriptionAmount: intent?.subscription_amount ?? intent?.subscriptionAmount ?? null, status: 'success', createdAt: now.toISOString(), eventId };
   db.transactions.push(transaction);
-  if (subscription) Object.assign(subscription, { planId: plan.id, expiresAt, active: true, lastTransactionId: transaction.id });
-  else db.subscriptions.push({ id: id('sub'), userId: user.id, planId: plan.id, active: true, startsAt: now.toISOString(), expiresAt, lastTransactionId: transaction.id });
+  const snapshot = { planId: plan.id, schoolId: transaction.schoolId, schoolType, expiresAt, status: 'ACTIVE', active: true, lastTransactionId: transaction.id, termId: transaction.termId, academicYear, termNumber: transaction.termNumber, governmentTermReference: transaction.governmentTermReference, privateReopeningDate: transaction.privateReopeningDate, privateVacationDate: transaction.privateVacationDate, subscriptionSequence, startsAt: start.toISOString(), subscriptionStartDate: transaction.privateReopeningDate || intent?.term_start_date || intent?.termStartDate || null, subscriptionEndDate: transaction.privateVacationDate || intent?.term_end_date || intent?.termEndDate || null, activeStudentCountAtSubscription: transaction.activeStudentCount, pricePerStudent: transaction.pricePerStudent, subscriptionAmount: transaction.subscriptionAmount, economicValue: intent?.economic_value ?? intent?.economicValue ?? transaction.subscriptionAmount, currency, paymentStatus: 'success', paymentReference: reference, paymentProvider: 'paystack', renewalState: subscription ? 'RENEWED' : 'INITIAL' };
+  if (subscription) { subscription.active = false; subscription.status = 'RENEWED'; subscription.updatedAt = now.toISOString(); }
+  const nextSubscription = { id: id('sub'), userId: user.id, ...snapshot };
+  db.subscriptions.push(nextSubscription);
   if (eventId) db.paymentEvents.push({ eventId, reference, processedAt: now.toISOString() });
-  return { transaction, subscription: subscription || db.subscriptions.at(-1) };
+  return { transaction, subscription: nextSubscription };
 }
 
 async function handler(req, res) {
@@ -464,32 +540,45 @@ async function handler(req, res) {
     saveDb(db); return json(res, 200, { fee: existing || record });
   }
   if (req.method === 'GET' && req.url === '/api/subscriptions/plans') {
-    return json(res, 200, { policyVersion: subscriptionPolicy.POLICY_VERSION, plans: Object.values(subscriptionPolicy.PLANS).map(plan => ({ id: plan.id, name: plan.name, priceGhs: plan.priceGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, capacity: plan.capacity, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, smsAddOn: plan.smsAddOn, termCalendar: plan.termCalendar })) });
+    return json(res, 200, { policyVersion: subscriptionPolicy.POLICY_VERSION, pricing: { pricePerStudentGhs: subscriptionPolicy.PRICE_PER_STUDENT_GHS, pricePerStudentMinor: subscriptionPolicy.PRICE_PER_STUDENT_MINOR, currency: subscriptionPolicy.CURRENCY, billingPeriod: subscriptionPolicy.BILLING_PERIOD }, plans: Object.values(subscriptionPolicy.PLANS).map(plan => ({ id: plan.id, name: plan.name, pricePerStudentGhs: plan.pricePerStudentGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, capacity: plan.capacity, firstTermFree: plan.firstTermFree, smsIncluded: plan.smsIncluded, smsAddOn: plan.smsAddOn, termCalendar: plan.termCalendar })) });
   }
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/payments/paystack/renewal-quote') {
     const query = new URL(req.url, 'http://edutrack.local').searchParams;
-    const type = subscriptionPolicy.normalizeSchoolType(query.get('schoolType') || query.get('packageId'));
-    const plan = type ? subscriptionPolicy.planForSchoolType(type) : null;
-    if (!plan) return json(res, 400, { error: 'Unsupported subscription plan' });
-    return json(res, 200, { planId: plan.id, schoolType: type, amount: plan.priceGhs, amountGhs: plan.priceGhs, currency: plan.currency, billingPeriod: plan.billingPeriod, firstTermFree: false, smsIncluded: plan.smsIncluded, capacity: plan.capacity });
+    const schoolId = validateText(query.get('schoolId'), { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
+    const auth = await authorize(req, res, db, { permission: 'payments.manage', scope: { schoolId } }); if (!auth) return;
+    const context = await authoritativeSchoolContext(auth, schoolId, db);
+    if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
+    const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+    const requestedType = subscriptionPolicy.normalizeSchoolType(query.get('schoolType') || query.get('packageId'));
+    if (!schoolType || !requestedType || schoolType !== requestedType) return json(res, 400, { error: 'School type does not match the persistent school record' });
+    const plan = planFor(schoolType); if (!plan) return json(res, 400, { error: 'Unsupported subscription plan' });
+    try {
+      const { term, subscriptionSequence } = await resolvePaymentContext({ schoolId, schoolType, planId: plan.id, period: query.get('period'), termNumber: query.get('termNumber'), academicYear: query.get('academicYear'), reopeningDate: query.get('reopeningDate'), closingDate: query.get('closingDate') }, context, plan);
+      const pricing = subscriptionPolicy.calculateSubscriptionAmount(context.activeStudentCount);
+      return json(res, 200, { planId: plan.id, schoolType, pricePerStudent: pricing.pricePerStudentGhs, pricePerStudentGhs: pricing.pricePerStudentGhs, currency: pricing.currency, billingPeriod: pricing.billingPeriod, amount: pricing.amountGhs, amountGhs: pricing.amountGhs, amountMinor: pricing.amountMinor, activeStudentCount: pricing.activeStudentCount, firstTermFree: false, smsIncluded: plan.smsIncluded, capacity: plan.capacity, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, termStartDate: term.startDate, termEndDate: term.endDate, governmentTermReference: term.governmentTermReference || null, subscriptionSequence });
+    } catch (error) { return json(res, 400, { error: error.message || 'Invalid renewal term' }); }
   }
   if (req.method === 'POST' && req.url === '/api/subscriptions/quote') {
     if (!requireSameOrigin(req, res)) return;
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid subscription quote request' }); }
     try {
-      const term = input.term ? subscriptionPolicy.validateTermConfiguration(input.term) : null;
-      // Anonymous registration quotes are informational only. They never grant a free term;
-      // only an authorized request tied to a persistent school identity can do that.
-      if (!input.schoolId) return json(res, 200, subscriptionPolicy.quote({ schoolType: input.schoolType, term, firstTermFreeUsed: true, schoolIdentityExists: true }));
+      const requestedType = input.schoolType == null ? null : subscriptionPolicy.normalizeSchoolType(input.schoolType);
+      if (!requestedType) return json(res, 400, { error: 'schoolType is required and must be Government or Private' });
+      if (!input.schoolId) {
+        if (requestedType === 'government' && (input.reopeningDate || input.closingDate || input.governmentTermId)) return json(res, 400, { error: 'Government term dates and references are centrally controlled' });
+        const term = requestedType === 'private' ? subscriptionPolicy.validateTermConfiguration({ schoolType: requestedType, academicYear: input.academicYear, termNumber: input.termNumber, startDate: input.reopeningDate, endDate: input.closingDate }) : null;
+        return json(res, 200, subscriptionPolicy.quote({ schoolType: requestedType, term, firstTermFreeUsed: true, schoolIdentityExists: true }));
+      }
       const auth = await authorize(req, res, db, { permission: 'subscriptions.manage', scope: { schoolId: String(input.schoolId) } });
       if (!auth) return;
-      const school = relational.isConfigured()
-        ? (await relational.domainRows('SELECT id,ownership_type,first_term_free_used FROM schools WHERE id=? AND active=TRUE LIMIT 1', [String(input.schoolId)]))[0]
-        : (db.schools || []).find((row) => String(row.id) === String(input.schoolId) && row.active !== false);
-      if (!school) return json(res, 404, { error: 'School not found' });
-      const schoolType = subscriptionPolicy.normalizeSchoolType(school.ownership_type || school.ownershipType || input.schoolType);
-      if (!schoolType || (input.schoolType && subscriptionPolicy.normalizeSchoolType(input.schoolType) !== schoolType)) return json(res, 400, { error: 'School type does not match the persistent school record' });
-      return json(res, 200, subscriptionPolicy.quote({ schoolType, term, firstTermFreeUsed: Boolean(school.first_term_free_used ?? school.firstTermFreeUsed), schoolIdentityExists: true }));
+      const context = await authoritativeSchoolContext(auth, input.schoolId, db);
+      if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
+      const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+      const plan = planFor(schoolType);
+      if (!plan) return json(res, 400, { error: 'Unsupported school type' });
+      const { term, subscriptionSequence } = await resolvePaymentContext(input, context, plan);
+      const quote = subscriptionPolicy.quote({ schoolType, term, activeStudentCount: context.activeStudentCount, firstTermFreeUsed: Boolean(context.school.first_term_free_used ?? context.school.firstTermFreeUsed), schoolIdentityExists: true });
+      return json(res, 200, { ...quote, schoolType, termStartDate: term.startDate, termEndDate: term.endDate, governmentTermReference: term.governmentTermReference || null, subscriptionSequence });
     } catch (error) { return json(res, 400, { error: error.message || 'Invalid subscription quote request' }); }
   }
   if (req.method === 'POST' && req.url === '/api/subscriptions/claim-first-term-free') {
@@ -498,18 +587,25 @@ async function handler(req, res) {
     const schoolId = validateText(input.schoolId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
     if (!schoolId) return json(res, 400, { error: 'schoolId is required' });
     const auth = await authorize(req, res, db, { permission: 'subscriptions.manage', scope: { schoolId } }); if (!auth) return;
+    const context = await authoritativeSchoolContext(auth, schoolId, db);
+    if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
     try {
+      const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+      if (schoolType !== 'government') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });
+      const requestedTerm = input.term && typeof input.term === 'object' ? { ...input.term, ...input } : input;
+      const termNumber = Number(requestedTerm.termNumber || String(requestedTerm.term || '').replace(/[^0-9]/g, ''));
+      const term = await centralizedGovernmentTerm(context, String(requestedTerm.academicYear || '').trim(), termNumber);
       if (relational.isConfigured()) {
-        const result = await relational.claimFirstTermFree(schoolId, { userId: auth.user.id, term: input.term || null });
+        const result = await relational.claimFirstTermFree(schoolId, { userId: auth.user.id, term });
         return json(res, result.claimed ? 200 : 409, { ok: result.claimed, claimed: result.claimed, firstTermFreeUsed: true });
       }
       const school = (db.schools || []).find((row) => String(row.id) === schoolId && row.active !== false);
       if (!school) return json(res, 404, { error: 'School not found' });
-      const type = subscriptionPolicy.normalizeSchoolType(school.ownership_type || school.ownershipType || school.schoolType);
-      if (type !== 'government') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });
       if (Boolean(school.first_term_free_used ?? school.firstTermFreeUsed)) return json(res, 409, { ok: false, claimed: false, firstTermFreeUsed: true });
-      school.first_term_free_used = true; school.firstTermFreeUsed = true; school.first_term_free_used_at = new Date().toISOString(); school.firstTermFreeUsedAt = school.first_term_free_used_at; db.subscriptions = db.subscriptions || []; db.subscriptions.push({ id: id('sub'), userId: auth.user.id, schoolId, planId: 'government', active: true, firstTermFree: true, startsAt: school.first_term_free_used_at, expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(), renewalState: 'FIRST_TERM_FREE' }); saveDb(db);
-      return json(res, 200, { ok: true, claimed: true, firstTermFreeUsed: true, planId: 'government', firstTermFree: true });
+      const activeStudentCount = (db.students || []).filter(row => String(row.schoolId || row.school_id) === schoolId && String(row.status || 'ACTIVE').toUpperCase() === 'ACTIVE').length;
+      const pricing = subscriptionPolicy.calculateSubscriptionAmount(activeStudentCount); const now = new Date(); const dates = { startDate: term.startDate, endDate: term.endDate, durationDays: term.durationDays };
+      school.first_term_free_used = true; school.firstTermFreeUsed = true; school.first_term_free_used_at = now.toISOString(); school.firstTermFreeUsedAt = school.first_term_free_used_at; db.subscriptions = db.subscriptions || []; db.subscriptions.push({ id: id('sub'), userId: auth.user.id, schoolId, planId: 'government', schoolType: 'government', status: 'ACTIVE', active: true, termId: term.termId, governmentTermReference: term.governmentTermReference, academicYear: term.academicYear, termNumber: term.termNumber, subscriptionSequence: 1, startsAt: now.toISOString(), expiresAt: new Date(`${dates.endDate}T23:59:59.999Z`).toISOString(), subscriptionStartDate: dates.startDate, subscriptionEndDate: dates.endDate, activeStudentCountAtSubscription: activeStudentCount, pricePerStudent: pricing.pricePerStudentGhs, subscriptionAmount: 0, economicValue: pricing.amountGhs, currency: pricing.currency, paymentStatus: 'free', paymentReference: null, paymentProvider: 'internal_policy', renewalState: 'FIRST_TERM_FREE' }); saveDb(db);
+      return json(res, 200, { ok: true, claimed: true, firstTermFreeUsed: true, planId: 'government', schoolType: 'government', firstTermFree: true, activeStudentCount, economicValueGhs: pricing.amountGhs, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, termStartDate: term.startDate, termEndDate: term.endDate, governmentTermReference: term.governmentTermReference });
     } catch (error) {
       if (error?.code === 'SCHOOL_NOT_FOUND') return json(res, 404, { error: 'School not found' });
       if (error?.code === 'FIRST_TERM_FREE_NOT_APPLICABLE') return json(res, 400, { error: 'First-term-free benefit applies only to government schools' });
@@ -666,8 +762,8 @@ async function handler(req, res) {
   if (!relational.isConfigured() && req.url.split('?')[0].startsWith('/api/domain/')) return requireRelational(res);
 
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/domain/academic-config') { const q=new URL(req.url,'http://edutrack.local').searchParams; const input={tenantId:q.get('tenantId'),schoolId:q.get('schoolId')}; const auth=await authorize(req,res,db,{permission:'academics.manage',scope:academicScope(input)}); if(!auth)return; const rows=await relational.academicRows('SELECT * FROM academic_configurations WHERE (? IS NULL OR tenant_id=?) AND (? IS NULL OR school_id=?) ORDER BY academic_year DESC,term LIMIT 100',[input.tenantId,input.tenantId,input.schoolId,input.schoolId]); return json(res,200,{configurations:safeAcademicRows(rows)}); }
-  if (req.method === 'POST' && req.url === '/api/domain/academic-config') { if(!requireSameOrigin(req,res))return; let input; try{input=canonicalDomainPayload(await body(req));requireFields(input,['tenantId','schoolId','academicYear','term','openingDate','closingDate']);if(String(input.closingDate)<String(input.openingDate))throw domainInputError('closingDate must be on or after openingDate');}catch(e){return domainErrorResponse(res,e);} const result=await academicRecord(req,res,db,'academics.manage',input,(auth)=>relational.createAcademicConfig(input,auth.user.id));if(!result)return;await auditDomainMutation(result.auth,'ACADEMIC_CONFIG_CREATED',req,{academicConfigId:result.row.id,schoolId:input.schoolId});return json(res,201,{configuration:safeAcademicRow(result.row)}); }
-  if (req.method === 'PATCH' && /^\/api\/domain\/academic-config\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) { if(!requireSameOrigin(req,res))return; const configId=req.url.split('/').pop(); let input;try{input=canonicalDomainPayload(await body(req));if(input.openingDate&&input.closingDate&&String(input.closingDate)<String(input.openingDate))throw domainInputError('closingDate must be on or after openingDate');}catch(e){return domainErrorResponse(res,e);} const existing=(await relational.academicRows('SELECT * FROM academic_configurations WHERE id=?',[configId]))[0];if(!existing)return json(res,404,{error:'Academic configuration not found'});const result=await academicRecord(req,res,db,'academics.manage',{tenantId:existing.tenant_id,schoolId:existing.school_id},()=>relational.updateAcademicConfig(configId,input));if(!result)return;await auditDomainMutation(result.auth,'ACADEMIC_CONFIG_UPDATED',req,{academicConfigId:configId});return json(res,200,{configuration:safeAcademicRow(result.row)}); }
+  if (req.method === 'POST' && req.url === '/api/domain/academic-config') { if(!requireSameOrigin(req,res))return; let input; try{input=canonicalDomainPayload(await body(req));requireFields(input,['tenantId','schoolId','academicYear','term','openingDate','closingDate']);if(String(input.closingDate)<String(input.openingDate))throw domainInputError('closingDate must be on or after openingDate');}catch(e){return domainErrorResponse(res,e);} const result=await academicRecord(req,res,db,'academics.manage',input,async(auth)=>{const school=(await relational.academicRows('SELECT ownership_type FROM schools WHERE id=? LIMIT 1',[input.schoolId]))[0];if(subscriptionPolicy.normalizeSchoolType(school?.ownership_type)==='government'&&!['SUPER_ADMIN','DEVELOPER_ROOT'].includes(actorRole(auth)))throw Object.assign(new Error('Only the Super Administrator may manage Government academic-term dates'),{code:'AUTHORIZATION_DENIED'});return relational.createAcademicConfig(input,auth.user.id)});if(!result)return;await auditDomainMutation(result.auth,'ACADEMIC_CONFIG_CREATED',req,{academicConfigId:result.row.id,schoolId:input.schoolId});return json(res,201,{configuration:safeAcademicRow(result.row)}); }
+  if (req.method === 'PATCH' && /^\/api\/domain\/academic-config\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) { if(!requireSameOrigin(req,res))return; const configId=req.url.split('/').pop(); let input;try{input=canonicalDomainPayload(await body(req));if(input.openingDate&&input.closingDate&&String(input.closingDate)<String(input.openingDate))throw domainInputError('closingDate must be on or after openingDate');}catch(e){return domainErrorResponse(res,e);} const existing=(await relational.academicRows('SELECT * FROM academic_configurations WHERE id=?',[configId]))[0];if(!existing)return json(res,404,{error:'Academic configuration not found'});const result=await academicRecord(req,res,db,'academics.manage',{tenantId:existing.tenant_id,schoolId:existing.school_id},async(auth)=>{const school=(await relational.academicRows('SELECT ownership_type FROM schools WHERE id=? LIMIT 1',[existing.school_id]))[0];if(subscriptionPolicy.normalizeSchoolType(school?.ownership_type)==='government'&&!['SUPER_ADMIN','DEVELOPER_ROOT'].includes(actorRole(auth)))throw Object.assign(new Error('Only the Super Administrator may manage Government academic-term dates'),{code:'AUTHORIZATION_DENIED'});return relational.updateAcademicConfig(configId,input)});if(!result)return;await auditDomainMutation(result.auth,'ACADEMIC_CONFIG_UPDATED',req,{academicConfigId:configId});return json(res,200,{configuration:safeAcademicRow(result.row)}); }
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/domain/subjects') { const q=new URL(req.url,'http://edutrack.local').searchParams; const input={tenantId:q.get('tenantId'),schoolId:q.get('schoolId')}; const auth=await authorize(req,res,db,{permission:'academics.manage',scope:academicScope(input)});if(!auth)return;const rows=await relational.academicRows('SELECT * FROM subjects WHERE (? IS NULL OR tenant_id=?) AND (? IS NULL OR school_id=?) ORDER BY name LIMIT 200',[input.tenantId,input.tenantId,input.schoolId,input.schoolId]);return json(res,200,{subjects:safeAcademicRows(rows)}); }
   if (req.method === 'POST' && req.url === '/api/domain/subjects') { if(!requireSameOrigin(req,res))return;let input;try{input=canonicalDomainPayload(await body(req));requireFields(input,['tenantId','schoolId','code','name']);}catch(e){return domainErrorResponse(res,e);}const result=await academicRecord(req,res,db,'academics.manage',input,()=>relational.createSubject(input));if(!result)return;await auditDomainMutation(result.auth,'SUBJECT_CREATED',req,{subjectId:result.row.id,schoolId:input.schoolId});return json(res,201,{subject:safeAcademicRow(result.row)}); }
   if (req.method === 'PATCH' && /^\/api\/domain\/subjects\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) {if(!requireSameOrigin(req,res))return;const subjectId=req.url.split('/').pop();let input;try{input=canonicalDomainPayload(await body(req));}catch(e){return domainErrorResponse(res,e);}const existing=(await relational.academicRows('SELECT * FROM subjects WHERE id=?',[subjectId]))[0];if(!existing)return json(res,404,{error:'Subject not found'});const result=await academicRecord(req,res,db,'academics.manage',{tenantId:existing.tenant_id,schoolId:existing.school_id},()=>relational.updateSubject(subjectId,input));if(!result)return;await auditDomainMutation(result.auth,'SUBJECT_UPDATED',req,{subjectId});return json(res,200,{subject:safeAcademicRow(result.row)});}
@@ -787,37 +883,51 @@ async function handler(req, res) {
     if (!requireSameOrigin(req, res)) return;
     const auth = await authorize(req, res, db, { permission: 'payments.manage' }); if (!auth) return;
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment request' }); }
-    const planId = validateText(input.planId || input.packageId || input.subscriptionPackageId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
-    const plan = planFor(planId); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
-    let term; try { term = paymentTerm(input, plan); } catch (error) { return json(res, 400, { error: error.message || 'Invalid term configuration' }); }
-    const durationDays = Number(term.durationDays || 90);
-    const payablePlan = { ...plan, durationDays };
+    const requestedSchoolId = validateText(input.schoolId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
     const idempotencyKey = validateText(req.headers['x-idempotency-key'] || input.clientRequestId, { required: true, max: 120, pattern: /^[A-Za-z0-9._-]+$/ });
     if (!idempotencyKey) return json(res, 400, { error: 'A valid idempotency key is required' });
     const existing = relational.isConfigured() ? await relational.findPaymentIntent(auth.user.id, idempotencyKey) : db.paymentIntents.find(intent => intent.userId === auth.user.id && intent.idempotencyKey === idempotencyKey);
-    if (existing) return json(res, 200, { authorization: { reference: existing.reference, amount: Number(existing.amount), currency: existing.currency }, reference: existing.reference, amount: Number(existing.amount), currency: existing.currency, planId: existing.plan_id || existing.planId });
-    const reference = `EDU_${randomToken(18)}`;
-    const email = validateText(input.email || auth.user.email, { required: true, max: 254, pattern: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/ });
+    if (existing) return json(res, 200, { authorization: { reference: existing.reference, amount: Number(existing.amount), currency: existing.currency }, reference: existing.reference, amount: Number(existing.amount), amountGhs: Number(existing.subscription_amount ?? existing.subscriptionAmount ?? Number(existing.amount) / 100), currency: existing.currency, planId: existing.plan_id || existing.planId, schoolId: existing.school_id || existing.schoolId, activeStudentCount: Number(existing.active_student_count ?? existing.activeStudentCount ?? 0), termId: existing.term_id || existing.termId });
+    const context = await authoritativeSchoolContext(auth, requestedSchoolId, db);
+    if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
+    const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+    const suppliedPlanId = validateText(input.planId || input.packageId || input.subscriptionPackageId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
+    if (suppliedPlanId && subscriptionPolicy.normalizeSchoolType(suppliedPlanId) !== schoolType) return json(res, 400, { error: 'Payment plan does not match the persistent school record' });
+    const plan = planFor(schoolType); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
+    let paymentContext; try { paymentContext = await resolvePaymentContext(input, context, plan); } catch (error) { return json(res, 400, { error: error.message || 'Invalid subscription context' }); }
+    const { term, subscriptionSequence } = paymentContext;
+    const pricing = subscriptionPolicy.calculateSubscriptionAmount(context.activeStudentCount);
+    const dates = { startDate: term.startDate, endDate: term.endDate, durationDays: term.durationDays };
+    const email = validateText(input.email || auth.user.email, { required: true, max: 254, pattern: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/ });
     if (!email) return json(res, 400, { error: 'A valid payment email is required' });
-    if (relational.isConfigured()) await relational.createPaymentIntent({ reference, idempotencyKey, userId: auth.user.id, schoolId: input.schoolId || auth.user.schoolId || null, planId: plan.id, amount: plan.amount, currency: plan.currency, durationDays, status: 'initialized' });
-    else { db.paymentIntents.push({ reference, idempotencyKey, userId: auth.user.id, schoolId: input.schoolId || auth.user.schoolId || null, planId: plan.id, amount: plan.amount, currency: plan.currency, durationDays, status: 'initialized', createdAt: new Date().toISOString() }); saveDb(db); }
-    if (!process.env.PAYSTACK_SECRET_KEY) return json(res, 503, { error: 'Payment initialization unavailable' });
-    const paystackResponse = await fetch(`${process.env.PAYSTACK_API_URL || 'https://api.paystack.co'}/transaction/initialize`, { method: 'POST', headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, amount: payablePlan.amount, currency: payablePlan.currency, reference, metadata: { schoolId: input.schoolId || auth.user.schoolId || null, planId: plan.id, billingPeriod: plan.billingPeriod, academicYear: term.academicYear, termNumber: term.termNumber, startDate: term.startDate, endDate: term.endDate, paymentPurpose: input.paymentPurpose || 'subscription_renewal' } }) });
+    const reference = `EDU_${randomToken(18)}`;
+    const intentInput = { reference, idempotencyKey, userId: auth.user.id, schoolId: context.schoolId, planId: plan.id, schoolType, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, governmentTermReference: term.governmentTermReference || null, privateReopeningDate: term.startDate || null, privateVacationDate: term.endDate || null, subscriptionSequence, termStartDate: dates.startDate, termEndDate: dates.endDate, durationDays: dates.durationDays, activeStudentCount: pricing.activeStudentCount, pricePerStudent: pricing.pricePerStudentGhs, subscriptionAmount: pricing.amountGhs, economicValue: pricing.amountGhs, amount: pricing.amountMinor, currency: pricing.currency, paymentProvider: 'paystack', status: 'initialized' };
+    if (relational.isConfigured()) await relational.createPaymentIntent(intentInput);
+    else { db.paymentIntents.push({ ...intentInput, school_id: context.schoolId, schoolType, school_type: schoolType, term_id: term.termId, governmentTermReference: term.governmentTermReference || null, government_term_reference: term.governmentTermReference || null, privateReopeningDate: term.startDate || null, privateVacationDate: term.endDate || null, private_reopening_date: term.startDate || null, private_vacation_date: term.endDate || null, subscriptionSequence, subscription_sequence: subscriptionSequence, active_student_count: pricing.activeStudentCount, price_per_student: pricing.pricePerStudentGhs, subscription_amount: pricing.amountGhs, economic_value: pricing.amountGhs, createdAt: new Date().toISOString() }); saveDb(db); }
+    if (!process.env.PAYSTACK_SECRET_KEY) { if (relational.isConfigured()) await relational.updatePaymentIntentStatus(reference, 'failed'); else { const stored = db.paymentIntents.find(item => item.reference === reference); if (stored) stored.status = 'failed'; saveDb(db); } return json(res, 503, { error: 'Payment initialization unavailable' }); }
+    const paystackResponse = await fetch(`${process.env.PAYSTACK_API_URL || 'https://api.paystack.co'}/transaction/initialize`, { method: 'POST', headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, amount: pricing.amountMinor, currency: pricing.currency, reference, metadata: { schoolId: context.schoolId, planId: plan.id, billingPeriod: pricing.billingPeriod, academicYear: term.academicYear, termNumber: term.termNumber, termId: term.termId, startDate: dates.startDate, endDate: dates.endDate, activeStudentCount: pricing.activeStudentCount, pricePerStudent: pricing.pricePerStudentGhs, subscriptionAmount: pricing.amountGhs, paymentPurpose: input.paymentPurpose || 'subscription_renewal' } }) });
     const paystackPayload = await paystackResponse.json().catch(() => ({}));
     const authorization = paystackPayload && paystackPayload.data;
-    if (!paystackResponse.ok || !paystackPayload.status || !authorization || !authorization.access_code || authorization.reference !== reference) return json(res, 502, { error: 'Payment initialization unavailable' });
-    return json(res, 201, { authorization: { access_code: authorization.access_code, reference: authorization.reference, amount: Number(authorization.amount || payablePlan.amount), currency: authorization.currency || payablePlan.currency, public_key: process.env.PAYSTACK_PUBLIC_KEY || null }, reference, amount: payablePlan.amount, currency: payablePlan.currency, planId: plan.id });
+    if (!paystackResponse.ok || !paystackPayload.status || !authorization || !authorization.access_code || authorization.reference !== reference) { if (relational.isConfigured()) await relational.updatePaymentIntentStatus(reference, 'failed'); else { const stored = db.paymentIntents.find(item => item.reference === reference); if (stored) stored.status = 'failed'; saveDb(db); } return json(res, 502, { error: 'Payment initialization unavailable' }); }
+    return json(res, 201, { authorization: { access_code: authorization.access_code, reference: authorization.reference, amount: Number(authorization.amount || pricing.amountMinor), currency: authorization.currency || pricing.currency, public_key: process.env.PAYSTACK_PUBLIC_KEY || null }, reference, amount: pricing.amountMinor, amountGhs: pricing.amountGhs, currency: pricing.currency, planId: plan.id, schoolType, schoolId: context.schoolId, activeStudentCount: pricing.activeStudentCount, pricePerStudentGhs: pricing.pricePerStudentGhs, billingPeriod: pricing.billingPeriod, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, termStartDate: term.startDate, termEndDate: term.endDate, governmentTermReference: term.governmentTermReference || null, subscriptionSequence });
   }
   if (req.method === 'POST' && req.url === '/api/payments/initialize') {
     if (!requireSameOrigin(req, res)) return;
     const auth = await authorize(req, res, db, { permission: 'payments.manage' }); if (!auth) return;
     const idempotencyKey = validateText(req.headers['x-idempotency-key'], { max: 120, pattern: /^[A-Za-z0-9._-]+$/ });
     if (!idempotencyKey) return json(res, 400, { error: 'A valid idempotency key is required' });
-    const existing = relational.isConfigured() ? await relational.findPaymentIntent(auth.user.id, idempotencyKey) : db.paymentIntents.find(intent => intent.userId === auth.user.id && intent.idempotencyKey === idempotencyKey); if (existing) return json(res, 200, { reference: existing.reference, amount: Number(existing.amount), currency: existing.currency, planId: existing.plan_id || existing.planId });
+    const existing = relational.isConfigured() ? await relational.findPaymentIntent(auth.user.id, idempotencyKey) : db.paymentIntents.find(intent => intent.userId === auth.user.id && intent.idempotencyKey === idempotencyKey); if (existing) return json(res, 200, { reference: existing.reference, amount: Number(existing.amount), amountGhs: Number(existing.subscription_amount ?? existing.subscriptionAmount ?? Number(existing.amount) / 100), currency: existing.currency, planId: existing.plan_id || existing.planId, schoolId: existing.school_id || existing.schoolId, activeStudentCount: Number(existing.active_student_count ?? existing.activeStudentCount ?? 0) });
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment request' }); }
-    const planId = validateText(input.planId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ }); const plan = planFor(planId); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
-    const durationDays = 90; const reference = `EDU_${randomToken(18)}`; if (relational.isConfigured()) await relational.createPaymentIntent({ reference, idempotencyKey, userId: auth.user.id, schoolId: auth.user.schoolId || null, planId: plan.id, amount: plan.amount, currency: plan.currency, durationDays, status: 'initialized' }); else { db.paymentIntents.push({ reference, idempotencyKey, userId: auth.user.id, planId: plan.id, amount: plan.amount, currency: plan.currency, durationDays, status: 'initialized', createdAt: new Date().toISOString() }); saveDb(db); }
-    return json(res, 201, { reference, amount: plan.amount, currency: plan.currency, planId: plan.id });
+    const context = await authoritativeSchoolContext(auth, validateText(input.schoolId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ }), db); if (!context) return json(res, 403, { error: 'Subscription school is not authorized' });
+    const schoolType = subscriptionPolicy.normalizeSchoolType(context.school.ownership_type || context.school.ownershipType);
+    const planId = validateText(input.planId, { max: 80, pattern: /^[A-Za-z0-9._-]+$/ }); if (planId && subscriptionPolicy.normalizeSchoolType(planId) !== schoolType) return json(res, 400, { error: 'Payment plan does not match the persistent school record' });
+    const plan = planFor(schoolType); if (!plan) return json(res, 400, { error: 'Unsupported payment plan' });
+    let paymentContext; try { paymentContext = await resolvePaymentContext(input, context, plan); } catch (error) { return json(res, 400, { error: error.message || 'Invalid subscription context' }); }
+    const { term, subscriptionSequence } = paymentContext;
+    const pricing = subscriptionPolicy.calculateSubscriptionAmount(context.activeStudentCount); const dates = { startDate: term.startDate, endDate: term.endDate, durationDays: term.durationDays }; const reference = `EDU_${randomToken(18)}`;
+    const intentInput = { reference, idempotencyKey, userId: auth.user.id, schoolId: context.schoolId, planId: plan.id, schoolType, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, governmentTermReference: term.governmentTermReference || null, privateReopeningDate: term.startDate || null, privateVacationDate: term.endDate || null, subscriptionSequence, termStartDate: dates.startDate, termEndDate: dates.endDate, durationDays: dates.durationDays, activeStudentCount: pricing.activeStudentCount, pricePerStudent: pricing.pricePerStudentGhs, subscriptionAmount: pricing.amountGhs, economicValue: pricing.amountGhs, amount: pricing.amountMinor, currency: pricing.currency, paymentProvider: 'internal', status: 'initialized' };
+    if (relational.isConfigured()) await relational.createPaymentIntent(intentInput); else { db.paymentIntents.push({ ...intentInput, school_id: context.schoolId, school_type: schoolType, term_id: term.termId, government_term_reference: term.governmentTermReference || null, private_reopening_date: term.startDate || null, private_vacation_date: term.endDate || null, subscription_sequence: subscriptionSequence, createdAt: new Date().toISOString() }); saveDb(db); }
+    return json(res, 201, { reference, amount: pricing.amountMinor, amountGhs: pricing.amountGhs, currency: pricing.currency, planId: plan.id, schoolType, schoolId: context.schoolId, activeStudentCount: pricing.activeStudentCount, pricePerStudentGhs: pricing.pricePerStudentGhs, billingPeriod: pricing.billingPeriod, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, termStartDate: term.startDate, termEndDate: term.endDate, governmentTermReference: term.governmentTermReference || null, subscriptionSequence });
   }
   if (req.method === 'GET' && /^\/api\/payments\/paystack\/verify\/[A-Za-z0-9._-]+$/.test(req.url)) {
     if (!requireSameOrigin(req, res)) return;
@@ -833,7 +943,7 @@ async function handler(req, res) {
     if (!result.status || !data || data.status !== 'success' || !verifiedPlan || Number(data.amount) !== Number(intent.amount) || String(data.currency).toUpperCase() !== String(intent.currency).toUpperCase()) return json(res, 400, { error: 'Payment verification failed' });
     let applied;
     if (relational.isConfigured()) applied = await relational.recordVerifiedPayment({ reference, userId: auth.user.id, schoolId: intent.school_id || intent.schoolId || auth.user.schoolId || null, planId: verifiedPlan.id, durationDays: Number(intent.duration_days || intent.durationDays || verifiedPlan.durationDays || 90), eventType: 'verification', payload: { source: 'paystack_verify' } });
-    else { intent.status = 'verified'; applied = applyTrustedPayment(db, { reference, user: auth.user, plan: verifiedPlan, amount: intent.amount, currency: intent.currency }); saveDb(db); }
+    else { intent.status = 'verified'; applied = applyTrustedPayment(db, { reference, user: auth.user, plan: verifiedPlan, intent, schoolId: intent.schoolId || intent.school_id || null, amount: intent.amount, currency: intent.currency }); saveDb(db); }
     return json(res, 200, { status: 'verified', transaction: { ...(applied.transaction || {}), reference, amount: data.amount, currency: data.currency, paid_at: data.paid_at || new Date().toISOString() } });
   }
   if (req.method === 'POST' && req.url === '/api/payments/verify') {
@@ -847,8 +957,8 @@ async function handler(req, res) {
     if (!response.ok) return json(res, 502, { error: 'Payment verification unavailable' });
     const result = await response.json(); const data = result && result.data;
     const customerEmail = data && data.customer && String(data.customer.email || '').toLowerCase();
-    if (!result.status || !data || data.status !== 'success' || Number(data.amount) !== intent.amount || String(data.currency).toUpperCase() !== String(intent.currency).toUpperCase() || (customerEmail && customerEmail !== auth.user.email.toLowerCase())) return json(res, 400, { error: 'Payment verification failed' });
-    const verifiedPlan = planFor(intent.plan_id || intent.planId); let applied; if (relational.isConfigured()) { applied = await relational.recordVerifiedPayment({ reference, userId: auth.user.id, schoolId: auth.user.schoolId || null, planId: verifiedPlan.id, durationDays: Number(intent.duration_days || intent.durationDays || verifiedPlan.durationDays || 90), eventType: 'verification', payload: { source: 'paystack_verify' } }); await relational.appendAudit({ id: id('audit'), action: applied.duplicate ? 'PAYMENT_DUPLICATE' : 'SUBSCRIPTION_ACTIVATED', userId: auth.user.id, at: new Date().toISOString(), ip: clientIp(req), reference }); } else { intent.status = 'verified'; applied = applyTrustedPayment(db, { reference, user: auth.user, plan: verifiedPlan, amount: intent.amount, currency: intent.currency }); auditSecurityEvent(db, 'PAYMENT_VERIFIED', req, { userId: auth.user.id, reference, result: 'success' }); auditSecurityEvent(db, applied.duplicate ? 'PAYMENT_DUPLICATE' : 'SUBSCRIPTION_ACTIVATED', req, { userId: auth.user.id, reference }); saveDb(db); } return json(res, 200, { ok: true, reference, status: applied.duplicate ? 'already_processed' : 'verified' });
+    if (!result.status || !data || data.status !== 'success' || Number(data.amount) !== Number(intent.amount) || String(data.currency).toUpperCase() !== String(intent.currency).toUpperCase() || (customerEmail && customerEmail !== auth.user.email.toLowerCase())) return json(res, 400, { error: 'Payment verification failed' });
+    const verifiedPlan = planFor(intent.plan_id || intent.planId); let applied; if (relational.isConfigured()) { applied = await relational.recordVerifiedPayment({ reference, userId: auth.user.id, schoolId: auth.user.schoolId || null, planId: verifiedPlan.id, durationDays: Number(intent.duration_days || intent.durationDays || verifiedPlan.durationDays || 90), eventType: 'verification', payload: { source: 'paystack_verify' } }); await relational.appendAudit({ id: id('audit'), action: applied.duplicate ? 'PAYMENT_DUPLICATE' : 'SUBSCRIPTION_ACTIVATED', userId: auth.user.id, at: new Date().toISOString(), ip: clientIp(req), reference }); } else { intent.status = 'verified'; applied = applyTrustedPayment(db, { reference, user: auth.user, plan: verifiedPlan, intent, schoolId: intent.schoolId || intent.school_id || null, amount: intent.amount, currency: intent.currency }); auditSecurityEvent(db, 'PAYMENT_VERIFIED', req, { userId: auth.user.id, reference, result: 'success' }); auditSecurityEvent(db, applied.duplicate ? 'PAYMENT_DUPLICATE' : 'SUBSCRIPTION_ACTIVATED', req, { userId: auth.user.id, reference }); saveDb(db); } return json(res, 200, { ok: true, reference, status: applied.duplicate ? 'already_processed' : 'verified' });
   }
   if (req.method === 'POST' && req.url === '/api/payments/paystack/webhook') {
     const secret = process.env.PAYSTACK_WEBHOOK_SECRET || process.env.PAYSTACK_SECRET_KEY; const signature = String(req.headers['x-paystack-signature'] || ''); if (!secret || !signature) return json(res, 503, { error: 'Webhook verification unavailable' });
@@ -856,7 +966,20 @@ async function handler(req, res) {
     const expected = crypto.createHmac('sha512', secret).update(raw).digest('hex'); if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) { auditSecurityEvent(db, 'PAYMENT_WEBHOOK_REJECTED', req, { reason: 'signature' }); saveDb(db); return json(res, 401, { error: 'Webhook rejected' }); }
     let event; try { event = JSON.parse(raw); } catch { return json(res, 400, { error: 'Invalid webhook' }); }
     if (event.event !== 'charge.success' || !event.data || !paymentRef(event.data.reference)) return json(res, 400, { error: 'Invalid webhook' });
-    const reference = event.data.reference; const eventId = validateText(event.id, { max: 160, pattern: /^[A-Za-z0-9._:-]+$/ }) || reference; if (relational.isConfigured()) { const intent = await relational.domainRows('SELECT * FROM payment_intents WHERE reference=? LIMIT 1',[reference]); if (!intent.length) return json(res,404,{error:'Payment intent not found'}); const user = await relational.findUser(intent[0].user_id); const plan = planFor(intent[0].plan_id); if (!user || !plan || Number(event.data.amount)!==plan.amount || String(event.data.currency).toUpperCase()!==String(plan.currency).toUpperCase()) return json(res,400,{error:'Payment verification failed'}); const duplicate = await relational.findPaymentTransaction(reference); if (duplicate) return json(res,200,{ok:true,status:'already_processed'}); await relational.recordVerifiedPayment({reference,userId:user.id,schoolId:intent[0].school_id||null,planId:plan.id,durationDays:plan.durationDays,eventId,eventType:event.event,payload:{reference,event:event.event}}); await relational.appendAudit({id:id('audit'),action:'PAYMENT_WEBHOOK_ACCEPTED',userId:user.id,at:new Date().toISOString(),ip:clientIp(req),reference}); return json(res,200,{ok:true}); } const intent = db.paymentIntents.find(item => item.reference === reference); if (!intent) return json(res, 404, { error: 'Payment intent not found' }); if (db.paymentEvents.some(item => item.eventId === eventId || item.reference === reference) || db.transactions.some(tx => tx.reference === reference)) return json(res, 200, { ok: true, status: 'already_processed' }); const user = db.users.find(item => item.id === intent.userId && item.active); const plan = planFor(intent.planId); if (!user || !plan || Number(event.data.amount) !== plan.amount || String(event.data.currency).toUpperCase() !== String(plan.currency).toUpperCase()) return json(res, 400, { error: 'Payment verification failed' }); applyTrustedPayment(db, { reference, user, plan: { ...plan, durationDays: Number(intent.durationDays || plan.durationDays || 90) }, amount: plan.amount, currency: plan.currency, eventId }); auditSecurityEvent(db, 'PAYMENT_WEBHOOK_ACCEPTED', req, { userId: user.id, reference, result: 'success' }); auditSecurityEvent(db, 'SUBSCRIPTION_RENEWED', req, { userId: user.id, reference }); saveDb(db); return json(res, 200, { ok: true });
+    const reference = event.data.reference; const eventId = validateText(event.id, { max: 160, pattern: /^[A-Za-z0-9._:-]+$/ }) || reference;
+    if (relational.isConfigured()) {
+      const intent = await relational.domainRows('SELECT * FROM payment_intents WHERE reference=? LIMIT 1',[reference]); if (!intent.length) return json(res,404,{error:'Payment intent not found'});
+      const user = await relational.findUser(intent[0].user_id); const plan = planFor(intent[0].plan_id);
+      if (!user || !plan || Number(event.data.amount)!==Number(intent[0].amount) || String(event.data.currency).toUpperCase()!==String(intent[0].currency).toUpperCase()) return json(res,400,{error:'Payment verification failed'});
+      const duplicate = await relational.findPaymentTransaction(reference); if (duplicate) return json(res,200,{ok:true,status:'already_processed'});
+      await relational.recordVerifiedPayment({reference,userId:user.id,schoolId:intent[0].school_id||null,planId:plan.id,durationDays:Number(intent[0].duration_days||90),eventId,eventType:event.event,payload:{reference,event:event.event}});
+      await relational.appendAudit({id:id('audit'),action:'PAYMENT_WEBHOOK_ACCEPTED',userId:user.id,at:new Date().toISOString(),ip:clientIp(req),reference}); return json(res,200,{ok:true});
+    }
+    const intent = db.paymentIntents.find(item => item.reference === reference); if (!intent) return json(res, 404, { error: 'Payment intent not found' });
+    if (db.paymentEvents.some(item => item.eventId === eventId || item.reference === reference) || db.transactions.some(tx => tx.reference === reference)) return json(res, 200, { ok: true, status: 'already_processed' });
+    const user = db.users.find(item => item.id === intent.userId && item.active); const plan = planFor(intent.planId);
+    if (!user || !plan || Number(event.data.amount) !== Number(intent.amount) || String(event.data.currency).toUpperCase() !== String(intent.currency).toUpperCase()) return json(res, 400, { error: 'Payment verification failed' });
+    applyTrustedPayment(db, { reference, user, plan: { ...plan, durationDays: Number(intent.durationDays || 90) }, intent, schoolId: intent.schoolId || intent.school_id || null, amount: intent.amount, currency: intent.currency, eventId }); auditSecurityEvent(db, 'PAYMENT_WEBHOOK_ACCEPTED', req, { userId: user.id, reference, result: 'success' }); auditSecurityEvent(db, 'SUBSCRIPTION_RENEWED', req, { userId: user.id, reference }); saveDb(db); return json(res, 200, { ok: true });
   }
 
   if (req.method === 'POST' && req.url === '/api/attendance/qr/identity') { if(!requireSameOrigin(req,res))return; let input; try{input=canonicalDomainPayload(await body(req)); requireFields(input,['entityType','entityId']);}catch(e){return domainErrorResponse(res,e);} let relation; try{const table=String(input.entityType).toUpperCase()==='STUDENT'?'students':'staff'; relation=(await relational.domainRows(`SELECT id,tenant_id,school_id,status FROM ${table} WHERE id=? LIMIT 1`,[input.entityId]))[0];}catch(e){return domainErrorResponse(res,e);} if(!relation||String(relation.status).toUpperCase()!=='ACTIVE')return json(res,404,{error:'Active record not found'}); const auth=await authorize(req,res,db,{permission:'attendance.qr.manage',scope:{tenantId:relation.tenant_id,schoolId:relation.school_id}});if(!auth)return;try{return json(res,200,await relational.rotateQrIdentity(input,auth.user.id));}catch(e){return domainErrorResponse(res,e);} }

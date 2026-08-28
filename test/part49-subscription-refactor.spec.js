@@ -11,8 +11,7 @@ for (const obsolete of ['Full School Package', 'Examination Package', 'Individua
 for (const plan of ['government', 'private']) assert.ok(html.includes(`subv2-renew-pkg-${plan}`), `renewal plan card missing: ${plan}`);
 assert.match(html, /Government\/Public School/);
 assert.match(html, /Private School/);
-assert.match(html, /GH₵130/);
-assert.match(html, /GH₵200/);
+assert.match(html, /GH₵1 per active student \/ term/);
 assert.match(html, /value="term_1"/);
 assert.match(html, /value="term_2"/);
 assert.match(html, /value="term_3"/);
@@ -25,6 +24,6 @@ assert.match(server, /\/api\/payments\/paystack\/initialize/);
 assert.match(server, /paystack/);
 assert.match(server, /verify/);
 assert.match(server, /PAYSTACK_SECRET_KEY/);
-assert.equal(policy.planForSchoolType('PUBLIC').priceGhs, 130);
-assert.equal(policy.planForSchoolType('PRIVATE').priceGhs, 200);
+assert.equal(policy.planForSchoolType('PUBLIC').pricePerStudentGhs, 1);
+assert.equal(policy.planForSchoolType('PRIVATE').pricePerStudentGhs, 1);
 console.log('Part 49 subscription refactor regression suite passed.');

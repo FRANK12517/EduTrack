@@ -1040,7 +1040,7 @@ async function handler(req, res) {
     const carryForward = await calculateCarryForwardForSchool(db, { schoolId: context.schoolId, previousSubscriptionId: input.previousSubscriptionId || null }, auth.user.id);
     const pricing = subscriptionPolicy.calculateSubscriptionAmount(context.activeStudentCount);
     const dates = { startDate: term.startDate, endDate: term.endDate, durationDays: term.durationDays };
-    const email = validateText(input.email || auth.user.email, { required: true, max: 254, pattern: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/ });
+    const email = validateText(input.email || auth.user.email, { required: true, max: 254, pattern: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/ });
     if (!email) return json(res, 400, { error: 'A valid payment email is required' });
     const reference = `EDU_${randomToken(18)}`;
     const intentInput = { reference, idempotencyKey, userId: auth.user.id, schoolId: context.schoolId, planId: plan.id, schoolType, termId: term.termId, academicYear: term.academicYear, termNumber: term.termNumber, governmentTermReference: term.governmentCalendarVersion || term.governmentTermReference || null, privateReopeningDate: term.startDate || null, privateVacationDate: term.endDate || null, subscriptionSequence, termStartDate: dates.startDate, termEndDate: dates.endDate, durationDays: dates.durationDays, activeStudentCount: pricing.activeStudentCount, pricePerStudent: pricing.pricePerStudentGhs, subscriptionAmount: pricing.amountGhs, economicValue: pricing.amountGhs, amount: pricing.amountMinor, currency: pricing.currency, paymentProvider: 'paystack', status: 'initialized' };

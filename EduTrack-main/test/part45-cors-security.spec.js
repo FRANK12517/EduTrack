@@ -1,0 +1,1 @@
+'use strict'; const assert=require('assert');const s=require('fs').readFileSync(require.resolve('../server'),'utf8');assert.doesNotMatch(s,/Access-Control-Allow-Origin[^\n]*\*/);assert.match(s,/Access-Control-Allow-Credentials/);assert.match(s,/OPTIONS/);

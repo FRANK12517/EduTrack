@@ -1,0 +1,14 @@
+Part 41 live HTTPS evidence
+
+Deployment ID: dpl_GcnWAdJnF9xgBWbMBa7PiidnkMvo
+Deployment URL: https://edutrack-by9raq7mw-frank12517s-projects.vercel.app
+Deployment commit: 63b6739b72389d066d496a9b1e12afad13137cec
+Deployment state: READY
+
+An authorized temporary Vercel share URL was used to pass preview SSO without disabling project protection. The share token and resulting cookie are intentionally omitted.
+
+The preview root returned HTTP 200 static HTML over HTTPS. Requests to `GET /api/health` and `GET /api/auth/session` returned HTTP 500 with provider classification `FUNCTION_INVOCATION_FAILED`. Approved-origin, unauthorized-origin, and OPTIONS requests to `/api/health` returned the same provider-level HTTP 500 because the production guard rejected missing exact HTTPS `EDUTRACK_ALLOWED_ORIGINS` during import.
+
+Part 40’s original failure was ENOENT while attempting to create `/var/task/data`. Part 41’s repair removed that filesystem failure; the subsequent external error is the expected fail-closed configuration guard. The connected Vercel project still reports Node.js 24.x, so Node.js 22 is not externally verified.
+
+No passwords, API keys, access tokens, cookies, database credentials, S3 credentials, Paystack secrets, or private environment values are recorded.

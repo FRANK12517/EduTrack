@@ -1,0 +1,58 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const policy = require('../app/subscription-policy');
+
+assert.deepEqual(Object.keys(policy.PLANS).sort(), ['government', 'private']);
+assert.equal(policy.PLANS.government.priceGhs, 130);
+assert.equal(policy.PLANS.government.amountMinor, 13000);
+assert.equal(policy.PLANS.government.currency, 'GHS');
+assert.equal(policy.PLANS.government.firstTermFree, true);
+assert.equal(policy.PLANS.government.smsIncluded, 0);
+assert.equal(policy.PLANS.private.priceGhs, 200);
+assert.equal(policy.PLANS.private.amountMinor, 20000);
+assert.equal(policy.PLANS.private.currency, 'GHS');
+assert.equal(policy.PLANS.private.firstTermFree, false);
+assert.equal(policy.PLANS.private.smsIncluded, 500);
+assert.deepEqual(policy.PLANS.private.capacity, { students: 300, staff: 15 });
+
+assert.equal(policy.normalizeSchoolType('Public'), 'government');
+assert.equal(policy.normalizeSchoolType('private school'), 'private');
+assert.equal(policy.normalizeSchoolType('unknown'), null);
+assert.equal(policy.calculateTermDurationDays('2026-09-07', '2026-12-18'), 103);
+assert.throws(() => policy.calculateTermDurationDays('2026-12-19', '2026-12-18'), /on or after/);
+assert.throws(() => policy.validateTermConfiguration({ schoolType: 'government', academicYear: '2026/2027', termNumber: 1 }), /governmentTermId/);
+const governmentTerm = policy.validateTermConfiguration({ schoolType: 'government', academicYear: '2026/2027', termNumber: 1, governmentTermId: 'gov-2026-27-t1' });
+assert.equal(governmentTerm.durationDays, null);
+const privateTerm = policy.validateTermConfiguration({ schoolType: 'private', academicYear: '2026/2027', termNumber: 1, startDate: '2026-09-07', endDate: '2026-12-18' });
+assert.equal(privateTerm.durationDays, 103);
+
+assert.equal(policy.firstTermFreeEligibility({ firstTermFreeUsed: false, schoolIdentityExists: false }), true);
+assert.equal(policy.firstTermFreeEligibility({ firstTermFreeUsed: true, schoolIdentityExists: false }), false);
+assert.equal(policy.firstTermFreeEligibility({ firstTermFreeUsed: false, schoolIdentityExists: true }), false);
+assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'government', schoolIdentityKey: 'school-1', firstTermFreeUsed: false }), true);
+assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'government', schoolIdentityKey: 'school-1', firstTermFreeUsed: true }), false);
+assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'private', schoolIdentityKey: 'school-1', firstTermFreeUsed: false }), false);
+assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'government', schoolIdentityKey: '', firstTermFreeUsed: false }), false);
+assert.equal(policy.quote({ schoolType: 'government', firstTermFreeUsed: false, schoolIdentityExists: false }).amountGhs, 0);
+assert.equal(policy.quote({ schoolType: 'government', firstTermFreeUsed: true, schoolIdentityExists: false }).amountGhs, 130);
+assert.equal(policy.quote({ schoolType: 'private', firstTermFreeUsed: false, schoolIdentityExists: false }).amountGhs, 200);
+assert.deepEqual(policy.validateCapacity(301, 16), { students: 301, staff: 16, studentsWithinStandard: false, staffWithinStandard: false, additionalStudents: 1, additionalStaff: 1 });
+
+const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
+assert.match(server, /subscriptionPolicy/);
+assert.match(server, /\/api\/subscriptions\/plans/);
+assert.match(server, /\/api\/subscriptions\/quote/);
+assert.match(server, /\/api\/subscriptions\/claim-first-term-free/);
+assert.match(server, /claimFirstTermFree/);
+assert.match(server, /first_term_free_used/);
+assert.match(server, /input\.schoolId/);
+assert.doesNotMatch(server, /firstTermFreeUsed: input\.firstTermFreeUsed/);
+assert.match(schema, /first_term_free_used BOOLEAN/);
+assert.match(schema, /sms_credits_balance INT/);
+assert.match(html, /subv2-sch-school-type/);
+assert.match(html, /EDUTRACK_SUBSCRIPTION_POLICY/);
+console.log('part46 subscription model: PASS');

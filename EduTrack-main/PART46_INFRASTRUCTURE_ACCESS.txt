@@ -1,0 +1,2 @@
+Part 46 infrastructure access result: BLOCKED — EXTERNAL INFRASTRUCTURE ACCESS REQUIRED.
+Authorized Vercel deployment inspection is available. Environment-variable management is unavailable. No authorized provisioning path exists for isolated database, private storage, Paystack sandbox, delivery, monitoring, external backup, rollback, or staging accounts. PLUGIN_REQUIRED = true for a secret/environment-management and compatible staging-resource provider; no plugin was installed or authorized.

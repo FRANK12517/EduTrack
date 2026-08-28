@@ -1,0 +1,95 @@
+part=44
+timestamp=2026-08-23T12:08:49Z
+branch=part43-staging
+current_head=36703581747bd45b00d3da9bdd5ae473915209d5
+part43_gate=BLOCKED
+part43_release=Part 43 release commit: 719e0e66747e972aa234eef1b6317dbbbc51114a
+working_tree_status=
+[31m??[m .part29_browser_test_patch.js
+[31m??[m .part29_cleanup_hydration.js
+[31m??[m .part29_direct_hydration_fix.js
+[31m??[m .part29_explicit_mapping_patch.js
+[31m??[m .part29_hydrate_mock_scores.js
+[31m??[m .part29_mock_hydration_patch.js
+[31m??[m .part29_save_scope_patch.js
+[31m??[m .part29_scope_patch.js
+[31m??[m .part29_skip_unscored_placeholders.js
+[31m??[m .part30_safety_patch.js
+[31m??[m .part31_fix_test_quotes.js
+[31m??[m .part31_fix_test_quotes2.js
+[31m??[m .part31_fix_test_quotes3.js
+[31m??[m .part31_relational_patch.js
+[31m??[m .part31_server_auth_webhook_patch.js
+[31m??[m .part31_server_payment_upload_patch.js
+[31m??[m .part31_server_routes_patch2.js
+[31m??[m .part31_test_isolation_patch.js
+[31m??[m .part32_storage_guard_patch.js
+[31m??[m .part36_finalize_gate.js
+[31m??[m .part37_finalize_gate.js
+[31m??[m PART17_CURRENT_STATE_AND_COMPLETION_PLAN.md
+[31m??[m PART17_D003_AUTHENTICATION_PROOF_REPORT.md
+[31m??[m PART18_AUTHENTICATION_FOUNDATION_REPORT.md
+[31m??[m PART19_DATABASE_AND_SERVER_AUTHORITATIVE_IDENTITY_REPORT.md
+[31m??[m PART20_RBAC_AND_TENANT_ISOLATION_REPORT.md
+[31m??[m PART21_CORE_DOMAIN_PERSISTENCE_REPORT.md
+[31m??[m PART21_UI_DOMAIN_INTEGRATION_REPORT.md
+[31m??[m PART22_ACADEMIC_OPERATIONS_PERSISTENCE_REPORT.md
+[31m??[m PART23_LEGACY_ACADEMIC_UI_INTEGRATION_REPORT.md
+[31m??[m PART23_RECONNAISSANCE.md
+[31m??[m PART24_IMPLEMENTATION_REPORT.md
+[31m??[m PART24_RECONNAISSANCE.md
+[31m??[m PART25_LEGACY_ACADEMIC_COMPLETION_REPORT.md
+[31m??[m PART25_RECONNAISSANCE.md
+[31m??[m PART26_FINAL_LEGACY_ACADEMIC_COMPLETION_REPORT.md
+[31m??[m PART26_RECONNAISSANCE.md
+[31m??[m PART27_RECONNAISSANCE.md
+[31m??[m PART27_VISIBLE_ACADEMIC_WORKFLOWS_REPORT.md
+[31m??[m PART28_RECONNAISSANCE.md
+[31m??[m PART28_VISIBLE_ACADEMIC_REPAIR_REPORT.md
+[31m??[m PART29_IMPLEMENTATION_REPORT.md
+[31m??[m PART30_CURRENT_STATE_BASELINE.txt
+[31m??[m PART30_PRODUCTION_READINESS_REPORT.md
+[31m??[m PART30_SECURITY_AUDIT.txt
+[31m??[m PART31_IMPLEMENTATION_REPORT.md
+[31m??[m PART31_MIGRATION_MAP.json
+[31m??[m PART32_AUDIT_FINDINGS.txt
+[31m??[m PART32_FINAL_PRODUCTION_GATE_REPORT.md
+[31m??[m PART32_PRODUCTION_GATE_REPORT.md
+[31m??[m PART33_PREDEPLOYMENT_BASELINE.txt
+[31m??[m PART33_PRODUCTION_DEPLOYMENT_REPORT.md
+[31m??[m PART33_RELEASE_GATE.md
+[31m??[m PART34_PREDEPLOYMENT_BASELINE.txt
+[31m??[m PART34_PRODUCTION_DEPLOYMENT_VERIFICATION_REPORT.md
+[31m??[m PART35_FINAL_PRODUCTION_READINESS_REPORT.md
+[31m??[m PART35_PREIMPLEMENTATION_BASELINE.txt
+[31m??[m PART35_PRODUCTION_GATE_MATRIX.md
+[31m??[m PART36_FINAL_RELEASE_CHECKLIST.md
+[31m??[m PART36_FINAL_RELEASE_GATE.json
+[31m??[m PART36_PREIMPLEMENTATION_BASELINE.txt
+[31m??[m PART36_PRODUCTION_DEPLOYMENT_REPORT.md
+[31m??[m PART37_EXTERNAL_DEPLOYMENT_EXECUTION_REPORT.md
+[31m??[m PART37_FINAL_RELEASE_GATE.json
+[31m??[m PART37_OPERATOR_HANDOFF.md
+[31m??[m PART37_PREIMPLEMENTATION_BASELINE.txt
+[31m??[m PART37_PRODUCTION_EVIDENCE_MATRIX.md
+[31m??[m PART38_DEPLOYMENT_EVIDENCE_MATRIX.md
+[31m??[m PART38_EXTERNAL_RESOURCE_DISCOVERY.md
+[31m??[m PART38_LIVE_DEPLOYMENT_FINDINGS.txt
+[31m??[m PART38_LIVE_HTTP_EVIDENCE.txt
+[31m??[m PART38_OPERATOR_NEXT_ACTIONS.md
+[31m??[m PART38_PREIMPLEMENTATION_BASELINE.txt
+[31m??[m PART38_PRODUCTION_GATE_RESULTS.json
+[31m??[m PART38_REAL_DEPLOYMENT_EXECUTION_REPORT.md
+[31m??[m PART39_RELEASE_CLASSIFICATION.txt
+[31m??[m PART44_PREIMPLEMENTATION_BASELINE.txt
+[31m??[m test-artifacts/
+[31m??[m test/part17-d003-final-output.txt
+required_source_lineage=Part39 ca64f8c6b23fb9397eda256cf27ea7e40be14aa3; Part41 63b6739b72389d066d496a9b1e12afad13137cec
+deployment_target=authorized Vercel Git preview only; production untouched
+staging_target=isolated Part 44 staging only
+existing_infrastructure=Vercel project edutrack and GitHub repository FRANK12517/EduTrack
+missing_infrastructure=environment-variable management, verified Node.js 22 runtime, isolated database, private storage, Paystack sandbox, delivery sink, monitoring, backup, rollback, test-account provisioning
+required_environment_names=EDUTRACK_DATABASE_URL EDUTRACK_ALLOWED_ORIGINS PAYSTACK_SECRET_KEY PAYSTACK_WEBHOOK_SECRET EDUTRACK_PAYMENT_PLANS EDUTRACK_STORAGE_MODE EDUTRACK_STORAGE_BUCKET EDUTRACK_STORAGE_REGION EDUTRACK_STORAGE_ENDPOINT EDUTRACK_STORAGE_FORCE_PATH_STYLE EDUTRACK_STORAGE_SSE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY EDUTRACK_RESET_DELIVERY_PROVIDER EDUTRACK_BACKUP_DESTINATION EDUTRACK_BACKUP_ENCRYPTION_KEY_FILE EDUTRACK_MONITORING_URL
+secret_values=not recorded
+protected_production_resources=www.edutrackgh.online, edutrackgh.online, production database, production storage, live Paystack, production backups, production secrets
+part45_started=false

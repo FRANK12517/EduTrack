@@ -1,0 +1,17 @@
+Part 41 runtime evidence
+
+Declared runtime:
+- package.json engines: 22.x
+- Dockerfile base image: node:22-bookworm-slim
+- Local runtime observed: v22.13.0
+
+Actual staging deployment:
+- Provider: Vercel
+- Deployment ID: dpl_GcnWAdJnF9xgBWbMBa7PiidnkMvo
+- Preview URL: https://edutrack-by9raq7mw-frank12517s-projects.vercel.app
+- Deployment state: READY
+- Deployment commit: 63b6739b72389d066d496a9b1e12afad13137cec
+- Connected Vercel project runtime metadata: Node.js 24.x
+- Actual required Node.js 22 verification: FAIL
+
+The deployment metadata also reported lambdaRuntimeStats with a nodejs function, but it did not prove Node.js 22. The project-level Node.js 24.x value is retained as the authoritative external runtime result. No claim of Node 22 staging execution is made.

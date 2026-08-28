@@ -1,0 +1,13 @@
+Part: 43
+Status: implemented; staging infrastructure provisioning BLOCKED
+Required Part 41 release: 63b6739b72389d066d496a9b1e12afad13137cec
+Starting Part 42 release: b657087cb93e572a1d1fc9de6a4a3ab1e2c52677
+Part 43 branch: part43-staging
+Part 43 release commit: 719e0e66747e972aa234eef1b6317dbbbc51114a
+Deployment ID: none
+Staging URL: none
+Declared runtime: Node.js 22.x
+Actual connected Vercel runtime: Node.js 24.x (FAIL)
+Secret values printed: false
+Production modified: no
+Part 44 started: no

@@ -1,0 +1,20 @@
+{
+  "name": "edutrack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EduTrack static application with secure server-side authentication",
+  "scripts": {
+    "start": "node server.js",
+    "provision": "node server.js --provision",
+    "reset": "node server.js --reset",
+    "check": "node --check server.js && node --check privileged-auth.js && node --check test/protected-features.spec.js && node --check test/security.spec.js && node --check test/final-security.spec.js && node --check test/developer-access.spec.js",
+    "test:protected": "node test/protected-features.spec.js",
+    "test:developer": "node test/developer-access.spec.js",
+    "test:security": "node test/security.spec.js",
+    "test:final": "node test/final-security.spec.js",
+    "test": "npm run check && npm run test:protected && npm run test:security && npm run test:developer && npm run test:final"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

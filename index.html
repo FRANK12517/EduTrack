@@ -40695,6 +40695,26 @@ function registerSchoolAccessCode(schoolId, schoolName, expiresAt) {
   const rows = sacReadRegistry();
   rows.unshift(rec);
   sacWriteRegistry(rows);
+  // PART63 — best-effort: also push this code to the server so School
+  // Level login works from any device, not just this one, automatically,
+  // with no separate manual step. This is fire-and-forget and never
+  // blocks or changes what this function returns:
+  //   - if this browser has no authenticated server session (e.g. the
+  //     admin generating this code hasn't also signed in server-side),
+  //     the request 401s and is silently ignored;
+  //   - if this school doesn't have a matching row in the server's
+  //     `schools` table yet (still only registered locally), the request
+  //     404s and is silently ignored.
+  // Either way the local registry above — the part School Level login has
+  // always relied on — is completely unaffected.
+  try {
+    fetch('/api/domain/school-access-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ schoolId: schoolId, accessCode: code, expiresAt: expiresAt || null })
+    }).catch(function(){});
+  } catch (e) {}
   return rec;
 }
 

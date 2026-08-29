@@ -148961,7 +148961,8 @@ function edutrackDedupeLoginField(id){
     if(fields[i]&&fields[i].parentNode)fields[i].parentNode.removeChild(fields[i]);
   }
 }
-function selectSchoolLevel(ev){if(ev){ev.preventDefault();ev.stopPropagation();}document.querySelectorAll('.login-level-btn').forEach(function(b){var a=b.dataset.level==='SCHOOL';b.classList.toggle('active',a);b.setAttribute('aria-pressed',a?'true':'false');});var c=document.getElementById('v43DynamicFields');if(!c)return;c.innerHTML='';var rg=fieldSelect('v43-region','Select Your Region',Object.keys(window.GH_REGIONS_DISTRICTS||{}),false),rs=rg.querySelector('select'),dg=fieldSelect('v43-district','Select Your District',[],true),ds=dg.querySelector('select');rs.addEventListener('change',function(){ds.innerHTML='';var p=document.createElement('option');p.value='';p.textContent=this.value?'— Choose District —':'— Select region first —';ds.appendChild(p);(window.GH_REGIONS_DISTRICTS[this.value]||[]).slice().sort().forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;ds.appendChild(o);});ds.disabled=!this.value;});c.appendChild(rg);c.appendChild(dg);c.appendChild(fieldInput('v43-school-access-code','School Access Code',"Enter your school's Access Code"));c.appendChild(fieldInput('v43-staffId','Staff ID','Enter your Staff ID'));edutrackDedupeLoginField('v43-school-access-code');}
+function selectSchoolLevel(ev){if(ev){ev.preventDefault();ev.stopPropagation();}document.querySelectorAll('.login-level-btn').forEach(function(b){var a=b.dataset.level==='SCHOOL';b.classList.toggle('active',a);b.setAttribute('aria-pressed',a?'true':'false');});var c=document.getElementById('v43DynamicFields');if(!c)return;c.innerHTML='';var rg=fieldSelect('v43-region','Select Your Region',Object.keys(window.GH_REGIONS_DISTRICTS||{}),false),rs=rg.querySelector('select'),dg=fieldSelect('v43-district','Select Your District',[],true),ds=dg.querySelector('select');rs.addEventListener('change',function(){ds.innerHTML='';var p=document.createElement('option');p.value='';p.textContent=this.value?'— Choose District —':'— Select region first —';ds.appendChild(p);(window.GH_REGIONS_DISTRICTS[this.value]||[]).slice().sort().forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;ds.appendChild(o);});ds.disabled=!this.value;});c.appendChild(rg);c.appendChild(dg);c.appendChild(fieldSelect('v43-role','Select Your Role',['Headteacher','Assistant Headteacher','Classroom Teacher'],false));
+c.appendChild(fieldInput('v43-school-access-code','School Access Code',"Enter your school's Access Code"));c.appendChild(fieldInput('v43-staffId','Staff ID','Enter your Staff ID'));edutrackDedupeLoginField('v43-school-access-code');}
 function schoolLogin(ev){
   // One authoritative action for mouse, touch, and keyboard activation.
   // The button is type=button, so only cancel a real cancellable event.
@@ -149497,6 +149498,8 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
     if(!result||!result.ok)return fail();
     var teacher=result.teacher||{},school=result.school||{};
     var role=String(teacher.role||school.registrantRole||'Headteacher').trim();
+    var selectedRole=value('v43-role');
+    if(!selectedRole||selectedRole.toLowerCase()!==role.toLowerCase())return fail();
     try{
       if(typeof window.v43IsAuthorizedLoginRole==='function'&&!window.v43IsAuthorizedLoginRole('SCHOOL',role,region,district))return fail();
     }catch(e){return fail();}
@@ -149786,13 +149789,12 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
   function ensureSchoolRoleField(){
     var el = document.getElementById('v43-role');
-    if (!el) {
-      el = document.createElement('input');
-      el.type = 'hidden';
-      el.id = 'v43-role';
-      document.body.appendChild(el);
-    }
+    if (el) return el;
+    el = document.createElement('input');
+    el.type = 'hidden';
+    el.id = 'v43-role';
     el.value = resolveSchoolRole();
+    document.body.appendChild(el);
     return el;
   }
 

@@ -25382,7 +25382,42 @@ function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
   }
 }
 
-function v43DoLogin() {
+// ═══════════════════════════════════════════════════════════════════
+//  PART 63 — SCHOOL LOGIN, SERVER FALLBACK
+//  v43ValidateSchoolLogin() above only ever checks this browser's
+//  localStorage (SCHOOL ACCESS CODE ENGINE + TEACHERS), which is why a
+//  correct Access Code / Staff ID generated on one device was always
+//  rejected as "Invalid Access Code or Staff ID" on every other device —
+//  the data those checks need simply never existed in that browser.
+//  This calls the real POST /api/auth/school-login endpoint (checks the
+//  same four facts against the database instead) and is used ONLY as a
+//  fallback when the local check fails, so the existing fully-offline
+//  path above is completely unchanged for devices that already work.
+//  Fails silently (never throws to the caller) if offline / unreachable,
+//  matching the offline-first design already used everywhere else in
+//  this file.
+// ═══════════════════════════════════════════════════════════════════
+async function v43ValidateSchoolLoginServer(region, district, accessCode, staffId) {
+  try {
+    const res = await fetch('/api/auth/school-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ region, district, accessCode, staffId })
+    });
+    if (!res.ok) return { ok: false };
+    const data = await res.json().catch(() => null);
+    if (!data || !data.authenticated) return { ok: false };
+    return { ok: true, isDevDefault: false, school: data.school, teacher: data.staff, fromServer: true };
+  } catch (e) {
+    // Offline / server unreachable — not a credential failure, just means
+    // this fallback can't run right now. The caller still shows the same
+    // generic message as before.
+    return { ok: false };
+  }
+}
+
+async function v43DoLogin() {
   if (!v43CurrentLevel) {
     v43ShowError(V43_GENERIC_LOGIN_ERROR);
     return;
@@ -25420,7 +25455,16 @@ function v43DoLogin() {
   if (v43CurrentLevel === 'SCHOOL') {
     const schoolAccessCode = val('v43-school-access-code');
     if (!schoolAccessCode) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
-    const schoolAuth = v43ValidateSchoolLogin(region, district, schoolAccessCode, staffId);
+    // Try the existing local (offline) check first — completely unchanged,
+    // so any device that already works keeps working exactly as before.
+    let schoolAuth = v43ValidateSchoolLogin(region, district, schoolAccessCode, staffId);
+    // Only if the local check fails, ask the server (PART 63) — this is
+    // what makes a correct Access Code / Staff ID work on a device other
+    // than the one that generated it. Never runs when the local check
+    // already succeeded, and never blocks/replaces it.
+    if (!schoolAuth.ok) {
+      schoolAuth = await v43ValidateSchoolLoginServer(region, district, schoolAccessCode, staffId);
+    }
     if (!schoolAuth.ok) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
     // Resolved context available to anything downstream that wants it —
     // additive only, nothing existing reads or requires this.
@@ -147210,72 +147254,21 @@ window.SRG_ANNUAL = (function(){
     setBaseUrl: function(url){ localStorage.setItem('edutrack_api_base', url); }
   };
 
-  // ── Wire into the existing login flow, additively ──────────────────────
-  // Mirrors the exact pattern already used by the V135 district-access
-  // patch: capture the old function once, guard against double-wrapping,
-  // call the original first (unchanged existing behavior), then extend.
-  if (window.v43DoLogin && !window.v43DoLogin._apiBridgeV382){
-    var oldLogin = window.v43DoLogin;
-    );
-      });
-
-      safe(function(){
-        var attend = (window.ATTEND_DATA && typeof window.ATTEND_DATA === 'object') ? window.ATTEND_DATA : {};
-        Object.keys(attend).forEach(function(key){
-          var status = attend[key];
-          if (lastAttendSnapshot[key] === status) return; // unchanged, skip
-          lastAttendSnapshot[key] = status;
-
-          // Key formats observed in this file: 'T{idx}|{term}|{date}' or
-          // 'T|{staffId}|{term}|{date}'. Parse both.
-          var parts = String(key).split('|');
-          var staffId, dateStr;
-          if (parts.length === 4 && parts[0] === 'T') {
-            staffId = parts[1]; dateStr = parts[3];
-          } else if (parts.length === 3) {
-            // 'T{idx}|{term}|{date}' — idx is a teacher array index, not a
-            // staffId. Resolve it against TEACHERS if possible; skip if not.
-            var idxMatch = /^T(\d+)$/.exec(parts[0]);
-            var teacherIdx = idxMatch ? parseInt(idxMatch[1], 10) : NaN;
-            var teacher = (Array.isArray(window.TEACHERS) && !isNaN(teacherIdx)) ? window.TEACHERS[teacherIdx] : null;
-            staffId = teacher ? (teacher.staffId || teacher.staffID) : null;
-            dateStr = parts[2];
-          }
-          if (!staffId || !dateStr || !status) return;
-
-          window.EDUTRACK_API.call('POST', '/attendance', {
-            subjectType: 'teacher', subjectId: staffId, date: dateStr, status: status,
-          }).catch(function(e){ console.info('[EduTrack Sync] attendance skipped:', key, e.message); });
-        });
-      });
-
-      return result;
-    };
-    window.saveTeacherData._syncV383 = true;
-  }
-
-  // ── Custom subjects (scSaveStore) ────────────────────────────────────
-  if (window.scSaveStore && !window.scSaveStore._syncV383) {
-    var oldScSaveStore = window.scSaveStore;
-    window.scSaveStore = function(){
-      var result = oldScSaveStore.apply(this, arguments);
-
-      safe(function(){
-        var subjects = Array.isArray(window.CUSTOM_SUBJECTS) ? window.CUSTOM_SUBJECTS : [];
-        subjects.forEach(function(s){
-          if (!s.id || !s.name) return;
-          window.EDUTRACK_API.call('POST', '/custom-subjects', {
-            clientId: s.id, name: s.name, code: s.code || null, abbr: s.abbr || null,
-            category: s.category || null, levels: s.levels || null,
-            active: s.active !== false, inRanking: s.inRanking !== false,
-          }).catch(function(e){ console.info('[EduTrack Sync] subject skipped:', s.name, e.message); });
-        });
-      });
-
-      return result;
-    };
-    window.scSaveStore._syncV383 = true;
-  }
+  // NOTE (PART63 cleanup): this module previously also tried to wrap
+  // window.v43DoLogin, window.saveTeacherData, and window.scSaveStore here
+  // to fire-and-forget sync a JWT/attendance/custom-subjects to the
+  // backend. That code was corrupted — orphaned closing tokens left over
+  // from an incomplete merge (`); });` with no matching opening function),
+  // which threw a SyntaxError and silently killed this entire <script>
+  // block, including the window.EDUTRACK_API definition above. It has been
+  // removed rather than guessed-at and reconstructed. The real School
+  // Level login fix now lives directly in v43ValidateSchoolLoginServer()
+  // and v43DoLogin() (see PART 63 above), calling POST
+  // /api/auth/school-login directly instead of depending on a wrapped
+  // global function — the same wrap-the-global-function pattern that
+  // produced this corruption once already (see the V292 sidebar-pagination
+  // fix). window.EDUTRACK_API.call()/.login() above remain available for
+  // any future module that wants them.
 })();
 </script>
 

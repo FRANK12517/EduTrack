@@ -61,3 +61,9 @@ CREATE TABLE IF NOT EXISTS chat_conversations (id VARCHAR(80) PRIMARY KEY,school
 CREATE TABLE IF NOT EXISTS chat_messages (id VARCHAR(80) PRIMARY KEY,conversation_id VARCHAR(80) NOT NULL,sender_id VARCHAR(80) NOT NULL,recipient_id VARCHAR(80) NOT NULL,body VARCHAR(4000) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'SENT',sent_at TIMESTAMP NOT NULL,read_at TIMESTAMP NULL,client_nonce VARCHAR(120) NOT NULL);
 
 CREATE TABLE IF NOT EXISTS organization_branding (scope_type VARCHAR(30) NOT NULL,scope_id VARCHAR(80) NOT NULL,tenant_id VARCHAR(80) NULL,display_name VARCHAR(255) NULL,logo_url VARCHAR(1000) NULL,primary_color VARCHAR(20) NULL,accent_color VARCHAR(20) NULL,updated_by VARCHAR(80) NULL,updated_at TIMESTAMP NOT NULL,PRIMARY KEY(scope_type,scope_id));
+
+-- PART63: School Access Code authority. One ACTIVE code per school, hashed
+-- server-side, checked by POST /api/auth/school-login so a school's staff
+-- can log in successfully from any device, not only the browser that
+-- originally generated the code in localStorage.
+CREATE TABLE IF NOT EXISTS school_access_codes (id VARCHAR(80) PRIMARY KEY, school_id VARCHAR(80) NOT NULL, access_code_hash TEXT NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', expires_at TIMESTAMP NULL, created_by VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, UNIQUE KEY school_access_code_school (school_id), CONSTRAINT school_access_code_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE, CONSTRAINT school_access_code_creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL) ENGINE=InnoDB;

@@ -856,6 +856,56 @@ async function handler(req, res) {
     if (relational.isConfigured()) await relational.appendAudit(loginAudit); else db.audit.push(loginAudit); if (!relational.isConfigured()) saveDb(db);
     return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
   }
+  // PART63 — School Level login authority. Previously the School Level
+  // login form validated the Access Code and Staff ID entirely inside the
+  // browser against localStorage (sacReadRegistry()/TEACHERS in
+  // index.html), so a correct code/Staff ID entered on a device other than
+  // the one that originally generated them was always rejected. This
+  // endpoint checks the same four facts (Region, District, Access Code,
+  // Staff ID) against the authoritative database instead, so it works from
+  // any device. It intentionally never says which of the four was wrong.
+  if (req.method === 'POST' && req.url === '/api/auth/school-login') {
+    if (!requireRelational(res)) return;
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
+    if (Object.keys(input || {}).some(key => !['region', 'district', 'staffId', 'accessCode', 'schoolAccessCode'].includes(key))) return json(res, 400, { error: GENERIC_AUTH_ERROR });
+    const staffId = validateText(input.staffId, { required: true, max: 80, pattern: /^[A-Za-z0-9._-]+$/ });
+    const accessCode = validateText(input.accessCode || input.schoolAccessCode, { required: true, max: 256 });
+    const region = validateText(input.region, { required: true, max: 120 });
+    const district = validateText(input.district, { required: true, max: 120 });
+    if (!staffId || !accessCode || !region || !district) return json(res, 400, { error: GENERIC_AUTH_ERROR });
+    const ipState = checkLimit(limitKey(req, 'school-login'), LOGIN_LIMIT);
+    const accountKey = limitKey(req, `school-login:${staffId.toUpperCase()}`);
+    const accountState = checkLimit(accountKey, LOGIN_LIMIT);
+    if (ipState.blocked || accountState.blocked) return json(res, 429, { error: GENERIC_AUTH_ERROR, retryAfter: Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0) }, { 'Retry-After': String(Math.max(ipState.retryAfter || 1, accountState.retryAfter || 1)) });
+    const normalize = value => String(value || '').replace(/\s+region$/i, '').trim().toLowerCase();
+    const fail = async () => {
+      registerFailure(limitKey(req, 'school-login'), LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT);
+      await relational.appendAudit({ id: id('audit'), action: 'SCHOOL_LOGIN_REJECTED', at: new Date().toISOString(), ip: clientIp(req), severity: 'medium' });
+      return json(res, 401, { error: GENERIC_AUTH_ERROR });
+    };
+    try {
+      const staff = await relational.findStaffForSchoolLogin(staffId);
+      if (!staff) return await fail();
+      if (String(staff.staff_status || '').toUpperCase() !== 'ACTIVE') return await fail();
+      if (!staff.school_active) return await fail();
+      if (normalize(staff.region_name) !== normalize(region)) return await fail();
+      if (String(staff.district_name || '').trim().toLowerCase() !== district.trim().toLowerCase()) return await fail();
+      const codeRecord = await relational.findSchoolAccessCode(staff.school_id);
+      if (!codeRecord) return await fail();
+      if (String(codeRecord.status).toUpperCase() !== 'ACTIVE') return await fail();
+      if (codeRecord.expires_at && new Date(codeRecord.expires_at) < new Date()) return await fail();
+      if (!verifyPassword(accessCode, codeRecord.access_code_hash)) return await fail();
+      clearLimit(limitKey(req, 'school-login')); clearLimit(accountKey);
+      await relational.appendAudit({ id: id('audit'), action: 'SCHOOL_LOGIN_SUCCESS', at: new Date().toISOString(), ip: clientIp(req), staffId: staff.staff_identifier, schoolId: staff.school_id });
+      return json(res, 200, {
+        authenticated: true,
+        staff: { staffId: staff.staff_identifier, fullName: staff.full_name },
+        school: { id: staff.school_id, name: staff.school_name, region: staff.region_name, district: staff.district_name }
+      });
+    } catch {
+      return json(res, 500, { error: GENERIC_AUTH_ERROR });
+    }
+  }
   if (req.method === 'GET' && req.url === '/api/auth/session') {
     const auth = authUser(req, db); if (!auth) return json(res, 401, { error: 'Authentication required' });
     return json(res, 200, { authenticated: true, user: publicUser(auth.user), authorization: roleContext(auth.user) });
@@ -948,6 +998,26 @@ async function handler(req, res) {
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/domain/schools') { const query = new URL(req.url, 'http://edutrack.local').searchParams; const auth = await authorize(req, res, db, { permission: 'schools.manage' }); if (!auth) return; const rows = await relational.domainRows('SELECT * FROM schools WHERE (? IS NULL OR tenant_id=?) AND (? IS NULL OR district_id=?) ORDER BY name LIMIT 200',[query.get('tenantId'),query.get('tenantId'),query.get('districtId'),query.get('districtId')]); return json(res,200,{schools:rows.filter((row)=>authorization.evaluateScope(auth.authorization, {tenantId:row.tenant_id,districtId:row.district_id}).allowed).map(publicSchool)}); }
   if (req.method === 'POST' && req.url === '/api/domain/schools') { if (!requireSameOrigin(req,res)) return; let input; try { input=canonicalDomainPayload(await body(req)); requireFields(input,['schoolCode','name','tenantId','regionId','districtId']); if (!normalizeOwnership(input.ownershipType)) throw domainInputError('ownershipType must be PUBLIC or PRIVATE'); input.ownershipType=normalizeOwnership(input.ownershipType); } catch(e) { return domainErrorResponse(res,e); } const auth=await authorize(req,res,db,{permission:'schools.manage',scope:inputScope(input)}); if(!auth)return; try { const row=await relational.createSchool(input); await auditDomainMutation(auth,'SCHOOL_CREATED',req,{schoolId:row.id,tenantId:row.tenant_id}); return json(res,201,{school:publicSchool(row)}); } catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'PATCH' && /^\/api\/domain\/schools\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) { if(!requireSameOrigin(req,res))return; const schoolId=req.url.split('/').pop(); let input; try{input=canonicalDomainPayload(await body(req)); if(input.tenantId||input.regionId||input.districtId)throw domainInputError('Organizational scope is immutable through this endpoint'); if(input.ownershipType!==undefined&&!normalizeOwnership(input.ownershipType))throw domainInputError('ownershipType must be PUBLIC or PRIVATE'); if(input.ownershipType)input.ownershipType=normalizeOwnership(input.ownershipType);}catch(e){return domainErrorResponse(res,e);} const existing=(await relational.domainRows('SELECT * FROM schools WHERE id=?',[schoolId]))[0]; if(!existing)return json(res,404,{error:'School not found'}); const auth=await authorize(req,res,db,{permission:'schools.manage',scope:{tenantId:existing.tenant_id,districtId:existing.district_id}});if(!auth)return;try{const row=await relational.updateSchool(schoolId,input);await auditDomainMutation(auth,'SCHOOL_UPDATED',req,{schoolId});return json(res,200,{school:publicSchool(row)});}catch(e){return domainErrorResponse(res,e);} }
+  // PART63 — issues/rotates the single ACTIVE Access Code for a school,
+  // stored server-side (school_access_codes) so POST /api/auth/school-login
+  // can verify it from any device. Same permission already used to manage
+  // the school itself (schools.manage), scoped to that school/tenant.
+  if (req.method === 'POST' && req.url === '/api/domain/school-access-code') {
+    if (!requireSameOrigin(req, res)) return;
+    if (!requireRelational(res)) return;
+    let input; try { input = canonicalDomainPayload(await body(req)); requireFields(input, ['schoolId']); } catch (e) { return domainErrorResponse(res, e); }
+    const accessCode = validateText(input.accessCode, { required: true, max: 256 });
+    if (!accessCode) return domainErrorResponse(res, domainInputError('accessCode is required'));
+    const school = (await relational.domainRows('SELECT * FROM schools WHERE id=?', [input.schoolId]))[0];
+    if (!school) return json(res, 404, { error: 'School not found' });
+    const auth = await authorize(req, res, db, { permission: 'schools.manage', scope: { tenantId: school.tenant_id, schoolId: school.id } });
+    if (!auth) return;
+    try {
+      const record = await relational.upsertSchoolAccessCode({ schoolId: school.id, accessCodeHash: hashPassword(accessCode), expiresAt: input.expiresAt || null, createdBy: auth.user.id });
+      await auditDomainMutation(auth, 'SCHOOL_ACCESS_CODE_ISSUED', req, { schoolId: school.id });
+      return json(res, 200, { ok: true, schoolId: school.id, status: record.status, expiresAt: record.expires_at });
+    } catch (e) { return domainErrorResponse(res, e); }
+  }
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/domain/staff') { const auth=await authorize(req,res,db,{permission:'staff.manage'});if(!auth)return;const rows=await relational.domainRows('SELECT * FROM staff ORDER BY full_name LIMIT 200');return json(res,200,{staff:rows.filter(row=>authorization.evaluateScope(auth.authorization,{tenantId:row.tenant_id,schoolId:row.school_id}).allowed).map(publicStaff)}); }
   if (req.method === 'POST' && req.url === '/api/domain/staff') { if(!requireSameOrigin(req,res))return;let input;try{input=canonicalDomainPayload(await body(req));requireFields(input,['staffIdentifier','fullName','tenantId']);if(input.status&&!['ACTIVE','INACTIVE','SUSPENDED'].includes(String(input.status).toUpperCase()))throw domainInputError('Invalid staff status');if(input.role&&!canAssignRole(authUser(req,db),String(input.role).toUpperCase()))throw domainInputError('Role assignment is not authorized');}catch(e){return domainErrorResponse(res,e);}const baseAuth=authUser(req,db);const auth=await authorize(req,res,db,{permission:'staff.manage',scope:inputScope(input)});if(!auth)return;if(input.userId&&input.userId===auth.user.id)return domainErrorResponse(res,domainInputError('Cannot assign your own staff role'));try{input.role=input.role?String(input.role).toUpperCase():null;const row=await relational.createStaff(input);await auditDomainMutation(auth,'STAFF_CREATED',req,{staffId:row.id,tenantId:row.tenant_id,role:input.role||null});if(input.role)await auditDomainMutation(auth,'STAFF_ROLE_ASSIGNED',req,{staffId:row.id,role:input.role});if(input.schoolId)await auditDomainMutation(auth,'STAFF_SCHOOL_ASSIGNED',req,{staffId:row.id,schoolId:input.schoolId});return json(res,201,{staff:publicStaff(row)});}catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'PATCH' && /^\/api\/domain\/staff\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) { if(!requireSameOrigin(req,res))return;const staffId=req.url.split('/').pop();let input;try{input=canonicalDomainPayload(await body(req));}catch(e){return domainErrorResponse(res,e);}const existing=(await relational.domainRows('SELECT * FROM staff WHERE id=?',[staffId]))[0];if(!existing)return json(res,404,{error:'Staff not found'});if(input.tenantId||input.regionId||input.districtId||input.schoolId)return domainErrorResponse(res,domainInputError('Organizational scope is immutable through this endpoint'));const auth=await authorize(req,res,db,{permission:'staff.manage',scope:{tenantId:existing.tenant_id,schoolId:existing.school_id}});if(!auth)return;try{const row=await relational.updateStaff(staffId,input);await auditDomainMutation(auth,'STAFF_UPDATED',req,{staffId});if(input.status&&['INACTIVE','SUSPENDED'].includes(String(input.status).toUpperCase()))await auditDomainMutation(auth,'STAFF_DEACTIVATED',req,{staffId,status:input.status});return json(res,200,{staff:publicStaff(row)});}catch(e){return domainErrorResponse(res,e);} }

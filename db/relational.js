@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
 
 const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL || '';
-const SCHEMA_VERSION = 25;
+const SCHEMA_VERSION = 26;
 let pool;
 let initialized;
 
@@ -101,6 +101,17 @@ const ACADEMIC_TABLES = [
   `CREATE TABLE IF NOT EXISTS academic_report_snapshots (id VARCHAR(80) PRIMARY KEY, tenant_id VARCHAR(80) NOT NULL, school_id VARCHAR(80) NULL, class_id VARCHAR(80) NULL, report_type VARCHAR(80) NOT NULL, filter_json JSON NULL, snapshot_json JSON NOT NULL, created_by VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, INDEX academic_report_scope (tenant_id,school_id,class_id,report_type,created_at), CONSTRAINT ars_tenant_fk FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT, CONSTRAINT ars_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE SET NULL, CONSTRAINT ars_class_fk FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL, CONSTRAINT ars_creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL) ENGINE=InnoDB`
 ];
 
+// PART63 — School Access Code authority. Backs POST /api/auth/school-login:
+// previously the School Level login form validated the Access Code and
+// Staff ID entirely against browser localStorage (never against this
+// database), so correct credentials failed on any device other than the
+// one that originally generated them. One ACTIVE code per school, hashed
+// the same way user credentials are (see hashPassword/verifyPassword in
+// server.js), so it can be verified from any device.
+const PART63_TABLES = [
+  `CREATE TABLE IF NOT EXISTS school_access_codes (id VARCHAR(80) PRIMARY KEY, school_id VARCHAR(80) NOT NULL, access_code_hash TEXT NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', expires_at TIMESTAMP NULL, created_by VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, UNIQUE KEY school_access_code_school (school_id), CONSTRAINT school_access_code_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE, CONSTRAINT school_access_code_creator_fk FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL) ENGINE=InnoDB`
+];
+
 const ROLE_SEED = ['DEVELOPER_ROOT','SUPER_ADMIN','NATIONAL_ADMIN','REGIONAL_ADMIN','DISTRICT_ADMIN','HEADTEACHER','SCHOOL_ACCOUNTANT','ACCOUNTANT','TEACHER','PARENT','STUDENT'];
 const PERMISSION_SEED = ['auth.session.manage','admin.summary.read','security.audit.read','users.manage','roles.manage','tenants.manage','schools.manage','staff.manage','students.manage','academics.manage','attendance.manage','classes.manage','examinations.manage','scores.manage','results.manage','promotion.manage','subscriptions.manage','payments.manage','reporting.read','scope.read','files.manage','files.read','fees.manage','attendance.qr.manage','hostel.view','hostel.manage','hostel.rollcall','transport.view','transport.manage','transport.event.record','transport.staff.manage','transport.location.manage','transport.parent.view','admissions.view','admissions.review','admissions.finalize','communications.view','communications.manage','ai.use'];
 const ROLE_PERMISSION_SEED = {
@@ -159,7 +170,8 @@ async function migrate() {
       for (const statement of PART60_TABLES) await conn.query(statement);
       for (const statement of PART61_TABLES) await conn.query(statement);
       for (const statement of PART62_TABLES) await conn.query(statement);
-      await conn.query('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [SCHEMA_VERSION, 'part62-centralized-government-academic-calendar-migration']);
+      for (const statement of PART63_TABLES) await conn.query(statement);
+      await conn.query('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [SCHEMA_VERSION, 'part63-school-access-code-server-login-migration']);
     }
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
@@ -354,6 +366,47 @@ async function claimFirstTermFree(schoolId, options = {}) {
 
 async function updateSchool(id, input) { await ensureInitialized(); const fields=[]; const values=[]; for (const [key,column] of Object.entries({schoolCode:'school_code',name:'name',ownershipType:'ownership_type',address:'address',contactPhone:'contact_phone',contactEmail:'contact_email',active:'active'})) if (input[key] !== undefined) { fields.push(`${column}=?`); values.push(input[key]); } if (!fields.length) return null; values.push(new Date(),id); await getPool().query(`UPDATE schools SET ${fields.join(',')},updated_at=? WHERE id=?`,values); const rows=await domainRows('SELECT * FROM schools WHERE id=?',[id]); return rows[0]||null; }
 async function createStaff(input) { await ensureInitialized(); const conn=await getPool().getConnection(); const id=input.id||newId('staff'); const now=iso(new Date()); try { await conn.beginTransaction(); await conn.query('INSERT INTO staff (id,user_id,staff_identifier,full_name,phone,email,staff_type,status,tenant_id,region_id,district_id,school_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[id,input.userId||null,input.staffIdentifier,input.fullName,input.phone||null,input.email||null,input.staffType||'STAFF',input.status||'ACTIVE',input.tenantId,input.regionId||null,input.districtId||null,input.schoolId||null,now,now]); if(input.schoolId) await conn.query('INSERT INTO staff_school_assignments (staff_id,school_id,active,assigned_at) VALUES (?,?,1,?)',[id,input.schoolId,now]); if(input.userId&&input.role) { const [roles]=await conn.query('SELECT id FROM roles WHERE name=?',[input.role]); if(!roles.length) throw new Error('INVALID_ROLE'); await conn.query('INSERT INTO user_roles (user_id,role_id) VALUES (?,?)',[input.userId,roles[0].id]); } await conn.commit(); return (await conn.query('SELECT * FROM staff WHERE id=?',[id]))[0][0]; } catch(e){await conn.rollback();throw e;} finally{conn.release();} }
+
+// PART63 — School Access Code authority (see PART63_TABLES above).
+// findStaffForSchoolLogin resolves a Staff ID to the exact school it
+// belongs to, plus that school's Region/District names, in one query —
+// the same set of facts v43ValidateSchoolLogin (client-side) already
+// checks locally, now checkable against the authoritative database.
+async function findStaffForSchoolLogin(staffId) {
+  await ensureInitialized();
+  const [rows] = await getPool().query(
+    `SELECT st.id AS staff_id, st.staff_identifier, st.full_name, st.status AS staff_status, st.school_id,
+            s.name AS school_name, s.active AS school_active, s.district_id,
+            d.name AS district_name, r.id AS region_id, r.name AS region_name
+     FROM staff st
+     JOIN schools s ON s.id = st.school_id
+     JOIN districts d ON d.id = s.district_id
+     JOIN regions r ON r.id = d.region_id
+     WHERE UPPER(st.staff_identifier) = UPPER(?)
+     LIMIT 1`,
+    [staffId]
+  );
+  return rows[0] || null;
+}
+async function findSchoolAccessCode(schoolId) {
+  await ensureInitialized();
+  const [rows] = await getPool().query(
+    `SELECT * FROM school_access_codes WHERE school_id = ? LIMIT 1`,
+    [schoolId]
+  );
+  return rows[0] || null;
+}
+async function upsertSchoolAccessCode({ schoolId, accessCodeHash, expiresAt, createdBy }) {
+  await ensureInitialized();
+  const now = iso(new Date());
+  await getPool().query(
+    `INSERT INTO school_access_codes (id,school_id,access_code_hash,status,expires_at,created_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?)
+     ON DUPLICATE KEY UPDATE access_code_hash=VALUES(access_code_hash), status='ACTIVE', expires_at=VALUES(expires_at), created_by=VALUES(created_by), updated_at=VALUES(updated_at)`,
+    [newId('sac'), schoolId, accessCodeHash, 'ACTIVE', expiresAt ? iso(expiresAt) : null, createdBy || null, now, now]
+  );
+  return findSchoolAccessCode(schoolId);
+}
 async function updateStaff(id,input){await ensureInitialized();const fields=[];const values=[];for(const [key,column] of Object.entries({fullName:'full_name',phone:'phone',email:'email',staffType:'staff_type',status:'status',schoolId:'school_id',districtId:'district_id',regionId:'region_id'}))if(input[key]!==undefined){fields.push(`${column}=?`);values.push(input[key]);}if(!fields.length)return null;values.push(new Date(),id);await getPool().query(`UPDATE staff SET ${fields.join(',')},updated_at=? WHERE id=?`,values);const rows=await domainRows('SELECT * FROM staff WHERE id=?',[id]);return rows[0]||null;}
 async function createStudent(input){await ensureInitialized();const conn=await getPool().getConnection();const id=input.id||newId('student');const now=iso(new Date());try{await conn.beginTransaction();await conn.query('INSERT INTO students (id,admission_number,student_identifier,full_name,date_of_birth,gender,tenant_id,school_id,class_id,admission_date,special_needs,emergency_contact,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[id,input.admissionNumber,input.studentIdentifier,input.fullName,input.dateOfBirth||null,input.gender||null,input.tenantId,input.schoolId,input.classId||null,input.admissionDate||null,input.specialNeeds||null,input.emergencyContact||null,input.status||'ACTIVE',now,now]);if(input.parentUserId){const [parent]=await conn.query('SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND r.name=\'PARENT\' AND u.active=TRUE',[input.parentUserId]);if(!parent.length)throw new Error('INVALID_PARENT');await conn.query('INSERT INTO parent_student_relationships (parent_user_id,student_id,relationship_type,active,created_at) VALUES (?,?,?,1,?)',[input.parentUserId,id,input.relationshipType||'PARENT',now]);}await conn.commit();return (await conn.query('SELECT * FROM students WHERE id=?',[id]))[0][0];}catch(e){await conn.rollback();throw e;}finally{conn.release();}}
 async function updateStudent(id,input,actorId=null){await ensureInitialized();const fields=[];const values=[];const existing=(await domainRows('SELECT id,school_id,status FROM students WHERE id=? LIMIT 1',[id]))[0];if(!existing)return null;for(const [key,column] of Object.entries({fullName:'full_name',dateOfBirth:'date_of_birth',gender:'gender',classId:'class_id',admissionDate:'admission_date',specialNeeds:'special_needs',emergencyContact:'emergency_contact',status:'status'}))if(input[key]!==undefined){fields.push(`${column}=?`);values.push(input[key]);}if(!fields.length)return existing;const now=iso(new Date());const conn=await getPool().getConnection();try{await conn.beginTransaction();if(input.status!==undefined&&String(input.status).toUpperCase()!==String(existing.status||'').toUpperCase())await conn.query('INSERT INTO student_status_history (id,student_id,school_id,from_status,to_status,changed_at,changed_by,reason,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[newId('studentstatus'),id,existing.school_id,existing.status||null,String(input.status).toUpperCase(),now,actorId,input.reason||null,now]);values.push(now,id);await conn.query(`UPDATE students SET ${fields.join(',')},updated_at=? WHERE id=?`,values);await conn.commit();}catch(e){await conn.rollback();throw e;}finally{conn.release();}return (await domainRows('SELECT * FROM students WHERE id=?',[id]))[0]||null;}
@@ -434,6 +487,6 @@ async function setOrganizationBranding(input,actorId){await ensureInitialized();
 
 async function getStudentQuiz(quizId,userId){await ensureInitialized();const qs=await domainRows('SELECT q.id,q.title,q.duration_seconds FROM quizzes q JOIN quiz_attempts a ON a.quiz_id=q.id AND a.student_user_id=? WHERE q.id=? AND q.status=\'PUBLISHED\' LIMIT 1',[userId,quizId]);if(!qs.length){const rows=await domainRows('SELECT id,title,duration_seconds FROM quizzes WHERE id=? AND status=\'PUBLISHED\' LIMIT 1',[quizId]);if(!rows.length)return null;await getPool().query('INSERT IGNORE INTO quiz_attempts (id,quiz_id,student_user_id,started_at,status) VALUES (?,?,?,?,\'IN_PROGRESS\')',[newId('attempt'),quizId,userId,new Date()]);}const q=await domainRows('SELECT id,prompt,question_type,options_json,points,position_no FROM quiz_questions WHERE quiz_id=? ORDER BY position_no',[quizId]);return {quiz:qs[0]||{id:quizId,title:null,duration_seconds:null},questions:q.map(x=>({...x,options:parseJson(x.options_json,[])}))};}
 async function submitStudentQuiz(input,userId){await ensureInitialized();const conn=await getPool().getConnection();try{await conn.beginTransaction();const [a]=await conn.query('SELECT * FROM quiz_attempts WHERE quiz_id=? AND student_user_id=? FOR UPDATE',[input.quizId,userId]);if(!a.length)throw new Error('QUIZ_ATTEMPT_NOT_FOUND');if(a[0].status==='SUBMITTED')return {attempt:a[0],alreadyGraded:true};const [questions]=await conn.query('SELECT id,correct_answer,points FROM quiz_questions WHERE quiz_id=? ORDER BY position_no',[input.quizId]);const answers=input.answers&&typeof input.answers==='object'?input.answers:{};let score=0,total=0;for(const q of questions){const answer=answers[q.id]==null?'':String(answers[q.id]);const correct=answer===String(q.correct_answer==null?'':q.correct_answer);const pts=correct?Number(q.points||0):0;score+=pts;total+=Number(q.points||0);await conn.query('INSERT INTO quiz_responses (id,attempt_id,question_id,answer_value,is_correct,points_awarded,created_at) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE answer_value=VALUES(answer_value),is_correct=VALUES(is_correct),points_awarded=VALUES(points_awarded',[newId('response'),a[0].id,q.id,answer,correct,pts,new Date()]);}const pct=total?Number((score/total*100).toFixed(2)):0;await conn.query('UPDATE quiz_attempts SET submitted_at=?,score=?,points_possible=?,percentage=?,status=\'SUBMITTED\' WHERE id=?',[new Date(),score,total,pct,a[0].id]);await conn.commit();return {attempt:{id:a[0].id,quiz_id:input.quizId,score,points_possible:total,percentage:pct,status:'SUBMITTED',submitted_at:new Date().toISOString()},alreadyGraded:false};}catch(e){await conn.rollback();throw e;}finally{conn.release();}}
-module.exports = { DATABASE_URL, isConfigured, migrate, ensureInitialized, findUser, findUserById, upsertUser, provisionDevelopmentAccount, createSession, revokeSessionByHash, appendAudit, hydrateAuthState, resolveAuthorization, domainRows, getPool, createSchool, updateSchool, createStaff, updateStaff, createStudent, updateStudent, createClass, updateClass, assignStaffSchool, assignTeacherClass, addParentStudent, importJson, academicRows, createAcademicConfig, updateAcademicConfig, createSubject, updateSubject, createAttendance, updateAttendance, createExamination, updateExamination, createScore, updateScore, createBulkScores, createMockScore, createMockScoresBulk, updateResultRemarks, publishMockExamination, createPromotion, createPromotionsBulk, saveTeacherAttendance, rotateQrIdentity, resolveQrIdentity, recordQrAttendance, hostelOverview, hostelCreate, hostelAssign, hostelRollCall, transportOverview, transportCreate, transportAssign, transportEvent, transportStaffAssign, transportLocation, transportParentView, submitPendingAdmission, listPendingAdmissions, getPendingAdmission, transitionPendingAdmission, finalizePendingAdmission, resolveCommunicationAudience, createCommunicationCampaign, listCommunicationCampaigns, getCommunicationCampaign, chatContacts, chatConversation, chatConversations, chatMessages, sendChatMessage, multiSchoolSummary, verifiedNarrativeAnalytics, getOrganizationBranding, setOrganizationBranding, getStudentQuiz, submitStudentQuiz, calculateResult, createMockExamination, findPaymentIntent, createPaymentIntent,   getSubscriptionCycleState,
+module.exports = { DATABASE_URL, isConfigured, migrate, ensureInitialized, findUser, findUserById, upsertUser, provisionDevelopmentAccount, createSession, revokeSessionByHash, appendAudit, hydrateAuthState, resolveAuthorization, domainRows, getPool, createSchool, updateSchool, createStaff, updateStaff, findStaffForSchoolLogin, findSchoolAccessCode, upsertSchoolAccessCode, createStudent, updateStudent, createClass, updateClass, assignStaffSchool, assignTeacherClass, addParentStudent, importJson, academicRows, createAcademicConfig, updateAcademicConfig, createSubject, updateSubject, createAttendance, updateAttendance, createExamination, updateExamination, createScore, updateScore, createBulkScores, createMockScore, createMockScoresBulk, updateResultRemarks, publishMockExamination, createPromotion, createPromotionsBulk, saveTeacherAttendance, rotateQrIdentity, resolveQrIdentity, recordQrAttendance, hostelOverview, hostelCreate, hostelAssign, hostelRollCall, transportOverview, transportCreate, transportAssign, transportEvent, transportStaffAssign, transportLocation, transportParentView, submitPendingAdmission, listPendingAdmissions, getPendingAdmission, transitionPendingAdmission, finalizePendingAdmission, resolveCommunicationAudience, createCommunicationCampaign, listCommunicationCampaigns, getCommunicationCampaign, chatContacts, chatConversation, chatConversations, chatMessages, sendChatMessage, multiSchoolSummary, verifiedNarrativeAnalytics, getOrganizationBranding, setOrganizationBranding, getStudentQuiz, submitStudentQuiz, calculateResult, createMockExamination, findPaymentIntent, createPaymentIntent,   getSubscriptionCycleState,
   listGovernmentAcademicCalendars,
   upsertGovernmentAcademicCalendar, updatePaymentIntentStatus, findPaymentIntentByReference, findPaymentTransaction, recordVerifiedPayment, reconcileStudentPopulation, listStudentPopulationReconciliations, calculatePopulationCheckpoint, listPopulationCheckpoints, getPopulationDashboard, calculateCarryForward, getCarryForwardDashboard, linkCarryForward, claimFirstTermFree, createPasswordReset, findPasswordReset, consumePasswordReset, updateCredentialHashes, createFileRecord, findFileRecord, migrationCounts, tableCounts, close };

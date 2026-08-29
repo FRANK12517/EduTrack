@@ -149732,3 +149732,114 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 })();
 
 </script>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SCHOOL-LEVEL LOGIN FIX (additive, non-destructive)
+
+     ROOT CAUSE: the SCHOOL login card's four-credential rebuild
+     (EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel — Region, District,
+     School Access Code, Staff ID) never sets the shared v43CurrentLevel
+     state, and never renders a #v43-role field. v43DoLogin() — the
+     single authoritative submit handler used by every login level —
+     unconditionally requires BOTH of those before it ever looks at the
+     entered credentials:
+       if (!v43CurrentLevel) { ...generic error...; return; }
+       ...
+       if (!role) { ...generic error...; return; }
+     So School-level login always failed with the generic
+     "incorrect staff ID or access code" message, even with fully
+     correct Region/District/Access Code/Staff ID — the credential
+     checks were never reached.
+
+     FIX: wrap selectSchoolLevel (covers every entry point — the direct
+     onclick and the six-login-card delegated controller) to set
+     v43CurrentLevel='SCHOOL', and wrap v43DoLogin to transparently
+     supply the missing #v43-role value only when SCHOOL is the active
+     level. The real authority over School credentials remains
+     v43ValidateSchoolLogin() (Region -> District -> Access Code ->
+     Staff ID) — this patch only removes the two false gates that sat
+     in front of it. After a successful School login, the locally
+     stored/display role is corrected to the actual staff member's
+     resolved role (Headteacher, Assistant Headteacher, etc.) from the
+     validated login context, instead of the generic placeholder used
+     only to satisfy the shared role gate.
+     ══════════════════════════════════════════════════════════════════ -->
+<script id="edutrack-school-login-level-fix">
+(function(){
+  'use strict';
+  if (window.__EDUTRACK_SCHOOL_LOGIN_LEVEL_FIX__) return;
+  window.__EDUTRACK_SCHOOL_LOGIN_LEVEL_FIX__ = true;
+
+  function fieldVal(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+
+  function resolveSchoolRole(){
+    try {
+      var region = fieldVal('v43-region'), district = fieldVal('v43-district');
+      var accessCode = fieldVal('v43-school-access-code'), staffId = fieldVal('v43-staffId');
+      if (region && district && accessCode && staffId && typeof window.v43ValidateSchoolLogin === 'function') {
+        var check = window.v43ValidateSchoolLogin(region, district, accessCode, staffId);
+        if (check && check.ok && check.teacher && check.teacher.role) return String(check.teacher.role);
+      }
+    } catch (e) { /* fall through to placeholder — v43ValidateSchoolLogin remains authoritative below */ }
+    return (window.V43_CONFIG && V43_CONFIG.roles && V43_CONFIG.roles.SCHOOL && V43_CONFIG.roles.SCHOOL[0]) || 'Headteacher';
+  }
+
+  function ensureSchoolRoleField(){
+    var el = document.getElementById('v43-role');
+    if (!el) {
+      el = document.createElement('input');
+      el.type = 'hidden';
+      el.id = 'v43-role';
+      document.body.appendChild(el);
+    }
+    el.value = resolveSchoolRole();
+    return el;
+  }
+
+  function patch(){
+    if (!window.EDUTRACK_ENHANCEMENT_PART1 || typeof window.EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel !== 'function') return false;
+    if (typeof window.v43DoLogin !== 'function') return false;
+
+    if (!window.EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel._levelStateFixed) {
+      var originalSelect = window.EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel;
+      var wrappedSelect = function(ev){
+        var result = originalSelect.apply(this, arguments);
+        // Restore the shared level state that v43DoLogin() requires —
+        // the four-credential rebuild never set this.
+        window.v43CurrentLevel = 'SCHOOL';
+        window.v43SelectedPmsRole = null;
+        if (typeof window.v43HideError === 'function') window.v43HideError();
+        return result;
+      };
+      wrappedSelect._levelStateFixed = true;
+      window.EDUTRACK_ENHANCEMENT_PART1.selectSchoolLevel = wrappedSelect;
+    }
+
+    if (!window.v43DoLogin._schoolRoleGateFixed) {
+      var originalDoLogin = window.v43DoLogin;
+      var wrappedDoLogin = function(){
+        var isSchool = window.v43CurrentLevel === 'SCHOOL';
+        if (isSchool) ensureSchoolRoleField();
+        var result = originalDoLogin.apply(this, arguments);
+        // Cosmetic correction only: replace the placeholder role used to
+        // satisfy the shared gate with the actual validated staff role,
+        // now that v43ValidateSchoolLogin has run inside v43DoLogin.
+        if (isSchool && window._v43SchoolLoginContext && window._v43SchoolLoginContext.ok) {
+          try {
+            var actualRole = window._v43SchoolLoginContext.teacher && window._v43SchoolLoginContext.teacher.role;
+            if (actualRole) localStorage.setItem('v43_login_role', actualRole);
+          } catch (e) {}
+        }
+        return result;
+      };
+      wrappedDoLogin._schoolRoleGateFixed = true;
+      window.v43DoLogin = wrappedDoLogin;
+    }
+    return true;
+  }
+
+  function init(){ if (!patch()) setTimeout(init, 100); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  setTimeout(init, 0);
+})();
+</script>

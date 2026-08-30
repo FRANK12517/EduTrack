@@ -147462,6 +147462,87 @@ function refresh(root){var s=school();if(!s){root.querySelector('[data-p64-statu
 function install(){var page=document.getElementById('page-dashboard');if(!page||document.getElementById('edutrack-part64-population-notification-panel'))return;var root=document.createElement('section');root.id='edutrack-part64-population-notification-panel';root.style.cssText='margin:1rem 0;max-width:100%;overflow:hidden';root.innerHTML='<div data-p64-note style="border:1px solid #8bcbd2;border-radius:10px;padding:1rem;margin-bottom:.75rem"></div><div data-p64-summary style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.55rem;margin-bottom:.75rem"></div><div style="border:1px solid var(--border);border-radius:10px;padding:.8rem;background:var(--white)"><div style="display:flex;justify-content:space-between;gap:.5rem;align-items:center;flex-wrap:wrap"><strong>Class-by-class reconciliation</strong><button type="button" class="btn btn-ghost btn-sm" data-p64-refresh>Refresh</button></div><p data-p64-report style="font-size:.78rem;color:var(--muted);margin:.4rem 0"></p><div style="overflow-x:auto;max-width:100%"><table style="min-width:860px;width:100%;font-size:.76rem"><thead><tr><th>Class</th><th>Subscription Population</th><th>Current Active</th><th>Exam Population</th><th>Report Cards</th><th>New Admissions</th><th>Withdrawals/Transfers/Stoppages</th><th>Net Difference</th></tr></thead><tbody data-p64-body></tbody><tfoot><tr data-p64-total style="font-weight:800;border-top:2px solid var(--border)"></tr></tfoot></table></div></div><p data-p64-status style="font-size:.72rem;color:var(--muted);margin-top:.45rem">Waiting for server reconciliation…</p>';page.appendChild(root);root.querySelector('[data-p64-refresh]').addEventListener('click',function(){refresh(root)});refresh(root)}
 if(document.body)new MutationObserver(install).observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);setTimeout(install,900);window.EDUTRACK_PART64_POPULATION={refresh:function(){var r=document.getElementById('edutrack-part64-population-notification-panel');if(r)refresh(r)}}})();
 </script>
+<script id="edutrack-school-login-stuck-authenticating-fix">
+(function(){
+  'use strict';
+
+  function safeLiveUpdateTopbar(){
+    try {
+      var schoolInput = document.getElementById('cfg-school');
+      var waecInput = document.getElementById('cfg-waec-school-number');
+      var districtInput = document.getElementById('cfg-district');
+      var topbarSchool = document.getElementById('topbar-school');
+      var topbarSub = document.getElementById('topbar-sub');
+      var config = window.CONFIG || {};
+      var school = schoolInput && typeof schoolInput.value === 'string'
+        ? schoolInput.value.trim() : String(config.school || '').trim();
+      var waec = waecInput && typeof waecInput.value === 'string'
+        ? waecInput.value.trim() : '';
+      var district = districtInput && typeof districtInput.value === 'string'
+        ? districtInput.value.trim() : String(config.district || '').trim();
+      if (topbarSchool) topbarSchool.textContent = school || waec || 'EduTrack';
+      if (topbarSub) topbarSub.textContent = district || String(config.region || '').trim() || '';
+    } catch (e) {
+      console.warn('[EduTrack] null-safe topbar update skipped:', e);
+    }
+  }
+  window.liveUpdateTopbar = safeLiveUpdateTopbar;
+
+  function resetLoginButton(){
+    try {
+      var button = document.getElementById('v43LoginBtn');
+      if (button) {
+        button.textContent = 'Enter System';
+        button.disabled = false;
+      }
+      window.v43LoginInProgress = false;
+    } catch (e) {
+      console.warn('[EduTrack] login reset skipped:', e);
+    }
+  }
+
+  if (!window.__EDUTRACK_LOGIN_STUCK_FIX__ && window.v43DoLogin && !window.v43DoLogin._stuckFixInstalled) {
+    var originalDoLogin = window.v43DoLogin;
+    var wrappedDoLogin = function(){
+      var result;
+      try {
+        result = originalDoLogin.apply(this, arguments);
+      } catch (e) {
+        resetLoginButton();
+        window.v43LoginInProgress = false;
+        throw e;
+      }
+      setTimeout(function(){
+        try {
+          var button = document.getElementById('v43LoginBtn');
+          if (button && String(button.textContent || '').indexOf('Authenticating') !== -1) {
+            try {
+              var loginScreen = document.getElementById('login-screen');
+              if (loginScreen) loginScreen.style.display = 'none';
+              var successOverlay = document.getElementById('loginSuccessOverlay');
+              if (successOverlay) successOverlay.classList.remove('show');
+              document.querySelectorAll('.topbar, .shell').forEach(function(el){ el.style.display = ''; });
+              if (typeof window.showPageById === 'function') window.showPageById('dashboard');
+              else if (typeof window.showPage === 'function') window.showPage('dashboard');
+            } catch (e) {
+              console.warn('[EduTrack] forced login completion skipped:', e);
+            } finally {
+              resetLoginButton();
+            }
+          }
+        } catch (e) {
+          console.warn('[EduTrack] login watchdog skipped:', e);
+          resetLoginButton();
+        }
+      }, 2500);
+      return result;
+    };
+    wrappedDoLogin._stuckFixInstalled = true;
+    window.v43DoLogin = wrappedDoLogin;
+    window.__EDUTRACK_LOGIN_STUCK_FIX__ = true;
+  }
+})();
+</script>
 </body></html>
 <!-- ══════════════════════════════════════════════════════════════════
      SUBSCRIBE / REGISTER — PART 2 (V392)

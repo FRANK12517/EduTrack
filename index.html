@@ -25305,6 +25305,26 @@ function v43HideError() {
 //  On ANY failure, returns the single generic message required by spec —
 //  it deliberately never says which of the four credentials was wrong.
 // ═══════════════════════════════════════════════════════════════════
+// Validates Region + District + School Access Code + Staff ID + Role
+// against the real backend (TiDB-backed /api/school-login) instead of
+// localStorage. Superseded v43ValidateSchoolLogin (below) as of this patch —
+// that function is kept for reference but is no longer called by v43DoLogin.
+async function v43ValidateSchoolLoginRemote(region, district, accessCode, staffId, role) {
+  try {
+    const res = await fetch(window.location.origin + '/api/school-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, district, accessCode, staffId, role })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.token) return { ok: false };
+    localStorage.setItem('edutrack_api_token', data.token); // matches the EDUTRACK_API bridge's token key
+    return { ok: true, user: data.user };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
 function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
   const GENERIC_FAIL = { ok: false, message: V43_GENERIC_LOGIN_ERROR };
   try {
@@ -25382,7 +25402,7 @@ function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
   }
 }
 
-function v43DoLogin() {
+async function v43DoLogin() {
   if (!v43CurrentLevel) {
     v43ShowError(V43_GENERIC_LOGIN_ERROR);
     return;
@@ -25420,7 +25440,7 @@ function v43DoLogin() {
   if (v43CurrentLevel === 'SCHOOL') {
     const schoolAccessCode = val('v43-school-access-code');
     if (!schoolAccessCode) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
-    const schoolAuth = v43ValidateSchoolLogin(region, district, schoolAccessCode, staffId);
+    const schoolAuth = await v43ValidateSchoolLoginRemote(region, district, schoolAccessCode, staffId, role);
     if (!schoolAuth.ok) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
     // Resolved context available to anything downstream that wants it —
     // additive only, nothing existing reads or requires this.
@@ -147210,14 +147230,26 @@ window.SRG_ANNUAL = (function(){
     setBaseUrl: function(url){ localStorage.setItem('edutrack_api_base', url); }
   };
 
+  function safe(fn, fallback){ try { return fn(); } catch(e){ return fallback; } }
+
   // ── Wire into the existing login flow, additively ──────────────────────
   // Mirrors the exact pattern already used by the V135 district-access
   // patch: capture the old function once, guard against double-wrapping,
   // call the original first (unchanged existing behavior), then extend.
   if (window.v43DoLogin && !window.v43DoLogin._apiBridgeV382){
     var oldLogin = window.v43DoLogin;
-    );
-      });
+    window.v43DoLogin = async function(){
+      return await oldLogin.apply(this, arguments);
+    };
+    window.v43DoLogin._apiBridgeV382 = true;
+  }
+
+  // ── Teacher attendance sync ─────────────────────────────────────────
+  if (window.saveTeacherData && !window.saveTeacherData._syncV383) {
+    var oldSaveTeacherData = window.saveTeacherData;
+    var lastAttendSnapshot = {};
+    window.saveTeacherData = function(){
+      var result = oldSaveTeacherData.apply(this, arguments);
 
       safe(function(){
         var attend = (window.ATTEND_DATA && typeof window.ATTEND_DATA === 'object') ? window.ATTEND_DATA : {};

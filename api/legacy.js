@@ -55,6 +55,75 @@ async function login(req, res) {
   return json(res, 200, { token, user: { staffId: user.staff_id, name: user.full_name, role: user.role, assignedClass: user.assigned_class, assignedForm: user.assigned_form } });
 }
 
+// Roles are free text in `users.role` but the login form only ever submits
+// one of the six SCHOOL-level labels from V43_CONFIG.roles (index.html,
+// ~line 24953). If a row in the database was typed/imported with a
+// slightly different spelling — "Head Teacher" vs "Headteacher", "Teacher"
+// vs "Classroom Teacher" — an exact match silently locks that person out
+// even though every credential is correct. Normalize + alias instead of
+// matching exactly.
+function normalizeRole(r) {
+  return String(r || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+const ROLE_ALIASES = {
+  'head teacher': 'headteacher',
+  'headmaster': 'headteacher',
+  'headmistress': 'headteacher',
+  'asst headteacher': 'assistant headteacher',
+  'assistant head teacher': 'assistant headteacher',
+  'teacher': 'classroom teacher',
+  'class teacher': 'classroom teacher',
+  'proprietor': 'school proprietor',
+  'ict coordinator': 'school ict coordinator',
+  'property officer': 'school property management officer',
+};
+function canonicalRole(r) {
+  const n = normalizeRole(r);
+  return ROLE_ALIASES[n] || n;
+}
+
+async function schoolLogin(req, res) {
+  const input = await readBody(req);
+  const { region, district, accessCode, staffId, role } = input;
+  if (!region || !district || !accessCode || !staffId || !role) {
+    return json(res, 400, { error: 'region, district, accessCode, staffId and role are required' });
+  }
+
+  const rows = await query(
+    `SELECT u.id, u.staff_id, u.full_name, u.role, u.assigned_class, u.assigned_form,
+            s.id AS school_id, s.school_code, s.name AS school_name, s.region, s.district
+     FROM schools s
+     JOIN users u ON u.school_id = s.id
+     WHERE s.access_code = ?
+       AND s.access_code_status = 'ACTIVE'
+       AND (s.access_code_expires_at IS NULL OR s.access_code_expires_at > NOW())
+       AND LOWER(s.region) = LOWER(?)
+       AND LOWER(s.district) = LOWER(?)
+       AND u.staff_id = ?
+     LIMIT 1`,
+    [accessCode, region, district, staffId]
+  );
+
+  // Deliberately generic — never reveals which of the five fields was wrong,
+  // and never reveals whether the row was missing vs. the role not matching.
+  if (!rows.length || canonicalRole(rows[0].role) !== canonicalRole(role)) {
+    return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
+  }
+
+  const user = rows[0];
+  const token = jwt.sign(
+    { userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role,
+      assignedClass: user.assigned_class, assignedForm: user.assigned_form },
+    process.env.JWT_SECRET,
+    { expiresIn: '12h' }
+  );
+  return json(res, 200, {
+    token,
+    user: { staffId: user.staff_id, name: user.full_name, role: user.role, schoolName: user.school_name,
+            region: user.region, district: user.district }
+  });
+}
+
 async function config(req, res, auth) {
   if (req.method === 'GET') {
     const code = new URL(req.url, 'http://localhost').searchParams.get('schoolCode');
@@ -105,6 +174,7 @@ async function students(req, res, auth) {
 async function handler(req, res) {
   try {
     if (req.url.split('?')[0] === '/api/login') return req.method === 'POST' ? login(req,res) : json(res,405,{error:'Method Not Allowed'});
+    if (req.url.split('?')[0] === '/api/school-login') return req.method === 'POST' ? schoolLogin(req,res) : json(res,405,{error:'Method Not Allowed'});
     if (!['/api/config','/api/students'].includes(req.url.split('?')[0])) return false;
     const auth = requireAuth(req,res); if (!auth) return true;
     if (req.url.split('?')[0] === '/api/config') await config(req,res,auth); else await students(req,res,auth);

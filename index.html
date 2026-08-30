@@ -25305,6 +25305,26 @@ function v43HideError() {
 //  On ANY failure, returns the single generic message required by spec —
 //  it deliberately never says which of the four credentials was wrong.
 // ═══════════════════════════════════════════════════════════════════
+// Validates Region + District + School Access Code + Staff ID + Role
+// against the real backend (TiDB-backed /api/school-login) instead of
+// localStorage. Superseded v43ValidateSchoolLogin (below) as of this patch —
+// that function is kept for reference but is no longer called by v43DoLogin.
+async function v43ValidateSchoolLoginRemote(region, district, accessCode, staffId, role) {
+  try {
+    const res = await fetch(window.location.origin + '/api/school-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, district, accessCode, staffId, role })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.token) return { ok: false };
+    localStorage.setItem('edutrack_api_token', data.token); // matches the EDUTRACK_API bridge's token key
+    return { ok: true, user: data.user };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
 function v43ValidateSchoolLogin(region, district, accessCode, staffId) {
   const GENERIC_FAIL = { ok: false, message: V43_GENERIC_LOGIN_ERROR };
   try {
@@ -25457,14 +25477,7 @@ async function v43DoLogin() {
     if (!schoolAccessCode) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
     // Try the existing local (offline) check first — completely unchanged,
     // so any device that already works keeps working exactly as before.
-    let schoolAuth = v43ValidateSchoolLogin(region, district, schoolAccessCode, staffId);
-    // Only if the local check fails, ask the server (PART 63) — this is
-    // what makes a correct Access Code / Staff ID work on a device other
-    // than the one that generated it. Never runs when the local check
-    // already succeeded, and never blocks/replaces it.
-    if (!schoolAuth.ok) {
-      schoolAuth = await v43ValidateSchoolLoginServer(region, district, schoolAccessCode, staffId);
-    }
+    const schoolAuth = await v43ValidateSchoolLoginRemote(region, district, schoolAccessCode, staffId, role);
     if (!schoolAuth.ok) { v43ShowError(V43_GENERIC_LOGIN_ERROR); return; }
     // Resolved context available to anything downstream that wants it —
     // additive only, nothing existing reads or requires this.

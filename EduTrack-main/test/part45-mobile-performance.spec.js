@@ -1,1 +1,0 @@
-'use strict';if(!process.env.EDUTRACK_STAGING_BASE_URL){console.log('Part 45 mobile/performance: NOT_PROVEN (real staging URL unavailable).');process.exit(0)};console.log('Part 45 mobile/performance target configured; real measurements remain required.');

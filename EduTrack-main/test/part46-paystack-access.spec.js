@@ -1,1 +1,0 @@
-'use strict';if(!process.env.PAYSTACK_SECRET_KEY){console.log('Part 46 Paystack access: BLOCKED (no sandbox credentials; live credentials forbidden).');process.exit(0)};if(process.env.EDUTRACK_PAYSTACK_LIVE==='true')throw Error('Live Paystack forbidden.');

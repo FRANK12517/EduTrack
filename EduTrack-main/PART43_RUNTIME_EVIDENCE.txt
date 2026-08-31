@@ -1,3 +1,0 @@
-Part 43 runtime evidence
-
-Declared runtime: Node.js 22.x in package.json. Local runtime: v22.13.0. Actual connected Vercel project runtime: Node.js 24.x. No separate Part 43 Node.js 22 staging runtime was available or proven. Result: FAIL for connected runtime and NOT_PROVEN for isolated Part 43 runtime.

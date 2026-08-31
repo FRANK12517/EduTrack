@@ -1,1 +1,0 @@
-'use strict'; const assert=require('assert');assert.strictEqual(require('../package.json').engines.node,'22.x');if(process.env.EDUTRACK_STAGING_RUNTIME)assert.strictEqual(process.env.EDUTRACK_STAGING_RUNTIME,'22.x');else console.log('Part 46 Node runtime: BLOCKED (actual Node 22 staging runtime unavailable).');

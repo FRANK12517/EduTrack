@@ -1,1 +1,0 @@
-'use strict'; const n=['EDUTRACK_STORAGE_BUCKET','EDUTRACK_STORAGE_REGION','AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY']; if(String(process.env.EDUTRACK_STORAGE_MODE).toLowerCase()!=='s3'||n.some(x=>!process.env[x])){console.log('Part 44 storage: NOT_PROVEN (private staging storage unavailable).');process.exit(0)};

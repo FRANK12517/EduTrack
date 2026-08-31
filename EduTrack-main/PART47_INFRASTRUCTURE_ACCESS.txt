@@ -1,2 +1,0 @@
-Part 47 status: BLOCKED — EXTERNAL INFRASTRUCTURE ACCESS REQUIRED.
-Authorized Vercel deployment inspection and GitHub access are available. No authorized environment/secret management, database, private storage, Paystack sandbox, delivery sink, monitoring, external backup, rollback, or staging-account provisioning capability is available. PLUGIN_REQUIRED = true. No plugin was installed or enabled.

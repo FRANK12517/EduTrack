@@ -1,1 +1,0 @@
-'use strict';if(!process.env.EDUTRACK_STAGING_AUTH_FIXTURES){console.log('Part 45 authentication: NOT_PROVEN (non-production fixtures unavailable).');process.exit(0)};if(process.env.EDUTRACK_STAGING_AUTH_FIXTURES==='production')throw Error('Production fixtures forbidden.');

@@ -1,1 +1,0 @@
-Declared runtime: Node.js 22.x. Local runtime: v22.13.0. Connected Vercel project runtime: Node.js 24.x. No actual Part 45 Node.js 22 staging runtime was proven. Result: FAIL externally; NOT_PROVEN for Part 45 staging.

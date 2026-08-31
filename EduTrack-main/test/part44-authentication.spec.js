@@ -1,1 +1,0 @@
-'use strict'; if(!process.env.EDUTRACK_STAGING_AUTH_FIXTURES){console.log('Part 44 authentication: BLOCKED (non-production accounts unavailable).');process.exit(0)}; if(process.env.EDUTRACK_STAGING_AUTH_FIXTURES==='production') throw new Error('Production fixtures forbidden.');

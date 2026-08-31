@@ -4838,6 +4838,7 @@ td input, td select, td textarea, td button {
 
 <style id="edutrack-v43-eye-toggle-style">.v43-input-toggle-wrap{position:relative!important;width:100%!important;display:block!important}.v43-input-toggle-wrap .v43-field-input{width:100%!important;padding-right:3rem!important;box-sizing:border-box!important}.v43-eye-toggle{position:absolute!important;right:.38rem!important;top:50%!important;transform:translateY(-50%)!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;border:0!important;background:transparent!important;border-radius:50%!important;width:2.2rem!important;height:2.2rem!important;padding:0!important;cursor:pointer!important;touch-action:manipulation!important;color:#6b4b78!important;z-index:2!important;line-height:1!important}.v43-eye-toggle svg{width:1.05rem;height:1.05rem;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.v43-eye-toggle:hover{background:rgba(107,75,120,.08)}.v43-eye-toggle:focus-visible{outline:3px solid #4dd0e1;outline-offset:2px}.v43-field-label{text-transform:uppercase;letter-spacing:.04em}@media (max-width:520px){.v43-eye-toggle{right:.3rem;width:2.25rem;height:2.25rem}}</style>
 <style id="edutrack-sync-switch-style">.ems-sync-switch{position:relative;display:inline-block;width:3.1rem;height:1.7rem;flex:0 0 auto}.ems-sync-switch input{position:absolute;opacity:0;width:0;height:0}.ems-sync-slider{position:absolute;inset:0;background:#cbd5e1;border-radius:999px;cursor:pointer;transition:.2s}.ems-sync-slider:before{content:"";position:absolute;width:1.25rem;height:1.25rem;left:.22rem;top:.22rem;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s}.ems-sync-switch input:checked + .ems-sync-slider{background:#0e7c86}.ems-sync-switch input:checked + .ems-sync-slider:before{transform:translateX(1.4rem)}.ems-sync-switch input:focus-visible + .ems-sync-slider{outline:3px solid #4dd0e1;outline-offset:2px}.ems-sync-switch input:disabled + .ems-sync-slider{opacity:.55;cursor:not-allowed}@media(max-width:520px){.ems-sync-switch{width:3.25rem;height:1.8rem}}</style>
+<script src="/individual-result-slip-fix.js" defer></script>
 </head>
 <body>
 
@@ -149954,6 +149955,69 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
 
   function init(){ if (!patch()) setTimeout(init, 100); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  setTimeout(init, 0);
+})();
+</script>
+<!-- ══════════════════════════════════════════════════════════════════
+     SCHOOL LOGIN RACE-CONDITION / RESULT-DISPLAY FIX (additive)
+
+     ROOT CAUSE: v43DoLogin() is invoked from two independent triggers
+     — the "Enter System" button click (via
+     EDUTRACK_ENHANCEMENT_PART1.schoolLogin, which has its own lock)
+     and the document-level "Enter" keydown handler (which calls
+     v43DoLogin() directly and has NO lock). If a person presses Enter
+     and then taps the button (or double-taps) before the network
+     validation call in v43DoLogin() (await v43ValidateSchoolLoginRemote)
+     resolves, two concurrent login attempts run in parallel. One can
+     resolve successfully (opening the dashboard) while the other
+     resolves as a failure and calls v43ShowError(), so the person sees
+     "Incorrect Staff ID or Access Code" on top of / immediately before
+     the dashboard opening even though the credentials were correct.
+
+     FIX: wrap whatever v43DoLogin currently resolves to (after every
+     other additive patch above has applied) with a single in-flight
+     guard so only one login attempt can be validating credentials at
+     a time; any call received while one is already in flight is
+     ignored outright. This does not change the credential-validation
+     logic itself (v43ValidateSchoolLoginRemote remains authoritative)
+     — it only guarantees a single, unambiguous result is shown:
+     "ACCESS GRANTED" and immediate dashboard entry when credentials
+     validate correctly, or "Incorrect Staff ID or Access Code" when
+     they do not, never both for the same submission. It also clears
+     any leftover error message the instant a login attempt begins, so
+     a stale failure message can never remain visible underneath a
+     successful "Access Granted" transition.
+     ══════════════════════════════════════════════════════════════════ -->
+<script id="edutrack-school-login-race-guard-fix">
+(function () {
+  'use strict';
+  if (window.__EDUTRACK_LOGIN_RACE_GUARD__) return;
+
+  function patch() {
+    if (typeof window.v43DoLogin !== 'function') return false;
+    if (window.v43DoLogin._raceGuardInstalled) return true;
+
+    var original = window.v43DoLogin;
+    var guarded = async function () {
+      if (window.__EDUTRACK_LOGIN_INFLIGHT__) return;
+      window.__EDUTRACK_LOGIN_INFLIGHT__ = true;
+      try {
+        if (typeof window.v43HideError === 'function') window.v43HideError();
+      } catch (e) {}
+      try {
+        return await original.apply(this, arguments);
+      } finally {
+        window.__EDUTRACK_LOGIN_INFLIGHT__ = false;
+      }
+    };
+    guarded._raceGuardInstalled = true;
+    window.v43DoLogin = guarded;
+    window.__EDUTRACK_LOGIN_RACE_GUARD__ = true;
+    return true;
+  }
+
+  function init() { if (!patch()) setTimeout(init, 100); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   setTimeout(init, 0);
 })();

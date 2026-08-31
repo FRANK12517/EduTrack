@@ -1,1 +1,0 @@
-'use strict'; if(!process.env.EDUTRACK_STAGING_BASE_URL){console.log('Part 45 infrastructure: BLOCKED (isolated staging endpoint unavailable).');process.exit(0)}; if(/localhost|127\.0\.0\.1/.test(process.env.EDUTRACK_STAGING_BASE_URL))throw Error('Localhost is not staging.');

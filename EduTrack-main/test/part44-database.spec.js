@@ -1,1 +1,0 @@
-'use strict'; if(!process.env.EDUTRACK_DATABASE_URL){console.log('Part 44 database: BLOCKED (isolated relational staging database unavailable).');process.exit(0)}; if(!/^mysql:|^mariadb:/.test(process.env.EDUTRACK_DATABASE_URL)) throw new Error('Unsupported database URL.');

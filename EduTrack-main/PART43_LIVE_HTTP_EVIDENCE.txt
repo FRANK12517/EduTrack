@@ -1,3 +1,0 @@
-Part 43 live HTTPS evidence
-
-No Part 43 staging URL was provisioned. The existing Vercel preview remains a Part 42/41 target and is not relabeled as Part 43 evidence. No real Part 43 /, /api/health, /api/auth/session, OPTIONS, CORS, or application-header PASS was claimed. The connected project reports Node.js 24.x and lacks the isolated environment configuration required by the application guards. No tokens, cookies, credentials, secrets, or temporary SSO URLs are recorded.

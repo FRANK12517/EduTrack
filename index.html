@@ -150143,3 +150143,72 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   setTimeout(init, 0);
 })();
 </script>
+<!-- ══════════════════════════════════════════════════════════════════
+     LOGIN — UNIVERSAL SINGLE-FLIGHT GUARD (additive, final)
+
+     ROOT CAUSE: the "deterministic SCHOOL fix" installed immediately
+     above (edutrack-school-login-deterministic-fix) is the LAST patch
+     applied to window.v43DoLogin, so it always wins. For level ===
+     'SCHOOL' it intentionally does NOT call through to whatever
+     v43DoLogin it wrapped — it reimplements the whole flow inline and
+     returns early. That means the in-flight lock installed by
+     edutrack-school-login-race-guard-fix (the patch just before it)
+     never runs for SCHOOL logins: it only protects the branch that
+     falls through to priorDoLogin (NATIONAL/REGIONAL/DISTRICT), not
+     the SCHOOL branch that returns before ever reaching it.
+
+     Symptom this produces: pressing Enter and then tapping "Enter
+     System" (or a slow double-tap) starts two concurrent SCHOOL
+     login validations. If the first resolves successfully and starts
+     opening the dashboard while the second, redundant call is still
+     in flight, the second call can resolve after it and call
+     showFailure() — which re-shows the login button/error state on
+     top of / immediately after the successful transition, so the
+     login screen appears to "display" without the dashboard staying
+     open, even though the credentials were correct.
+
+     FIX: wrap whatever window.v43DoLogin resolves to AFTER every
+     patch above (this script loads last, so it is guaranteed to be
+     outermost) with one single-flight guard that applies to every
+     level, not just the branch the deterministic fix happens to fall
+     through on. Any v43DoLogin() call received while one is already
+     resolving is ignored outright, and any leftover error/success
+     message is cleared the instant a fresh attempt begins. This does
+     not change credential-validation logic at all — it only
+     guarantees exactly one unambiguous result (ACCESS GRANTED +
+     immediate dashboard open, or INCORRECT ACCESS CODE OR STAFF ID)
+     is ever shown per submission, for every login level.
+     ══════════════════════════════════════════════════════════════════ -->
+<script id="edutrack-login-universal-singleflight-guard">
+(function () {
+  'use strict';
+  if (window.__EDUTRACK_LOGIN_UNIVERSAL_SINGLEFLIGHT__) return;
+
+  function patch() {
+    if (typeof window.v43DoLogin !== 'function') return false;
+    if (window.v43DoLogin._universalSingleFlight) return true;
+
+    var original = window.v43DoLogin;
+    var guarded = async function () {
+      if (window.__EDUTRACK_LOGIN_UNIVERSAL_INFLIGHT__) return;
+      window.__EDUTRACK_LOGIN_UNIVERSAL_INFLIGHT__ = true;
+      try {
+        if (typeof window.v43HideError === 'function') { try { window.v43HideError(); } catch (e) {} }
+      } catch (e) {}
+      try {
+        return await original.apply(this, arguments);
+      } finally {
+        window.__EDUTRACK_LOGIN_UNIVERSAL_INFLIGHT__ = false;
+      }
+    };
+    guarded._universalSingleFlight = true;
+    window.v43DoLogin = guarded;
+    window.__EDUTRACK_LOGIN_UNIVERSAL_SINGLEFLIGHT__ = true;
+    return true;
+  }
+
+  function init() { if (!patch()) setTimeout(init, 100); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  setTimeout(init, 0);
+})();
+</script>

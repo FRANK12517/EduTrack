@@ -150022,3 +150022,111 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   setTimeout(init, 0);
 })();
 </script>
+<!-- ══════════════════════════════════════════════════════════════════
+     SCHOOL LOGIN — STUCK-ON-"AUTHENTICATING" DETERMINISTIC FIX (additive)
+     Replaces the fragile nested-setTimeout success path with a single
+     deterministic async function for SCHOOL level only. On success:
+     immediately shows "ACCESS GRANTED" and opens the dashboard. On
+     failure: immediately shows "Incorrect Access Code or Staff ID."
+     Every step is wrapped so a cosmetic failure (e.g. liveUpdateTopbar)
+     can never leave the button stuck again. NATIONAL / REGIONAL /
+     DISTRICT logins fall through unchanged to the existing chain.
+     ══════════════════════════════════════════════════════════════════ -->
+<script id="edutrack-school-login-deterministic-fix">
+(function () {
+  'use strict';
+  if (window.__EDUTRACK_SCHOOL_LOGIN_DETERMINISTIC_FIX__) return;
+
+  function patch() {
+    if (typeof window.v43DoLogin !== 'function') return false;
+    if (window.v43DoLogin._deterministicSchoolFix) return true;
+
+    var priorDoLogin = window.v43DoLogin;
+
+    var fixed = async function () {
+      var level;
+      try { level = window.v43CurrentLevel; } catch (e) { level = null; }
+
+      if (level !== 'SCHOOL') {
+        return await priorDoLogin.apply(this, arguments);
+      }
+
+      var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      var region = val('v43-region'), district = val('v43-district'),
+          code = val('v43-school-access-code'), staffId = val('v43-staffId'),
+          role = val('v43-role');
+      var btn = document.getElementById('v43LoginBtn');
+
+      function showFailure() {
+        try {
+          if (typeof window.v43ShowError === 'function') window.v43ShowError('Incorrect Access Code or Staff ID.');
+        } catch (e) {}
+        if (btn) { btn.textContent = 'Enter System'; btn.disabled = false; }
+        window.v43LoginInProgress = false;
+        window.__EDUTRACK_LOGIN_INFLIGHT__ = false;
+      }
+
+      if (!role || !region || !district || !code || !staffId) { showFailure(); return false; }
+      try {
+        if (typeof window.v43IsAuthorizedLoginRole === 'function' &&
+            !window.v43IsAuthorizedLoginRole('SCHOOL', role, region, district)) { showFailure(); return false; }
+      } catch (e) { showFailure(); return false; }
+
+      if (typeof window.v43HideError === 'function') { try { window.v43HideError(); } catch (e) {} }
+      if (btn) { btn.textContent = '⏳ Authenticating...'; btn.disabled = true; }
+
+      var authResult;
+      try {
+        authResult = await window.v43ValidateSchoolLoginRemote(region, district, code, staffId, role);
+      } catch (e) {
+        authResult = { ok: false };
+      }
+
+      if (!authResult || !authResult.ok) { showFailure(); return false; }
+
+      try {
+        window._v43SchoolLoginContext = authResult;
+        localStorage.setItem('ems_login_role', 'school');
+        localStorage.setItem('v43_login_level', 'SCHOOL');
+        localStorage.setItem('v43_login_role', role);
+        localStorage.setItem('v43_login_staffid', staffId);
+        localStorage.setItem('ems_login_region', region);
+        localStorage.setItem('ems_login_district', district);
+      } catch (e) { /* storage failures must never block a credential-verified login */ }
+
+      var msgEl = document.getElementById('loginSuccessMsg');
+      var overlay = document.getElementById('loginSuccessOverlay');
+      if (msgEl) msgEl.textContent = 'ACCESS GRANTED';
+      if (overlay) overlay.classList.add('show');
+
+      try { if (typeof window.liveUpdateTopbar === 'function') window.liveUpdateTopbar(); } catch (e) { /* cosmetic only */ }
+
+      var loginEl = document.getElementById('login-screen');
+      if (loginEl) loginEl.style.display = 'none';
+      if (overlay) overlay.classList.remove('show');
+      try { document.querySelectorAll('.topbar, .shell').forEach(function (el) { el.style.display = ''; }); } catch (e) {}
+
+      try {
+        if (typeof window.emsRouteAfterLogin === 'function') window.emsRouteAfterLogin('SCHOOL', role, region, district);
+        else if (typeof window.showPageById === 'function') window.showPageById('dashboard');
+      } catch (e) {
+        try { if (typeof window.showPageById === 'function') window.showPageById('dashboard'); } catch (e2) {}
+      }
+
+      if (btn) { btn.textContent = 'Enter System'; btn.disabled = false; }
+      window.v43LoginInProgress = false;
+      window.__EDUTRACK_LOGIN_INFLIGHT__ = false;
+      return true;
+    };
+
+    fixed._deterministicSchoolFix = true;
+    window.v43DoLogin = fixed;
+    window.__EDUTRACK_SCHOOL_LOGIN_DETERMINISTIC_FIX__ = true;
+    return true;
+  }
+
+  function init() { if (!patch()) setTimeout(init, 100); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  setTimeout(init, 0);
+})();
+</script>

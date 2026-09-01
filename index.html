@@ -51922,6 +51922,16 @@ const V70_PACKAGES = [
 
 // ── GET ACTIVE PRICES (merged: v70 active overrides v67) ─────────────────
 function v70GetActivePrices() {
+  // Keep the legacy price API backed by the authoritative subscription engine.
+  // The fallback preserves the documented defaults until that engine is ready.
+  try {
+    if (window.EMS_SA_REBUILD && typeof window.EMS_SA_REBUILD.activePrice === 'function') {
+      return {
+        government: window.EMS_SA_REBUILD.activePrice('government'),
+        private: window.EMS_SA_REBUILD.activePrice('private')
+      };
+    }
+  } catch (e) {}
   return { government: 1, private: 1 };
 }
 
@@ -150059,7 +150069,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
       function showFailure() {
         try {
-          if (typeof window.v43ShowError === 'function') window.v43ShowError('Incorrect Access Code or Staff ID.');
+          if (typeof window.v43ShowError === 'function') window.v43ShowError('INCORRECT ACCESS CODE OR STAFF ID');
+          if (typeof window.toast === 'function') window.toast('INCORRECT ACCESS CODE OR STAFF ID', 'error');
         } catch (e) {}
         if (btn) { btn.textContent = 'Enter System'; btn.disabled = false; }
         window.v43LoginInProgress = false;
@@ -150097,6 +150108,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       var msgEl = document.getElementById('loginSuccessMsg');
       var overlay = document.getElementById('loginSuccessOverlay');
       if (msgEl) msgEl.textContent = 'ACCESS GRANTED';
+      try { if (typeof window.toast === 'function') window.toast('ACCESS GRANTED', 'success'); } catch (e) {}
       if (overlay) overlay.classList.add('show');
 
       try { if (typeof window.liveUpdateTopbar === 'function') window.liveUpdateTopbar(); } catch (e) { /* cosmetic only */ }

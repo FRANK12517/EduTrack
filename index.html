@@ -9154,9 +9154,19 @@ td input, td select, td textarea, td button {
             I am also deeply grateful to Rev. Ebenezer Asibu Dadzie for his spiritual oversight, encouragement, and the prayers that bolstered my faith during the most demanding seasons of my studies.
           </div>
 
-          <!-- Paragraph 4 — Family -->
-          <div class="ack-para" id="ack-para4" style="border-bottom:none">
-            To my beloved wife and children, thank you for your unwavering support, patience, and the sacrifices you made to allow me to focus on my goals. Your love is the fuel that keeps me moving forward.
+          <!-- Paragraph 4 — Mama Ernestina Hagan -->
+          <div class="ack-para" id="ack-para4">
+            I sincerely appreciate Mama Ernestina Hagan of Ekumfi Essuehyia for the exceptional care, motherly love, and kindness extended to my family since our arrival in the community. Her compassionate support has been invaluable.
+          </div>
+
+          <!-- Paragraph 5 — Nana Stephen Acquah -->
+          <div class="ack-para" id="ack-para5">
+            I am immensely grateful to Nana Stephen Acquah, Headteacher of Dunkwa-Abontsen D/A Basic School, for his instrumental support and commitment to the development of the Examination Management System. By fostering an environment that encourages innovation, he provided the essential foundation for transforming a technical vision into a functional reality.
+          </div>
+
+          <!-- Paragraph 6 — Family -->
+          <div class="ack-para" id="ack-para6" style="border-bottom:none">
+            To my beloved wife and children, thank you for your unwavering support, patience, and sacrifices. Your continuous love provided the strength needed to achieve this goal.
           </div>
 
           <!-- Blue highlight -->
@@ -24700,12 +24710,14 @@ const CR_TRANSLATIONS = {
 
 const ACK_TRANSLATIONS = {
   en: {
-    headerLabel: "ACKNOWLEDGEMENT",
-    titleSection: "Acknowledgement",
-    para1: "I want to express my profound gratitude to the Almighty God for His grace, wisdom, and strength that have sustained me throughout this journey. His guidance has been the foundation upon which this dream was built.",
-    para2: "My sincere appreciation goes to Dr. Gabriel Annan, Lecturer at the University of Cape Coast (UCC), for his mentorship, academic guidance, and for challenging me to strive for excellence in the field of Information Technology.",
-    para3: "I am also deeply grateful to Rev. Ebenezer Asibu Dadzie for his spiritual oversight, encouragement, and the prayers that bolstered my faith during the most demanding seasons of my studies.",
-    para4: "To my beloved wife and children, thank you for your unwavering support, patience, and the sacrifices you made to allow me to focus on my goals. Your love is the fuel that keeps me moving forward.",
+    headerLabel: "ACKNOWLEDGEMENTS",
+    titleSection: "Acknowledgements",
+    para1: "First and foremost, I express my profound gratitude to God Almighty for His grace, wisdom, and strength, which have sustained me throughout this journey. His guidance remains the bedrock upon which this achievement was built.",
+    para2: "I extend my sincere appreciation to Dr. Gabriel Annan, Lecturer at the University of Cape Coast (UCC), for his insightful mentorship, academic guidance, and for continually pushing me to excel in the field of Information Technology.",
+    para3: "My deep thanks go to Rev. Ebenezer Asibu Dadzie for his spiritual oversight, constant encouragement, and prayers that strengthened my resolve during the most demanding phases of my studies.",
+    para4: "I sincerely appreciate Mama Ernestina Hagan of Ekumfi Essuehyia for the exceptional care, motherly love, and kindness extended to my family since our arrival in the community. Her compassionate support has been invaluable.",
+    para5: "I am immensely grateful to Nana Stephen Acquah, Headteacher of Dunkwa-Abontsen D/A Basic School, for his instrumental support and commitment to the development of the Examination Management System. By fostering an environment that encourages innovation, he provided the essential foundation for transforming a technical vision into a functional reality.",
+    para6: "To my beloved wife and children, thank you for your unwavering support, patience, and sacrifices. Your continuous love provided the strength needed to achieve this goal.",
     highlight: "Through your collective support, my dream of becoming an IT-inclined professional has become a reality.",
     scripture: "\u201CI can do all things through Christ who strengthens me.\u201D",
     scriptureRef: "— Philippians 4:13",
@@ -24862,6 +24874,10 @@ function applyAcknowledgementLanguage(lang) {
   set('ack-para2', t.para2);
   set('ack-para3', t.para3);
   set('ack-para4', t.para4);
+  if (lang === 'en') {
+    set('ack-para5', t.para5);
+    set('ack-para6', t.para6);
+  }
   set('ack-highlight', t.highlight);
   set('ack-scripture', t.scripture);
   set('ack-scriptureRef', t.scriptureRef);

@@ -5998,6 +5998,103 @@ td input, td select, td textarea, td button {
     <div class="nav-item" onclick="emsDoLogout()" style="color:var(--red);border-left:3px solid var(--red)"><span class="icon">🚪</span><span class="nav-label" style="color:var(--red);font-weight:700">Log Out</span></div>
 
     </div>
+    <!-- ══════════════════════════════════════════════════════════════════
+         SIDEBAR ORDER GUARD (additive, non-destructive)
+         Purpose: guarantee that User Guide, Copyright, Acknowledgement,
+         Developer, and Log Out are ALWAYS the last five items in the
+         sidebar — including whenever any script (communication-hub.js,
+         chat-module.js, control-panel.js, admissions-review.js, or any
+         module added later) appends a new nav item to #sidebarScroll.
+         Those modules already append their items with plain
+         `container.appendChild(...)`, which lands new items at the very
+         end — after the five items above. This guard runs after them and
+         simply re-moves the same five existing DOM nodes to the end of
+         #sidebarScroll, every time the sidebar's children change. It does
+         not create, delete, rename, or alter the behavior of any nav
+         item, and it never touches any existing function — it is a
+         self-contained observer that only calls appendChild() on nodes
+         that already exist. ══════════════════════════════════════════ -->
+    <script>
+    (function () {
+      'use strict';
+
+      // Selectors for the five nav-items that must always be last, in the
+      // exact order they should appear. Matched by their existing onclick
+      // handlers so this keeps working even if their icons/labels/styling
+      // change later.
+      var PINNED_LAST_SELECTORS = [
+        ".nav-item[onclick*=\"showPage('user-guide'\"]",
+        ".nav-item[onclick*=\"showPage('copyright'\"]",
+        ".nav-item[onclick*=\"showPage('acknowledgement'\"]",
+        ".nav-item[onclick*=\"showPage('about'\"]",
+        ".nav-item[onclick=\"emsDoLogout()\"]"
+      ];
+
+      var reordering = false;
+      var scheduled = null;
+
+      function currentlyOrdered(scroll, pinned) {
+        var children = Array.prototype.slice.call(scroll.children);
+        var tail = children.slice(children.length - pinned.length);
+        if (tail.length !== pinned.length) return false;
+        for (var i = 0; i < pinned.length; i++) if (tail[i] !== pinned[i]) return false;
+        return true;
+      }
+
+      function reorder() {
+        var scroll = document.getElementById('sidebarScroll');
+        if (!scroll) return;
+
+        var pinned = [];
+        for (var i = 0; i < PINNED_LAST_SELECTORS.length; i++) {
+          var el = scroll.querySelector(PINNED_LAST_SELECTORS[i]);
+          if (el && el.parentNode === scroll) pinned.push(el);
+        }
+        // Only act once all five pinned items are present as direct
+        // children of the sidebar (they are part of the base sidebar
+        // markup and are present from initial page load).
+        if (pinned.length !== PINNED_LAST_SELECTORS.length) return;
+        if (currentlyOrdered(scroll, pinned)) return;
+
+        reordering = true;
+        try {
+          for (var j = 0; j < pinned.length; j++) scroll.appendChild(pinned[j]);
+        } finally {
+          reordering = false;
+        }
+
+        // Recompute the existing mobile 3-page sidebar split using the
+        // same convention already used by the dynamic nav-injecting
+        // modules (communication-hub.js, chat-module.js, control-panel.js,
+        // admissions-review.js), so paging stays correct after reordering.
+        if (typeof window.sidebarInitPaging === 'function') {
+          window.sidebarPagingReady = false;
+          window.sidebarInitPaging();
+          if (typeof window.sidebarGoToPage === 'function') {
+            window.sidebarGoToPage(window.sidebarCurrentPage || 1);
+          }
+        }
+      }
+
+      function schedule() {
+        if (reordering) return;
+        if (scheduled) clearTimeout(scheduled);
+        scheduled = setTimeout(reorder, 30);
+      }
+
+      document.addEventListener('DOMContentLoaded', schedule);
+
+      var observer = new MutationObserver(function (mutations) {
+        if (reordering) return;
+        for (var i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes && mutations[i].addedNodes.length) { schedule(); return; }
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      schedule();
+    })();
+    </script>
     <!-- ══════ END SIDEBAR MENU (sidebar-scroll, auto-paginated) ══════ -->
   </nav>
 

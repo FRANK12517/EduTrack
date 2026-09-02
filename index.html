@@ -6000,29 +6000,25 @@ td input, td select, td textarea, td button {
     </div>
     <!-- ══════════════════════════════════════════════════════════════════
          SIDEBAR ORDER GUARD (additive, non-destructive)
-         Purpose: guarantee that User Guide, Copyright, Acknowledgement,
-         Developer, and Log Out are ALWAYS the last five items in the
-         sidebar — including whenever any script (communication-hub.js,
-         chat-module.js, control-panel.js, admissions-review.js, or any
-         module added later) appends a new nav item to #sidebarScroll.
-         Those modules already append their items with plain
-         `container.appendChild(...)`, which lands new items at the very
-         end — after the five items above. This guard runs after them and
-         simply re-moves the same five existing DOM nodes to the end of
-         #sidebarScroll, every time the sidebar's children change. It does
-         not create, delete, rename, or alter the behavior of any nav
-         item, and it never touches any existing function — it is a
-         self-contained observer that only calls appendChild() on nodes
-         that already exist. ══════════════════════════════════════════ -->
+         Purpose: guarantee that Communication Hub, Chat, Multi-School
+         Control Panel, Online Admissions, User Guide, Copyright,
+         Acknowledgement, Developer, and Log Out always remain the final
+         sidebar items in this exact order — including whenever any module
+         appends a new nav item to #sidebarScroll. The guard only re-moves
+         the same existing DOM nodes; it does not create, delete, rename,
+         or alter any nav item or its behavior. ═══════════════════════════ -->
     <script>
     (function () {
       'use strict';
 
-      // Selectors for the five nav-items that must always be last, in the
-      // exact order they should appear. Matched by their existing onclick
-      // handlers so this keeps working even if their icons/labels/styling
-      // change later.
+      // Existing nav nodes in the exact order required at the bottom of
+      // the sidebar. Dynamic nodes use stable IDs; their existing click
+      // handlers and module behavior remain untouched.
       var PINNED_LAST_SELECTORS = [
+        '#communication-hub-nav',
+        '#chat-nav',
+        '#control-panel-nav',
+        '#admissions-review-nav',
         ".nav-item[onclick*=\"showPage('user-guide'\"]",
         ".nav-item[onclick*=\"showPage('copyright'\"]",
         ".nav-item[onclick*=\"showPage('acknowledgement'\"]",
@@ -6050,9 +6046,9 @@ td input, td select, td textarea, td button {
           var el = scroll.querySelector(PINNED_LAST_SELECTORS[i]);
           if (el && el.parentNode === scroll) pinned.push(el);
         }
-        // Only act once all five pinned items are present as direct
-        // children of the sidebar (they are part of the base sidebar
-        // markup and are present from initial page load).
+        // Only act once all required pinned items are present as direct
+        // children of the sidebar. The four dynamic items are observed
+        // until their own modules inject them.
         if (pinned.length !== PINNED_LAST_SELECTORS.length) return;
         if (currentlyOrdered(scroll, pinned)) return;
 

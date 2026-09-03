@@ -6001,7 +6001,7 @@ td input, td select, td textarea, td button {
     <!-- ══════════════════════════════════════════════════════════════════
          SIDEBAR ORDER GUARD (additive, non-destructive)
          Purpose: guarantee that Communication Hub, Chat, Multi-School
-         Control Panel, Online Admissions, User Guide, Copyright,
+         Control Panel, Online Admissions, Transport Management, User Guide, Copyright,
          Acknowledgement, Developer, and Log Out always remain the final
          sidebar items in this exact order — including whenever any module
          appends a new nav item to #sidebarScroll. The guard only re-moves
@@ -6019,6 +6019,7 @@ td input, td select, td textarea, td button {
         '#chat-nav',
         '#control-panel-nav',
         '#admissions-review-nav',
+        '#edutrack-transport-nav',
         ".nav-item[onclick*=\"showPage('user-guide'\"]",
         ".nav-item[onclick*=\"showPage('copyright'\"]",
         ".nav-item[onclick*=\"showPage('acknowledgement'\"]",
@@ -6046,10 +6047,9 @@ td input, td select, td textarea, td button {
           var el = scroll.querySelector(PINNED_LAST_SELECTORS[i]);
           if (el && el.parentNode === scroll) pinned.push(el);
         }
-        // Only act once all required pinned items are present as direct
-        // children of the sidebar. The four dynamic items are observed
-        // until their own modules inject them.
-        if (pinned.length !== PINNED_LAST_SELECTORS.length) return;
+        // Reorder whichever role-allowed dynamic items are present. Static
+        // session items are always included, while restricted modules may
+        // legitimately never inject their navigation entry.
         if (currentlyOrdered(scroll, pinned)) return;
 
         reordering = true;
@@ -6086,7 +6086,7 @@ td input, td select, td textarea, td button {
           if (mutations[i].addedNodes && mutations[i].addedNodes.length) { schedule(); return; }
         }
       });
-      observer.observe(document.body, { childList: true, subtree: true });
+      observer.observe(document.getElementById('sidebarScroll'), { childList: true });
 
       schedule();
     })();

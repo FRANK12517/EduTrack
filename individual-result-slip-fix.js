@@ -153,3 +153,86 @@
   installGlobalWrapper();
   setInterval(installGlobalWrapper, 1500);
 })();
+
+/* Mobile presentation and print-quality fixes for the existing official
+ * workflows. This layer changes layout only; data, calculations, RBAC and
+ * persistence continue to use their original implementations. */
+(function () {
+  'use strict';
+  if (window.__EDUTRACK_MOBILE_OFFICIAL_WORKFLOWS__) return;
+  window.__EDUTRACK_MOBILE_OFFICIAL_WORKFLOWS__ = true;
+
+  var style = document.createElement('style');
+  style.id = 'edutrack-mobile-official-workflows-v1';
+  style.textContent = [
+    '.et-slip-scale-stage{width:100%;max-width:100%;margin:0 auto;overflow:hidden;position:relative}',
+    '@media (max-width:700px){.et-slip-scale-stage>.result-slip{width:650px!important;max-width:none!important;margin:0!important;transform-origin:top left;will-change:transform}}',
+    '.result-slip .slip-watermark{z-index:0!important;isolation:isolate}',
+    '.result-slip .slip-watermark img{opacity:.14!important;max-width:52%!important;max-height:52%!important;filter:saturate(.9) contrast(1.08);pointer-events:none!important}',
+    '.result-slip .slip-page-frame>*:not(.slip-watermark),.result-slip>*:not(.slip-watermark){position:relative;z-index:1}',
+    '[id^="page-fms-"]{width:100%;max-width:100%;min-width:0;overflow:visible}',
+    '[id^="page-fms-"] .tbl-wrap,[id^="page-fms-"] .fms-tabs{max-width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-inline:contain}',
+    '[id^="page-fms-"] table{min-width:max-content}',
+    '[id^="page-fms-"] input,[id^="page-fms-"] select,[id^="page-fms-"] textarea{max-width:100%;box-sizing:border-box}',
+    '#fms-view-receipt-overlay{overflow-y:auto!important;-webkit-overflow-scrolling:touch}',
+    '#fms-view-receipt-overlay>div{max-width:100%;max-height:calc(100dvh - 2rem);overflow:auto}',
+    '#page-pupils{width:100%;max-width:100%;min-width:0;overflow:visible!important}',
+    '#page-pupils .gw-table-wrap,#page-pupils .tbl-wrap{max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}',
+    '#page-pupils .gw-pa-box{min-width:44px!important;width:44px!important;min-height:44px!important;height:44px!important;touch-action:manipulation}',
+    '#page-pupils .gw-submit-btn{min-height:44px;touch-action:manipulation}',
+    '#page-pupils .gw-submit-bar{bottom:0;max-width:100%}',
+    '#page-pupils .gw-table td.left{position:sticky;left:0;z-index:2;background:#fff;white-space:normal;min-width:9rem}',
+    '#page-pupils .gw-table thead th:first-child{position:sticky;left:0;z-index:4}',
+    '@media (max-width:600px){[id^="page-fms-"]{padding:.65rem!important}[id^="page-fms-"] .form-grid,[id^="page-fms-"] .fee-kpi-grid,[id^="page-fms-"] [style*="grid-template-columns"]{grid-template-columns:1fr!important}[id^="page-fms-"] .btn-bar{display:flex;flex-wrap:wrap;gap:.5rem}[id^="page-fms-"] .btn-bar>.btn{flex:1 1 10rem;min-height:44px}[id^="page-fms-"] .fms-student-card{flex-wrap:wrap}#page-pupils{padding:.65rem!important}#page-pupils .form-grid{grid-template-columns:1fr!important}#page-pupils .gw-weeknav>*{min-height:44px}#page-pupils .gw-submit-bar{justify-content:stretch;padding:.55rem}#page-pupils .gw-submit-btn{width:100%}#pa-detail-modal{padding:.5rem!important;overflow-y:auto!important;align-items:flex-start!important}#pa-detail-modal>div{width:100%!important;max-height:calc(100dvh - 1rem);overflow:auto}}',
+    '@media print{.et-slip-scale-stage{height:auto!important;width:100%!important;overflow:visible!important}.et-slip-scale-stage>.result-slip,.result-slip{transform:none!important;transform-origin:initial!important;width:100%!important;max-width:190mm!important;color:#000!important}.result-slip,.result-slip *{text-shadow:none!important}.result-slip p,.result-slip span,.result-slip strong,.result-slip td,.result-slip th,.result-slip label,.result-slip .slip-info-item,.result-slip .slip-footer-val-v80,.result-slip .v83-static-val,.result-slip .slip-rem-label,.result-slip .slip-attend-label,.result-slip .slip-section-title{color:#000!important}.result-slip .slip-watermark img{opacity:.12!important;filter:saturate(.82) contrast(1.12)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}'
+  ].join('');
+  document.head.appendChild(style);
+
+  var MASTER_WIDTH = 650;
+  var pending = 0;
+
+  function stageSlip(slip) {
+    if (!slip || slip.closest('#v83-print-mount')) return null;
+    var parent = slip.parentElement;
+    if (parent && parent.classList.contains('et-slip-scale-stage')) return parent;
+    var stage = document.createElement('div');
+    stage.className = 'et-slip-scale-stage';
+    slip.parentNode.insertBefore(stage, slip);
+    stage.appendChild(slip);
+    return stage;
+  }
+
+  function resizeSlip(slip) {
+    var stage = stageSlip(slip);
+    if (!stage || !slip.isConnected) return;
+    if (window.matchMedia('print').matches || window.innerWidth > 700) {
+      slip.style.removeProperty('width');
+      slip.style.removeProperty('max-width');
+      slip.style.removeProperty('transform');
+      stage.style.removeProperty('height');
+      return;
+    }
+    var available = Math.max(1, stage.clientWidth);
+    var scale = Math.min(1, available / MASTER_WIDTH);
+    slip.style.width = MASTER_WIDTH + 'px';
+    slip.style.maxWidth = 'none';
+    slip.style.transform = 'scale(' + scale + ')';
+    stage.style.height = Math.ceil(slip.scrollHeight * scale) + 'px';
+  }
+
+  function refresh() {
+    pending = 0;
+    document.querySelectorAll('.result-slip').forEach(resizeSlip);
+  }
+  function schedule() {
+    if (!pending) pending = window.requestAnimationFrame(refresh);
+  }
+
+  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener('resize', schedule, { passive: true });
+  window.addEventListener('beforeprint', refresh);
+  window.addEventListener('afterprint', schedule);
+  document.addEventListener('DOMContentLoaded', schedule);
+  schedule();
+  window.EDUTRACK_RESIZE_RESULT_SLIPS = refresh;
+})();

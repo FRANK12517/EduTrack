@@ -197,3 +197,13 @@
     restoreDeveloperSession();
   }
 })();
+
+// Load the administrative dashboard shell after the existing authentication
+// bridge so login-card context and dashboard routing share one source of truth.
+(function loadAdministrativeDashboardSeparation() {
+  if (document.querySelector('script[src="/admin-dashboard-separation.js"]')) return;
+  var script = document.createElement('script');
+  script.src = '/admin-dashboard-separation.js';
+  script.defer = true;
+  document.head.appendChild(script);
+})();

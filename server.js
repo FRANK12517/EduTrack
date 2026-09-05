@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const relational = require('./db/relational');
 const authorization = require('./app/auth/authorization');
+const administrativeScope = require('./app/auth/administrative-scope');
 const privateStorage = require('./app/private-storage');
 const subscriptionPolicy = require('./app/subscription-policy');
 
@@ -20,6 +21,7 @@ const RESET_TTL_MS = 15 * 60 * 1000;
 const COOKIE_NAME = 'edutrack_session';
 const CSRF_HEADER = 'x-csrf-token';
 const GENERIC_AUTH_ERROR = 'Authentication failed';
+const DEVELOPER_AUTH_ERROR = 'Invalid developer credentials';
 const SUPER_ADMIN_AUTH_ERROR = 'Invalid Super Administrator Credentials';
 const GENERIC_RESET_MESSAGE = 'If the account is eligible, reset instructions will be sent.';
 const DEV_ACCESS_ENABLED = process.env.NODE_ENV !== 'production' && process.env.EDUTRACK_ENABLE_DEV_ACCESS === 'true';
@@ -28,7 +30,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css', 'edutrack-polish.css']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'admin-dashboard-separation.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css', 'edutrack-polish.css']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -207,6 +209,7 @@ function authUser(req, db) {
   const hash = tokenHash(token);
   const session = db.sessions.find(s => s.tokenHash === hash && new Date(s.expiresAt) > new Date());
   if (!session) return null;
+  if (session.authMode === 'developer' && session.isDeveloper) return { user: developerPrincipal(session), session };
   const user = db.users.find(u => u.id === session.userId);
   return user ? { user, session } : null;
 }
@@ -231,8 +234,12 @@ async function body(req, limit = MAX_BODY_BYTES) {
   const raw = await rawBody(req, limit);
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Invalid JSON'); }
 }
-function publicUser(user) { return { id: user.id, email: user.email, staffId: user.staffId || null, role: user.role, hierarchy: user.hierarchy, scope: user.scope || null }; }
-function roleContext(user) { return { role: user.role, hierarchy: user.hierarchy, scope: user.scope, dashboard: user.role === 'DEVELOPER_ROOT' ? 'developer-root' : user.role === 'SUPER_ADMIN' ? 'super-admin' : 'school' }; }
+function publicUser(user) { const value={ id:user.id,email:user.email,staffId:user.staffId||null,role:user.role,hierarchy:user.hierarchy,scope:user.scope||null }; if(user.authMode==='developer')Object.assign(value,{authMode:'developer',isDeveloper:true,developerStaffId:user.developerStaffId,developerLevel:user.developerLevel,developerRole:user.developerRole,region:user.region||null,district:user.district||null}); return value; }
+function developerPrincipal(session) { return { id:session.developerId,email:null,staffId:session.developerStaffId,role:'DEVELOPER_ROOT',hierarchy:'ALL',scope:['NATIONAL','REGIONAL','DISTRICT','SCHOOL'],authMode:'developer',isDeveloper:true,developerStaffId:session.developerStaffId,developerLevel:session.developerLevel,developerRole:session.developerRole,region:session.region||null,district:session.district||null,active:true }; }
+function normalizeDeveloperLevel(value) { return administrativeScope.normalizeLevel(value); }
+function developerRoleMatchesLevel(level, role) { const normalized=String(role||'').trim().toUpperCase(); if(level==='SCHOOL')return !/^(DISTRICT|REGIONAL|NATIONAL)\b/.test(normalized); if(level==='DISTRICT')return /^(DISTRICT)\b|SCHOOL IMPROVEMENT SUPPORT OFFICER|\bSISO\b/.test(normalized); if(level==='REGIONAL')return /^REGIONAL\b/.test(normalized); if(level==='NATIONAL')return /^NATIONAL\b|DIRECTOR[- ]GENERAL|DEPUTY DIRECTOR[- ]GENERAL/.test(normalized); return false; }
+function developerConfig() { return { staffId:String(process.env.EDUTRACK_DEVELOPER_STAFF_ID||''),accessCodeHash:String(process.env.EDUTRACK_DEVELOPER_ACCESS_CODE_HASH||'') }; }
+function roleContext(user) { return administrativeScope.contextForUser(user); }
 function dashboardAllowed(user, dashboard) {
   if (!user || !user.active) return false;
   if (user.role === 'DEVELOPER_ROOT') return ['developer-root', 'super-admin'].includes(dashboard);
@@ -840,7 +847,7 @@ async function handler(req, res) {
   }
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
-    if (Object.keys(input || {}).some(key => !['email', 'staffId', 'password', 'pin', 'accessCode', 'schoolAccessCode'].includes(key))) return json(res, 400, { error: GENERIC_AUTH_ERROR });
+    if (Object.keys(input || {}).some(key => !['email', 'staffId', 'password', 'pin', 'accessCode', 'schoolAccessCode', 'administrativeLevel'].includes(key))) return json(res, 400, { error: GENERIC_AUTH_ERROR });
     const identifier = validateText(input.email || input.staffId, { required: true, max: 254, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ });
     const password = validateText(input.password || input.pin, { required: true, max: 256 });
     const accessCode = validateText(input.accessCode || input.schoolAccessCode || input.pin, { required: true, max: 256 });
@@ -857,6 +864,11 @@ async function handler(req, res) {
       if (user) { user.failedLoginCount = (user.failedLoginCount || 0) + 1; if (user.failedLoginCount >= LOGIN_LIMIT.maxFailures) { user.lockedUntil = new Date(Date.now() + LOGIN_LIMIT.blockMs).toISOString(); const lockoutAudit = { id: id('audit'), userId: user.id, action: 'ACCOUNT_LOCKOUT', at: new Date().toISOString(), ip: clientIp(req), severity: 'high' }; if (relational.isConfigured()) await relational.appendAudit(lockoutAudit); else auditSecurityEvent(db, 'ACCOUNT_LOCKOUT', req, { userId: user.id, severity: 'high' }); } }
       const rejectedAudit = { id: id('audit'), action: 'LOGIN_REJECTED', at: new Date().toISOString(), ip: clientIp(req), severity: 'medium' }; if (relational.isConfigured()) await relational.appendAudit(rejectedAudit); else auditSecurityEvent(db, 'LOGIN_REJECTED', req, { severity: 'medium' }); if (!relational.isConfigured()) saveDb(db);
       return json(res, 401, { error: GENERIC_AUTH_ERROR });
+    }
+    if (!administrativeScope.matches(user, input.administrativeLevel)) {
+      const rejectedAudit = { id: id('audit'), userId: user.id, action: 'ADMINISTRATIVE_LEVEL_MISMATCH', at: new Date().toISOString(), ip: clientIp(req), severity: 'high' };
+      if (relational.isConfigured()) await relational.appendAudit(rejectedAudit); else { db.audit.push(rejectedAudit); saveDb(db); }
+      return json(res, 403, { error: GENERIC_AUTH_ERROR });
     }
     clearLimit(limitKey(req, 'login')); clearLimit(accountKey); user.failedLoginCount = 0; user.lockedUntil = null;
     const rawToken = randomToken(); const now = new Date();

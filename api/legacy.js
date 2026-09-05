@@ -85,6 +85,9 @@ function canonicalRole(r) {
 async function schoolLogin(req, res) {
   const input = await readBody(req);
   const { region, district, accessCode, staffId, role } = input;
+  if (input.administrativeLevel && String(input.administrativeLevel).toUpperCase() !== 'SCHOOL') {
+    return json(res, 403, { error: 'Invalid staff ID, access code, or role' });
+  }
   if (!region || !district || !accessCode || !staffId || !role) {
     return json(res, 400, { error: 'region, district, accessCode, staffId and role are required' });
   }
@@ -112,13 +115,14 @@ async function schoolLogin(req, res) {
 
   const user = rows[0];
   const token = jwt.sign(
-    { userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role,
+    { userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role, administrativeLevel: 'SCHOOL',
       assignedClass: user.assigned_class, assignedForm: user.assigned_form },
     process.env.JWT_SECRET,
     { expiresIn: '12h' }
   );
   return json(res, 200, {
     token,
+    administrativeLevel: 'SCHOOL', dashboard: 'school-general',
     user: { staffId: user.staff_id, name: user.full_name, role: user.role, schoolName: user.school_name,
             region: user.region, district: user.district }
   });

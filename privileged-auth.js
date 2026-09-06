@@ -212,3 +212,13 @@
   script.defer = true;
   document.head.appendChild(script);
 })();
+
+// Apply the final School-only navigation hierarchy after all feature modules
+// have registered their existing pages and public entry points.
+(function loadSchoolSidebar() {
+  if (document.querySelector('script[src="/school-sidebar.js"]')) return;
+  var script = document.createElement('script');
+  script.src = '/school-sidebar.js';
+  script.defer = true;
+  document.head.appendChild(script);
+})();

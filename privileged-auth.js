@@ -45,8 +45,13 @@
   }
   function request(path, options) {
     options = options || {};
+    var timeoutMs = Number(options.timeoutMs || 8000);
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timeout = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
     options.credentials = 'same-origin';
     options.headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+    if (controller) options.signal = controller.signal;
+    delete options.timeoutMs;
     return fetch(API + path, options).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (data) {
         if (!response.ok) {
@@ -57,7 +62,7 @@
         }
         return data;
       });
-    });
+    }).finally(function () { if (timeout) clearTimeout(timeout); });
   }
   function setDeveloperState(data) {
     var authorization = data && data.authorization || {};
@@ -138,7 +143,7 @@
     }
     var button = el('v43LoginBtn');
     if (button) { button.disabled = true; button.textContent = 'Authenticating…'; }
-    request('/auth/developer-login', { method: 'POST', body: JSON.stringify(fields) }).then(function (data) {
+    request('/auth/developer-login', { method: 'POST', body: JSON.stringify(fields), timeoutMs: 5000 }).then(function (data) {
       if (!isDeveloperResponse(data)) throw new Error('Authentication failed');
       setDeveloperState(data);
       routeDeveloper(data);
@@ -154,7 +159,7 @@
       }
       // If the optional backend is unavailable, preserve the existing offline
       // login flow. Server-side developer credentials never fall back locally.
-      if (!error || !error.status || error.status >= 500) {
+      if (!error || !error.status || error.status >= 500 || error.name === 'AbortError') {
         fallbackToExistingLogin();
         return;
       }

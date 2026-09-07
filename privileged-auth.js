@@ -213,12 +213,13 @@
   document.head.appendChild(script);
 })();
 
-// Apply the final School-only navigation hierarchy after all feature modules
-// have registered their existing pages and public entry points.
+// Load the one authoritative School sidebar with a release key so browsers and
+// the CDN cannot keep serving the legacy partial navigation after deployment.
 (function loadSchoolSidebar() {
-  if (document.querySelector('script[src="/school-sidebar.js"]')) return;
+  if (document.querySelector('script[data-edutrack-school-sidebar]')) return;
   var script = document.createElement('script');
-  script.src = '/school-sidebar.js';
+  script.src = '/school-sidebar.js?v=20260907-school-nav';
   script.defer = true;
+  script.dataset.edutrackSchoolSidebar = 'true';
   document.head.appendChild(script);
 })();

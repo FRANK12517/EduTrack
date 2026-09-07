@@ -25419,18 +25419,24 @@ function v43HideError() {
 // localStorage. Superseded v43ValidateSchoolLogin (below) as of this patch —
 // that function is kept for reference but is no longer called by v43DoLogin.
 async function v43ValidateSchoolLoginRemote(region, district, accessCode, staffId, role) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), 10000) : null;
   try {
     const res = await fetch(window.location.origin + '/api/school-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ region, district, accessCode, staffId, role })
+      body: JSON.stringify({ region, district, accessCode, staffId, role }),
+      credentials: 'same-origin',
+      signal: controller ? controller.signal : undefined
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.token) return { ok: false };
     localStorage.setItem('edutrack_api_token', data.token); // matches the EDUTRACK_API bridge's token key
     return { ok: true, user: data.user };
   } catch (e) {
-    return { ok: false };
+    return { ok: false, timedOut: !!(e && e.name === 'AbortError') };
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -150163,8 +150169,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     var priorDoLogin = window.v43DoLogin;
 
     var fixed = async function () {
-      var level;
-      try { level = window.v43CurrentLevel; } catch (e) { level = null; }
+      var activeLevelButton = document.querySelector('.login-level-btn.active');
+      var level = activeLevelButton && activeLevelButton.dataset
+        ? String(activeLevelButton.dataset.level || '').toUpperCase()
+        : '';
+      if (!level) {
+        try { level = typeof v43CurrentLevel !== 'undefined' ? v43CurrentLevel : window.v43CurrentLevel; }
+        catch (e) { level = ''; }
+      }
 
       if (level !== 'SCHOOL') {
         return await priorDoLogin.apply(this, arguments);
@@ -150202,7 +150214,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         authResult = { ok: false };
       }
 
-      if (!authResult || !authResult.ok) { showFailure(); return false; }
+      if (!authResult || !authResult.ok) {
+        showFailure();
+        if (authResult && authResult.timedOut) {
+          try { if (typeof window.toast === 'function') window.toast('The server took too long to respond. Please try again.', 'error'); } catch (e) {}
+        }
+        return false;
+      }
 
       try {
         window._v43SchoolLoginContext = authResult;

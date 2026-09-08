@@ -56,6 +56,7 @@ function fixture() {
           pager: getComputedStyle(document.getElementById('sidebarPagerBar')).display,
           overflow: getComputedStyle(document.getElementById('sidebarScroll')).overflowY,
           headteacherHidden: document.getElementById('ng-cat-headteacher').hidden,
+          staffHidden: document.getElementById('school-staff-management').hidden,
           labels: Array.from(document.querySelectorAll('#sg-school-level .nav-label')).map(n => n.textContent.trim())
         }));
         assert.ok(state.visible > 10, `${role.name} must receive a populated menu`);
@@ -63,13 +64,21 @@ function fixture() {
         assert.equal(state.pager, 'none', `${role.name} must not be stranded on an empty paginated page`);
         assert.ok(['auto','scroll'].includes(state.overflow), `${role.name} sidebar must scroll`);
         assert.equal(state.headteacherHidden, !role.admin, `${role.name} RBAC mismatch`);
+        assert.equal(state.staffHidden, !role.admin, `${role.name} staff-management RBAC mismatch`);
         assert.deepEqual(state.labels.slice(0, 6), ['Dashboard','Switch Language','Setup / Config','Headteacher','Subject Config','Reports']);
         await page.locator('[data-school-nav="Dashboard"]').evaluate(n => n.click());
         assert.equal(await page.locator('#page-dashboard').evaluate(n => n.classList.contains('hidden')), false);
         await page.locator('[data-school-nav="Student Database"]').evaluate(n => n.click());
         assert.equal(await page.locator('#page-students').evaluate(n => n.classList.contains('hidden')), false);
         await page.evaluate(() => EDUTRACK_SCHOOL_SIDEBAR.toggle('ng-cat-shared'));
+        assert.equal(await page.locator('#ng-cat-shared').evaluate(n => n.classList.contains('open')), false);
+        await page.evaluate(() => EDUTRACK_SCHOOL_SIDEBAR.toggle('ng-cat-shared'));
         assert.equal(await page.locator('#ng-cat-shared').evaluate(n => n.classList.contains('open')), true);
+        assert.deepEqual(await page.locator('#school-smart-management > .nav-group-items > .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolNav)), ['AI Analytics Engine','Workflow Automation','Business Intelligence','Student Health','Library','Timetable AI','Procurement','Guidance & Counselling']);
+        assert.deepEqual(await page.locator('#school-student-admission > .nav-group-items > .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolNav)), ['New Student Admission','Transfer Admission','Student Search / Profile','Online Admission','Admissions Review']);
+        assert.deepEqual(await page.locator('#school-integrated-modules > .nav-group-items > .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolNav)), ['Communication Hub','Chat','Control Panel','Analytics Narrative','Quiz','Transport Management','Hostel Management','QR Attendance']);
+        assert.equal(await page.locator('#school-integrated-modules [data-school-nav="Online Admission"],#school-integrated-modules [data-school-nav="Admissions Review"]').count(), 0);
+        assert.equal(await page.locator('#sg-school-level').getByText('Next', { exact:true }).count(), 0);
         for (const id of await page.locator('#sg-school-level [onclick*="showPage("]').evaluateAll(nodes => nodes.map(n => (n.getAttribute('onclick').match(/showPage\('([^']+)'/)||[])[1]).filter(Boolean))) {
           assert.equal(await page.locator('#page-'+id).count(), 1, `${role.name}: unresolved route ${id}`);
         }

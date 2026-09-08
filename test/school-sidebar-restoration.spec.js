@@ -18,18 +18,20 @@ const labels = [
   'Attendance Register', 'Teacher Setup', 'Term Config', 'Attendance Report',
   'Analytics Dashboard', 'Notifications Log', 'Teacher Alert (5-Day / SISO)',
   'Teacher Critical Alert (1-Month / HR)', 'Integrity Check', 'Cloud Sync',
-  'User Management', 'Assign Class to Teachers', 'Reassign Class', 'Assign Roles',
+  'STAFF MANAGEMENT', 'User Accounts & Access Control', 'Staff Registry',
+  'Assign Class to Teachers', 'Reassign Class', 'Assign Roles',
   'Publish Results', 'Block Result', 'Publish Mock Results', 'Block Mock Result',
-  'New Student Admission', 'Transfer Admission', 'Student Search / Profile',
-  'Staff Management', 'Score Entry', 'Multi-Subject Entry', 'Mock Entry',
+  'STUDENT ADMISSION', 'New Student Admission', 'Transfer Admission',
+  'Student Search / Profile', 'Score Entry', 'Multi-Subject Entry', 'Mock Entry',
   'Pupil Setup', 'SMS Logs', 'Pupils Report', 'Audit Trail', 'Attendance Reports',
   'Automation Hub', 'Headteacher Critical Alert (3-Day)', 'SHEP Activities',
   'Subject Register', 'Sporting Activities', 'Learning Management (LMS)',
   'Student Database', 'Result Slip', 'Mock Result', 'Mock Exam Analysis',
   'Broadsheet', 'Rankings', 'Chart Analysis', 'Index Generator',
+  'SMART SCHOOL MANAGEMENT & INTELLIGENCE',
   'AI Analytics Engine', 'Workflow Automation', 'Business Intelligence',
   'Student Health', 'Library', 'Timetable AI', 'Procurement', 'Guidance & Counselling',
-  'Online Admission', 'Communication Hub', 'Chat', 'Control Panel',
+  'INTEGRATED SCHOOL MODULES', 'Online Admission', 'Communication Hub', 'Chat', 'Control Panel',
   'Analytics Narrative', 'Quiz', 'Admissions Review', 'Transport Management',
   'Hostel Management', 'QR Attendance', 'User Guide', 'Copyright',
   'Acknowledgement', 'Developer', 'Log Out'
@@ -41,7 +43,7 @@ for (const label of labels) {
 
 const renderExpression = sidebar.slice(sidebar.indexOf('wrap.innerHTML='));
 const groupOrder = [
-  'Overview', "group('ng-cat-headteacher'", "group('ng-cat-teachers'",
+  'Overview', "group('ng-cat-headteacher'", '+staff+admissions+', "group('ng-cat-teachers'",
   "group('ng-cat-shared'", "group('school-smart-management'",
   "group('school-integrated-modules'", '+info+'
 ];
@@ -56,6 +58,8 @@ assert.match(sidebar, /class="nav-group-items"/);
 assert.match(sidebar, /aria-expanded="false"/);
 assert.match(sidebar, /function toggle\(id\)/);
 assert.match(sidebar, /function activateScope\(root\)/);
+assert.match(sidebar, /function activate\(node\)/);
+assert.match(sidebar, /aria-current/);
 assert.match(sidebar, /sidebarTotalPages=1/);
 assert.match(sidebar, /sidebar\.style\.overflowY='auto'/);
 assert.match(sidebar, /scroll\.style\.webkitOverflowScrolling='touch'/);
@@ -94,7 +98,7 @@ assert.match(sidebar, /EMS_GNSIS_LIFE&&EMS_GNSIS_LIFE\.open/);
 assert.match(sidebar, /data-private-school-feature/);
 assert.match(sidebar, /ASSISTANTHEAD/);
 assert.match(server, /school-sidebar\.js/);
-assert.match(auth, /school-sidebar\.js\?v=20260908-school-nav-routes/);
+assert.match(auth, /school-sidebar\.js\?v=20260908-school-nav-consolidation/);
 assert.match(auth, /script\.dataset\.edutrackSchoolSidebar/);
 assert.match(auth, /function restoreSchoolSession\(\)/);
 assert.match(auth, /level !== 'SCHOOL' \|\| !role \|\| !staffId/);
@@ -103,5 +107,31 @@ assert.match(auth, /EDUTRACK_SCHOOL_SIDEBAR\.activateScope\(root\)/);
 for (const level of ['DISTRICT', 'REGIONAL', 'NATIONAL']) {
   assert.doesNotMatch(sidebar, new RegExp(`data-admin-level=["']${level}`));
 }
+
+function children(variable) {
+  const start = sidebar.indexOf(`var ${variable}=`);
+  const end = sidebar.indexOf(';\n', start);
+  assert.ok(start >= 0 && end > start, `missing ${variable} configuration`);
+  return Array.from(sidebar.slice(start, end).matchAll(/(?:page|api|item|sld|result)\('([^']+)'/g), item => item[1]);
+}
+assert.deepEqual(children('smart'), [
+  'AI Analytics Engine', 'Workflow Automation', 'Business Intelligence', 'Student Health',
+  'Library', 'Timetable AI', 'Procurement', 'Guidance & Counselling'
+]);
+assert.deepEqual(children('integrated'), [
+  'Communication Hub', 'Chat', 'Control Panel', 'Analytics Narrative', 'Quiz',
+  'Transport Management', 'Hostel Management', 'QR Attendance'
+]);
+assert.deepEqual(children('admissions'), [
+  'New Student Admission', 'Transfer Admission', 'Student Search / Profile',
+  'Online Admission', 'Admissions Review'
+]);
+assert.deepEqual(children('staff'), [
+  'User Accounts & Access Control', 'Staff Registry', 'Assign Class to Teachers',
+  'Reassign Class', 'Assign Roles'
+]);
+assert.doesNotMatch(sidebar.match(/var integrated=\[.*?\];/s)[0], /Online Admission|Admissions Review/);
+assert.doesNotMatch(sidebar, /GNSIS \/ Admissions/);
+assert.match(sidebar, /#sidebarPagerBar\{display:none\}/);
 
 console.log('Full school sidebar restoration and routing contract passed.');

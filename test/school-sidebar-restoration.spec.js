@@ -60,6 +60,9 @@ assert.match(sidebar, /sidebarTotalPages=1/);
 assert.match(sidebar, /sidebar\.style\.overflowY='auto'/);
 assert.match(sidebar, /scroll\.style\.webkitOverflowScrolling='touch'/);
 assert.match(sidebar, /data-school-logout="true"/);
+assert.match(sidebar, /data-school-target=/);
+assert.match(sidebar, /EDUTRACK_STAFF_MANAGEMENT_PART3&&EDUTRACK_STAFF_MANAGEMENT_PART3\.open/);
+assert.doesNotMatch(sidebar, /p3-staff-management-nav.*\.click/);
 assert.doesNotMatch(sidebar, /Coming Soon|showPage\(['"](?:gallery|login)|location\.(?:href|assign).*?(?:gallery|login)/i);
 
 // Every page() target below is an existing page or is created by the existing
@@ -91,7 +94,7 @@ assert.match(sidebar, /EMS_GNSIS_LIFE&&EMS_GNSIS_LIFE\.open/);
 assert.match(sidebar, /data-private-school-feature/);
 assert.match(sidebar, /ASSISTANTHEAD/);
 assert.match(server, /school-sidebar\.js/);
-assert.match(auth, /school-sidebar\.js\?v=20260908-school-nav-scope/);
+assert.match(auth, /school-sidebar\.js\?v=20260908-school-nav-routes/);
 assert.match(auth, /script\.dataset\.edutrackSchoolSidebar/);
 for (const level of ['DISTRICT', 'REGIONAL', 'NATIONAL']) {
   assert.doesNotMatch(sidebar, new RegExp(`data-admin-level=["']${level}`));

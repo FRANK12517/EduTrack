@@ -218,7 +218,7 @@
 (function loadSchoolSidebar() {
   if (document.querySelector('script[data-edutrack-school-sidebar]')) return;
   var script = document.createElement('script');
-  script.src = '/school-sidebar.js?v=20260908-school-nav-scope';
+  script.src = '/school-sidebar.js?v=20260908-school-nav-routes';
   script.defer = true;
   script.dataset.edutrackSchoolSidebar = 'true';
   document.head.appendChild(script);

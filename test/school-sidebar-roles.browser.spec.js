@@ -32,10 +32,10 @@ function fixture() {
     <div class="nav-supergroup open" id="sg-school-level" data-admin-level="SCHOOL"><button class="nav-supergroup-header"></button><div class="nav-supergroup-items"></div></div>
     <div class="nav-supergroup" data-admin-level="DISTRICT"></div><div class="nav-supergroup" data-admin-level="REGIONAL"></div><div class="nav-supergroup" data-admin-level="NATIONAL"></div>
   </div></nav><main>${pages}</main><script>
-    window.CONFIG={schoolType:'PRIVATE'};window.showPage=function(id,el){document.querySelectorAll('[id^=page-]').forEach(n=>n.classList.add('hidden'));var p=document.getElementById('page-'+id);if(p)p.classList.remove('hidden');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active')};
-    window.fmsShowPage=window.showPage;window.emsDoLogout=function(){};window.EMS_SLD={openSection:function(){}};
+    window.CONFIG={schoolType:'PRIVATE'};window.showPage=function(id,el){window.__lastTarget='page:'+id;document.querySelectorAll('[id^=page-]').forEach(n=>n.classList.add('hidden'));var p=document.getElementById('page-'+id);if(p)p.classList.remove('hidden');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active')};
+    window.fmsShowPage=function(id){window.__lastTarget='fms:'+id};window.emsDoLogout=function(){window.__lastTarget='session:logout'};window.EMS_SLD={openSection:function(id){window.__lastTarget='section:'+id}};window.EMS_I18N={openSwitcher:function(){window.__lastTarget='api:EMS_I18N.openSwitcher'}};window.EMS_GNSIS_LIFE={open:function(id){window.__lastTarget='workflow:'+id}};window.EDUTRACK_STAFF_MANAGEMENT_PART3={open:function(){window.__lastTarget='api:EDUTRACK_STAFF_MANAGEMENT_PART3.open'}};
     ['GES_TEACHER_ASSIGN_UI','GES_ROLE_ASSIGN_UI','GES_RESULT_PUBLISH_UI','GES_RESULT_BLOCK_UI','GES_MOCK_RESULT_PUBLISH_UI','GES_MOCK_RESULT_BLOCK_UI'].forEach(n=>window[n]={render:function(){}});
-    ['EDUTRACK_ONLINE_ADMISSIONS','EDUTRACK_COMMUNICATION_HUB','EDUTRACK_CHAT','EDUTRACK_CONTROL_PANEL','EDUTRACK_QUIZ_MODULE','EDUTRACK_ADMISSIONS_REVIEW'].forEach(n=>window[n]={open:function(){window.__opened=n}});
+    ['EDUTRACK_ONLINE_ADMISSIONS','EDUTRACK_COMMUNICATION_HUB','EDUTRACK_CHAT','EDUTRACK_CONTROL_PANEL','EDUTRACK_QUIZ_MODULE','EDUTRACK_ADMISSIONS_REVIEW'].forEach(n=>window[n]={open:function(){window.__lastTarget='api:'+n+'.open'}});
   </script></body></html>`;
 }
 
@@ -72,6 +72,15 @@ function fixture() {
         assert.equal(await page.locator('#ng-cat-shared').evaluate(n => n.classList.contains('open')), true);
         for (const id of await page.locator('#sg-school-level [onclick*="showPage("]').evaluateAll(nodes => nodes.map(n => (n.getAttribute('onclick').match(/showPage\('([^']+)'/)||[])[1]).filter(Boolean))) {
           assert.equal(await page.locator('#page-'+id).count(), 1, `${role.name}: unresolved route ${id}`);
+        }
+        if (role.name === 'Headteacher') {
+          const targets = await page.locator('#sg-school-level .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolTarget));
+          assert.ok(targets.length >= 75, `complete menu expected, received ${targets.length} leaves`);
+          assert.equal(targets.some(target => !target || /login|gallery|placeholder|comingsoon/i.test(target)), false, 'invalid School navigation target');
+          for (let index = 0; index < targets.length; index++) {
+            const result = await page.locator('#sg-school-level .school-nav-item').nth(index).evaluate(node => { window.__lastTarget=''; node.click(); return { expected:node.dataset.schoolTarget, actual:window.__lastTarget }; });
+            assert.equal(result.actual, result.expected, `leaf did not open exact target: ${JSON.stringify(result)}`);
+          }
         }
         await page.close();
       }

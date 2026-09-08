@@ -22,9 +22,12 @@ assert.match(server, /administrativeScope\.matches\(user, input\.administrativeL
 assert.match(server, /ADMINISTRATIVE_LEVEL_MISMATCH/, 'server audits scope mismatch');
 assert.match(server, /administrativeScope\.contextForUser\(user\)/, 'session exposes administrative level separately from role');
 assert.match(authClient, /admin-dashboard-separation\.js/, 'existing auth bridge loads dashboard separation');
-for (const level of ['DISTRICT','REGIONAL','NATIONAL']) assert.match(dashboard, new RegExp(level+":\\["), `${level} sidebar definition exists`);
-assert.match(dashboard, /sessionLevel\(\)!=='SCHOOL'/, 'school cleanup is scope-bound');
-assert.match(dashboard, /Access Denied: this dashboard belongs to a different administrative level/, 'cross-level routes are denied');
+assert.match(dashboard, /RETIRED_LEVELS=\['DISTRICT','REGIONAL','NATIONAL'\]/, 'legacy officer dashboards are explicitly retired');
+assert.match(dashboard, /function retireLegacyNodes\(\)/, 'legacy dashboard DOM is removed');
+assert.doesNotMatch(dashboard, /DISTRICT:\[/, 'District menu registry is removed');
+assert.doesNotMatch(dashboard, /REGIONAL:\[/, 'Regional menu registry is removed');
+assert.doesNotMatch(dashboard, /NATIONAL:\[/, 'National menu registry is removed');
+assert.match(dashboard, /dashboard unavailable/, 'retired logins fail gracefully');
 for (const loginLevel of ['NATIONAL','REGIONAL','DISTRICT','SCHOOL','PARENT','STUDENT']) assert.match(html, new RegExp(`data-level=["']${loginLevel}["']`), `${loginLevel} login card remains present`);
 assert.match(html, /Subscribe \/ Register School|Subscribe|Register School/i);
 assert.match(html, /Renew Subscription/i);

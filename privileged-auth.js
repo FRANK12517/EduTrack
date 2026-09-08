@@ -212,12 +212,14 @@
     if (typeof window.emsRouteAfterLogin === 'function') {
       window.emsRouteAfterLogin('SCHOOL', role, region, district);
     }
+    window.dispatchEvent(new CustomEvent('edutrack:school-session'));
     setTimeout(function () {
       var root = el('sg-school-level');
-      if (window.EDUTRACK_SCHOOL_SIDEBAR && root) {
-        window.EDUTRACK_SCHOOL_SIDEBAR.activateScope(root);
+      if (window.EDUTRACK_SCHOOL_SIDEBAR) {
+        if (typeof window.EDUTRACK_SCHOOL_SIDEBAR.refresh === 'function') window.EDUTRACK_SCHOOL_SIDEBAR.refresh();
+        else if (root) window.EDUTRACK_SCHOOL_SIDEBAR.activateScope(root);
       }
-    }, 0);
+    }, 250);
   }
   window.EDUTRACK_DEVELOPER_LOGOUT = function () {
     clearDeveloperState();
@@ -248,7 +250,7 @@
 (function loadSchoolSidebar() {
   if (document.querySelector('script[data-edutrack-school-sidebar]')) return;
   var script = document.createElement('script');
-  script.src = '/school-sidebar.js?v=20260908-school-nav-consolidation';
+  script.src = '/school-sidebar.js?v=20260908-school-sidebar-restoration-v2';
   script.defer = true;
   script.dataset.edutrackSchoolSidebar = 'true';
   document.head.appendChild(script);

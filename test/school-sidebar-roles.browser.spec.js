@@ -29,7 +29,6 @@ function fixture() {
     .nav-supergroup-items,.nav-group-items{display:none}.open>.nav-supergroup-items,.open>.nav-group-items{display:block}
     [hidden]{display:none!important}.hidden{display:none}.nav-item.active{background:#def}
   </style></head><body><nav class="sidebar" id="sidebar"><div id="sidebarPagerBar"><button>Back</button><button>Next</button></div><div id="sidebarScroll">
-    <div class="nav-supergroup open" id="sg-school-level" data-admin-level="SCHOOL"><button class="nav-supergroup-header"></button><div class="nav-supergroup-items"></div></div>
     <div class="nav-supergroup" data-admin-level="DISTRICT"></div><div class="nav-supergroup" data-admin-level="REGIONAL"></div><div class="nav-supergroup" data-admin-level="NATIONAL"></div>
   </div></nav><main>${pages}</main><script>
     window.CONFIG={schoolType:'PRIVATE'};window.showPage=function(id,el){window.__lastTarget='page:'+id;document.querySelectorAll('[id^=page-]').forEach(n=>n.classList.add('hidden'));var p=document.getElementById('page-'+id);if(p)p.classList.remove('hidden');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active')};
@@ -49,7 +48,8 @@ function fixture() {
         await page.goto('http://sidebar.test/');
         await page.evaluate((name) => { localStorage.setItem('v43_login_level','SCHOOL'); localStorage.setItem('v43_login_role',name); }, role.name);
         await page.addScriptTag({ path: sidebarPath });
-        await page.evaluate(() => { EDUTRACK_SCHOOL_SIDEBAR.build(); EDUTRACK_SCHOOL_SIDEBAR.activateScope(document.getElementById('sg-school-level')); });
+        await page.evaluate(() => EDUTRACK_SCHOOL_SIDEBAR.refresh());
+        assert.equal(await page.locator('#sg-school-level').count(), 1, 'missing School root must be reconstructed');
         const state = await page.evaluate(() => ({
           visible: Array.from(document.querySelectorAll('#sg-school-level .school-nav-item,#sg-school-level .school-nav-group')).filter(n => getComputedStyle(n).display !== 'none').length,
           upperVisible: Array.from(document.querySelectorAll('[data-admin-level]:not([data-admin-level=SCHOOL])')).filter(n => getComputedStyle(n).display !== 'none').length,
@@ -57,7 +57,7 @@ function fixture() {
           overflow: getComputedStyle(document.getElementById('sidebarScroll')).overflowY,
           headteacherHidden: document.getElementById('ng-cat-headteacher').hidden,
           staffHidden: document.getElementById('school-staff-management').hidden,
-          labels: Array.from(document.querySelectorAll('#sg-school-level .nav-label')).map(n => n.textContent.trim())
+          labels: Array.from(document.querySelectorAll('#sg-school-level > .nav-supergroup-items .nav-label')).map(n => n.textContent.trim())
         }));
         assert.ok(state.visible > 10, `${role.name} must receive a populated menu`);
         assert.equal(state.upperVisible, 0, `${role.name} must not see upper-level navigation`);

@@ -1,31 +1,8 @@
 'use strict';
-
-const assert = require('assert');
-const path = require('path');
-const { chromium } = require('playwright');
-
-(async()=>{
-  const browser=await chromium.launch({headless:true,executablePath:process.env.EDUTRACK_BROWSER_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'});
-  try{
-    for(const viewport of [{width:1280,height:900},{width:390,height:844}]){
-      const page=await browser.newPage({viewport,hasTouch:viewport.width<600,isMobile:viewport.width<600});
-      await page.route('http://edutrack.test/',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="login-screen"></div><div class="topbar"></div><div class="shell"><aside id="sidebarScroll"><div class="nav-group">District Level Officers</div><div class="nav-item">School Dashboard</div></aside></div></body></html>'}));
-      await page.goto('http://edutrack.test/');
-      await page.addScriptTag({path:path.join(__dirname,'..','admin-dashboard-separation.js')});
-      for(const data of [{level:'DISTRICT',role:'District Examination Officer'},{level:'REGIONAL',role:'Regional ICT Coordinator'},{level:'NATIONAL',role:'National Accountant'}]){
-        await page.evaluate(data=>window.EDUTRACK_ADMIN_DASHBOARDS.render(data.level,data.role,'Greater Accra','Accra Metro'),data);
-        const shell=page.locator('#admin-level-shell');
-        await shell.waitFor({state:'visible'});
-        assert.equal(await shell.getAttribute('data-administrative-level'),data.level);
-        assert.match(await shell.locator('.als-context').textContent(),new RegExp(data.level+' GENERAL DASHBOARD'));
-        assert.equal(await page.locator('.shell').isVisible(),false,'school shell is not used by '+data.level);
-      }
-      if(viewport.width<600){assert.equal(await page.locator('.als-menu').isVisible(),true);const size=await page.locator('.als-menu').boundingBox();assert.ok(size.width>=44&&size.height>=44);}
-      await page.evaluate(()=>{localStorage.setItem('v43_login_level','SCHOOL');window.EDUTRACK_ADMIN_DASHBOARDS.restoreSchool();});
-      assert.equal(await page.locator('.shell').isVisible(),true);
-      assert.equal(await page.getByText('District Level Officers',{exact:true}).count(),0,'upper-level entry removed from school sidebar DOM');
-      await page.close();
-    }
-    console.log('PASS part68 desktop and mobile administrative dashboard separation');
-  }finally{await browser.close();}
-})().catch(error=>{console.error(error);process.exitCode=1;});
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {chromium}=require('playwright');
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.EDUTRACK_BROWSER_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'});try{for(const viewport of [{width:1280,height:900},{width:390,height:844}]){const page=await browser.newPage({viewport});await page.route('http://edutrack.test/',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head></head><body><div id="login-screen" style="display:flex"><div class="login-card">${['NATIONAL','REGIONAL','DISTRICT','SCHOOL','PARENT','STUDENT'].map(level=>`<button class="login-level-btn" data-level="${level}">${level}</button>`).join('')}</div></div><div class="topbar"></div><div class="shell"><aside id="sidebarScroll"><div id="sg-district-level" data-admin-level="DISTRICT"></div><div id="sg-regional-level" data-admin-level="REGIONAL"></div><div id="sg-national-level" data-admin-level="NATIONAL"></div><div id="sg-school-level" data-admin-level="SCHOOL"></div></aside></div><section id="upper-level-dashboard"></section><section id="admin-level-shell"></section></body></html>`}));await page.goto('http://edutrack.test/');await page.addScriptTag({path:path.join(__dirname,'..','admin-dashboard-separation.js')});
+assert.equal(await page.locator('.login-level-btn').count(),6,'all login cards remain');assert.equal(await page.locator('[data-admin-level="DISTRICT"],[data-admin-level="REGIONAL"],[data-admin-level="NATIONAL"],#upper-level-dashboard,#admin-level-shell').count(),0,'legacy upper-level runtime is removed');
+for(const lv of ['DISTRICT','REGIONAL','NATIONAL']){await page.evaluate(level=>window.EDUTRACK_ADMIN_DASHBOARDS.render(level),lv);assert.equal(await page.locator('#login-screen').isVisible(),true,lv+' returns to login');assert.match(await page.locator('#retired-admin-notice').textContent(),new RegExp(lv,'i'));assert.equal(await page.locator('.shell').isVisible(),false,lv+' cannot expose School dashboard');assert.equal(await page.locator('.login-level-btn').count(),6,lv+' login cards remain')}
+await page.evaluate(()=>{localStorage.setItem('v43_login_level','SCHOOL');window.EDUTRACK_ADMIN_DASHBOARDS.restoreSchool()});assert.notEqual(await page.locator('.shell').evaluate(node=>getComputedStyle(node).display),'none');assert.equal(await page.locator('#sg-school-level').count(),1);await page.close()}console.log('PASS retired upper-level dashboards and preserved login cards on desktop/mobile')}finally{await browser.close()}})().catch(error=>{console.error(error);process.exitCode=1});

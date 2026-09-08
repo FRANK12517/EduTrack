@@ -11,10 +11,9 @@ assert.match(auth, /timeoutMs:\s*5000/, 'developer probe must not leave ordinary
 assert.match(auth, /AbortController/, 'authentication probe must be cancellable');
 assert.match(auth, /error\.name === 'AbortError'/, 'a timed-out optional developer probe must fall back to ordinary login');
 
-for (const level of ['DISTRICT', 'REGIONAL', 'NATIONAL']) {
-  assert.match(dashboards, new RegExp(`${level}:\\[`), `${level} general dashboard configuration is missing`);
-}
-assert.match(dashboards, /current&&current!==['"]SCHOOL['"]\)return render/, 'upper-level logins must route to their general dashboard');
+assert.match(dashboards, /RETIRED_LEVELS/, 'retired upper-level dashboard guard must be installed');
+assert.match(dashboards, /return showUnavailable\(current\)/, 'upper-level logins must fail gracefully');
+assert.doesNotMatch(dashboards, /Officer Workspace/, 'obsolete upper-level dashboard navigation is removed');
 assert.match(html, /emsRouteAfterLogin\('SCHOOL'/, 'school login must route through the shared dashboard dispatcher');
 assert.match(html, /showPageById\('dashboard'\)/, 'school routing must open the general dashboard');
 

@@ -13,7 +13,11 @@ assert.match(remoteValidator[0], /credentials:\s*'same-origin'/, 'school authent
 const deterministicFix = html.match(/<script id="edutrack-school-login-deterministic-fix">([\s\S]*?)<\/script>/);
 assert.ok(deterministicFix, 'final deterministic school-login wrapper must exist');
 assert.match(deterministicFix[1], /\.login-level-btn\.active/, 'school login must resolve the visible active level');
-assert.match(deterministicFix[1], /emsRouteAfterLogin\('SCHOOL'/, 'successful school login must open the school dashboard');
+assert.match(deterministicFix[1], /openSchoolGeneralDashboard\(\)/, 'successful school login must open the school dashboard');
+assert.match(deterministicFix[1], /function openSchoolGeneralDashboard\(\)/, 'school login must have an explicit dashboard opener');
+assert.match(deterministicFix[1], /getElementById\('page-dashboard'\)/, 'school login must target the School General Dashboard page');
+assert.match(deterministicFix[1], /data-school-dashboard-open/, 'successful school login must mark the dashboard as opened');
+assert.match(deterministicFix[1], /setTimeout\(function \(\).*openSchoolGeneralDashboard\(\)/s, 'school login must retry if the shell is still loading');
 assert.match(deterministicFix[1], /authResult\.timedOut/, 'a timed-out login must restore a usable state');
 
 console.log('School login authenticating-state regression suite passed.');

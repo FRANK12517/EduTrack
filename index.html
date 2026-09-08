@@ -150240,16 +150240,30 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
       try { if (typeof window.liveUpdateTopbar === 'function') window.liveUpdateTopbar(); } catch (e) { /* cosmetic only */ }
 
-      var loginEl = document.getElementById('login-screen');
-      if (loginEl) loginEl.style.display = 'none';
-      if (overlay) overlay.classList.remove('show');
-      try { document.querySelectorAll('.topbar, .shell').forEach(function (el) { el.style.display = ''; }); } catch (e) {}
+      function openSchoolGeneralDashboard() {
+        var loginEl = document.getElementById('login-screen');
+        if (loginEl) { loginEl.classList.remove('show'); loginEl.classList.remove('fade-out'); loginEl.style.display = 'none'; }
+        if (overlay) overlay.classList.remove('show');
+        try { document.querySelectorAll('.topbar, .shell').forEach(function (el) { el.style.display = ''; }); } catch (e) {}
+        var page = document.getElementById('page-dashboard');
+        if (!page) throw new Error('School General Dashboard is unavailable');
+        if (typeof window.showPage === 'function') {
+          window.showPage('dashboard', document.querySelector(".nav-item[onclick*=\"'dashboard'\"]"));
+        } else if (typeof window.showPageById === 'function') {
+          window.showPageById('dashboard');
+        } else {
+          document.querySelectorAll('[id^="page-"]').forEach(function (el) { el.classList.add('hidden'); });
+          page.classList.remove('hidden');
+        }
+        page.classList.remove('hidden');
+        page.setAttribute('data-school-dashboard-open', 'true');
+        return true;
+      }
 
-      try {
-        if (typeof window.emsRouteAfterLogin === 'function') window.emsRouteAfterLogin('SCHOOL', role, region, district);
-        else if (typeof window.showPageById === 'function') window.showPageById('dashboard');
-      } catch (e) {
-        try { if (typeof window.showPageById === 'function') window.showPageById('dashboard'); } catch (e2) {}
+      try { openSchoolGeneralDashboard(); }
+      catch (e) {
+        // A late-loading shell must not strand a valid login on Authenticating.
+        setTimeout(function () { try { openSchoolGeneralDashboard(); } catch (retryError) {} }, 0);
       }
 
       if (btn) { btn.textContent = 'Enter System'; btn.disabled = false; }

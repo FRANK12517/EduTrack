@@ -190,16 +190,46 @@
       if (login) { login.style.display = 'flex'; login.classList.remove('fade-out'); }
     });
   }
+  function restoreSchoolSession() {
+    var mode = '', level = '', role = '', staffId = '', region = '', district = '';
+    try {
+      mode = localStorage.getItem(DEV_MODE_KEY) || '';
+      level = String(localStorage.getItem('v43_login_level') || '').toUpperCase();
+      role = localStorage.getItem('v43_login_role') || '';
+      staffId = localStorage.getItem('v43_login_staffid') || '';
+      region = localStorage.getItem('ems_login_region') || '';
+      district = localStorage.getItem('ems_login_district') || '';
+    } catch (error) { return; }
+    if (mode === 'developer' || level !== 'SCHOOL' || !role || !staffId) return;
+    var login = el('login-screen');
+    var overlay = el('loginSuccessOverlay');
+    if (overlay) overlay.classList.remove('show');
+    if (login) {
+      login.classList.remove('show', 'fade-out');
+      login.style.display = 'none';
+    }
+    if (typeof window.emsHideUpperLevelDashboard === 'function') window.emsHideUpperLevelDashboard();
+    if (typeof window.emsRouteAfterLogin === 'function') {
+      window.emsRouteAfterLogin('SCHOOL', role, region, district);
+    }
+    setTimeout(function () {
+      var root = el('sg-school-level');
+      if (window.EDUTRACK_SCHOOL_SIDEBAR && root) {
+        window.EDUTRACK_SCHOOL_SIDEBAR.activateScope(root);
+      }
+    }, 0);
+  }
   window.EDUTRACK_DEVELOPER_LOGOUT = function () {
     clearDeveloperState();
     return request('/auth/logout', { method: 'POST' }).catch(function () {});
   };
   window.EDUTRACK_DEVELOPER_AUTH = { clear: clearDeveloperState, login: tryDeveloperLogin };
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { bind(); restoreDeveloperSession(); });
+    document.addEventListener('DOMContentLoaded', function () { bind(); restoreDeveloperSession(); restoreSchoolSession(); });
   } else {
     bind();
     restoreDeveloperSession();
+    restoreSchoolSession();
   }
 })();
 

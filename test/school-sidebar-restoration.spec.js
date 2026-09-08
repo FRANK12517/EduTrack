@@ -96,6 +96,10 @@ assert.match(sidebar, /ASSISTANTHEAD/);
 assert.match(server, /school-sidebar\.js/);
 assert.match(auth, /school-sidebar\.js\?v=20260908-school-nav-routes/);
 assert.match(auth, /script\.dataset\.edutrackSchoolSidebar/);
+assert.match(auth, /function restoreSchoolSession\(\)/);
+assert.match(auth, /level !== 'SCHOOL' \|\| !role \|\| !staffId/);
+assert.match(auth, /emsRouteAfterLogin\('SCHOOL', role, region, district\)/);
+assert.match(auth, /EDUTRACK_SCHOOL_SIDEBAR\.activateScope\(root\)/);
 for (const level of ['DISTRICT', 'REGIONAL', 'NATIONAL']) {
   assert.doesNotMatch(sidebar, new RegExp(`data-admin-level=["']${level}`));
 }

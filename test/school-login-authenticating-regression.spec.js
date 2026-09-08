@@ -3,6 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'latin1');
+const gallery = html.match(/<div id="v128-ems-gallery"[\s\S]*?<\/script>/);
+assert.ok(gallery, 'login gallery markup and loader must exist');
+assert.equal((gallery[0].match(/class="school-gallery-item"/g) || []).length, 4, 'login gallery must contain four pictures');
+assert.match(gallery[0], /setAttribute\("loading","eager"\)/, 'all gallery pictures must load eagerly');
+assert.match(gallery[0], /fetchpriority","high"/, 'all gallery pictures must request high priority');
 const remoteValidator = html.match(/async function v43ValidateSchoolLoginRemote[\s\S]*?\r?\n}/);
 assert.ok(remoteValidator, 'remote school-login validator must exist');
 assert.match(remoteValidator[0], /AbortController/, 'school authentication request must be cancellable');

@@ -25430,9 +25430,9 @@ async function v43ValidateSchoolLoginRemote(region, district, accessCode, staffI
       signal: controller ? controller.signal : undefined
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.token) return { ok: false };
+    if (!res.ok || !data.token) return { ok: false, status: res.status };
     localStorage.setItem('edutrack_api_token', data.token); // matches the EDUTRACK_API bridge's token key
-    return { ok: true, user: data.user };
+    return { ok: true, user: data.user, token: data.token };
   } catch (e) {
     return { ok: false, timedOut: !!(e && e.name === 'AbortError') };
   } finally {
@@ -150208,10 +150208,28 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       if (btn) { btn.textContent = '⏳ Authenticating...'; btn.disabled = true; }
 
       var authResult;
+      var localResult = null;
       try {
-        authResult = await window.v43ValidateSchoolLoginRemote(region, district, code, staffId, role);
+        if (typeof window.v43ValidateSchoolLogin === 'function') {
+          localResult = window.v43ValidateSchoolLogin(region, district, code, staffId);
+        }
+      } catch (e) { localResult = null; }
+      try {
+        var remotePromise = window.v43ValidateSchoolLoginRemote(region, district, code, staffId, role);
+        var deadline = new Promise(function (resolve) {
+          setTimeout(function () { resolve({ ok: false, timedOut: true, status: 408 }); }, 9500);
+        });
+        authResult = await Promise.race([remotePromise, deadline]);
       } catch (e) {
-        authResult = { ok: false };
+        authResult = { ok: false, unavailable: true };
+      }
+      // Keep the server as the authority when it responds. If it is unavailable
+      // or times out, preserve the existing local School credential flow so a
+      // valid registered School account is never stranded on Authenticating.
+      if ((!authResult || !authResult.ok) && localResult && localResult.ok &&
+          String((localResult.teacher || {}).role || '').toLowerCase() === role.toLowerCase() &&
+          (!authResult || authResult.unavailable || authResult.timedOut || authResult.status >= 500)) {
+        authResult = Object.assign({}, localResult, { offlineFallback: true });
       }
 
       if (!authResult || !authResult.ok) {

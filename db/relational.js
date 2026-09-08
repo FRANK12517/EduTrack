@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
+const subscriptionPolicy = require('../app/subscription-policy');
 
 const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL || '';
 const SCHEMA_VERSION = 25;
@@ -340,12 +341,13 @@ async function claimFirstTermFree(schoolId, options = {}) {
     const endDate = term.endDate || new Date(now.getTime() + 89 * 86400000).toISOString().slice(0,10);
     const [countRows] = await conn.query("SELECT COUNT(*) AS count FROM students WHERE school_id=? AND status='ACTIVE'", [schoolId]);
     const activeStudentCount = Number(countRows[0]?.count || 0);
-    const economicValue = activeStudentCount;
+    const governmentRate = subscriptionPolicy.SCHOOL_TYPE_RATES.government;
+    const economicValue = activeStudentCount * governmentRate;
     await conn.query('UPDATE schools SET first_term_free_used=TRUE,first_term_free_used_at=?,updated_at=? WHERE id=?', [now, now, schoolId]);
     if (options.userId) {
       const subId = newId('sub');
       const expires = new Date(`${endDate}T23:59:59.999Z`);
-      await conn.query('INSERT INTO subscriptions (id,user_id,school_id,plan_id,school_type,term_id,academic_year,term_number,government_term_reference,private_reopening_date,private_vacation_date,subscription_sequence,status,starts_at,expires_at,subscription_start_date,subscription_end_date,active_student_count_at_subscription,price_per_student,subscription_amount,economic_value,currency,payment_status,payment_reference,payment_provider,last_transaction_id,renewal_state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [subId, options.userId, schoolId, 'government', 'government', termId, academicYear, termNumber, term.governmentTermReference || termId, null, null, 1, 'ACTIVE', iso(now), iso(expires), startDate, endDate, activeStudentCount, 1.00, 0.00, economicValue, 'GHS', 'free', null, 'internal_policy', null, 'FIRST_TERM_FREE', iso(now), iso(now)]);
+      await conn.query('INSERT INTO subscriptions (id,user_id,school_id,plan_id,school_type,term_id,academic_year,term_number,government_term_reference,private_reopening_date,private_vacation_date,subscription_sequence,status,starts_at,expires_at,subscription_start_date,subscription_end_date,active_student_count_at_subscription,price_per_student,subscription_amount,economic_value,currency,payment_status,payment_reference,payment_provider,last_transaction_id,renewal_state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [subId, options.userId, schoolId, 'government', 'government', termId, academicYear, termNumber, term.governmentTermReference || termId, null, null, 1, 'ACTIVE', iso(now), iso(expires), startDate, endDate, activeStudentCount, governmentRate, 0.00, economicValue, 'GHS', 'free', null, 'internal_policy', null, 'FIRST_TERM_FREE', iso(now), iso(now)]);
     }
     await conn.commit();
     return { claimed: true, school: { ...school, first_term_free_used: true, first_term_free_used_at: now }, activeStudentCount, economicValueGhs: economicValue, termId, academicYear, termNumber, governmentTermReference: term.governmentTermReference || termId };

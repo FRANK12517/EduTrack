@@ -16,11 +16,11 @@ const EMAIL = 'part57-complete@example.invalid';
 const PASSWORD = 'part57 secure password';
 const ACCESS = 'part57-access-code';
 
-for (const [count, expected] of [[1, 1], [100, 100], [300, 300], [325, 325]]) {
-  const quote = policy.calculateSubscriptionAmount(count);
+for (const [count, expected] of [[1, 5], [100, 500], [300, 1500], [325, 1625]]) {
+  const quote = policy.calculateSubscriptionAmount(count, 'private');
   assert.equal(quote.amountGhs, expected);
   assert.equal(quote.amountMinor, expected * 100);
-  assert.equal(quote.pricePerStudentGhs, 1);
+  assert.equal(quote.pricePerStudentGhs, 5);
 }
 assert.equal(policy.normalizeSchoolType('Government School'), 'government');
 assert.equal(policy.normalizeSchoolType('Private School'), 'private');
@@ -88,8 +88,8 @@ async function run() {
     const first = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie, origin: BASE, 'x-idempotency-key': 'private-term-1' }, body: JSON.stringify(base) });
     assert.equal(first.status, 201);
     const firstPayload = await first.json();
-    assert.equal(firstPayload.amountGhs, 325);
-    assert.equal(firstPayload.amount, 32500);
+    assert.equal(firstPayload.amountGhs, 1625);
+    assert.equal(firstPayload.amount, 162500);
     assert.equal(firstPayload.activeStudentCount, 325);
     assert.equal(firstPayload.schoolType, 'private');
     assert.equal(firstPayload.subscriptionSequence, 1);

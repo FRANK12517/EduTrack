@@ -5155,17 +5155,17 @@ td input, td select, td textarea, td button {
         <div class="pkg-grid">
           <div class="pkg-card" id="pkg-government" onclick="subSelectPkg('government',this)">
             <div class="pkg-icon">🏛️</div>
-            <div class="pkg-name">Government/Public School</div>
-            <div class="pkg-price">GH₵1 per active student / term</div>
+            <div class="pkg-name">Public / Government School</div>
+            <div class="pkg-price">GH₵2 per active student / term</div>
             <div class="pkg-period">Per Active Student · Per Academic Term</div>
-            <ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Central government calendar</li><li>First term free once</li></ul>
+            <ul class="pkg-features"><li>Unlimited Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Central government calendar</li><li>First term free once</li></ul>
           </div>
           <div class="pkg-card" id="pkg-private" onclick="subSelectPkg('private',this)">
             <div class="pkg-icon">🏫</div>
             <div class="pkg-name">Private School</div>
-            <div class="pkg-price">GH₵1 per active student / term</div>
+            <div class="pkg-price">GH₵5 per active student / term</div>
             <div class="pkg-period">Per Active Student · Per Academic Term</div>
-            <ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed calendar</li></ul>
+            <ul class="pkg-features"><li>Unlimited Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed calendar</li></ul>
           </div>
         </div>
         <div id="sub-pkg-error" style="color:#c0392b;font-size:.78rem;margin-top:.5rem;display:none">⚠ Please select a subscription package.</div>
@@ -40840,12 +40840,12 @@ function subGetSchoolStatus(school) {
 }
 
 function subGetPackagePrice(pkg) {
-  const map = { government:'GH₵1 per active student / term', private:'GH₵1 per active student / term' };
+  const map = { government:'GH₵2 per active student / term', private:'GH₵5 per active student / term' };
   return map[pkg] || '—';
 }
 
 function subGetPackageName(pkg) {
-  const map = { government:'Government/Public School', private:'Private School' };
+  const map = { government:'Public / Government School', private:'Private School' };
   return map[pkg] || pkg;
 }
 
@@ -43746,8 +43746,8 @@ window.addEventListener('load', function v61Init() {
     security:'ems_sa_rebuild_security_v1'
   };
   var PACKAGE_DEFS = {
-    government:{id:'government',code:'GOVERNMENT',name:'Government/Public School',price:130,billingPeriod:'term',durationDays:null,status:'active',rights:['Full EduTrack application access','Student management','Teacher/staff management','Attendance','Examination management','Score entry','Broadsheet','Format A/B/C','Result slips','Mock examinations','Result publication','Analysis and rankings','KG assessment','Conduct, attitude and interest','Remarks','Announcements','Parent/student dashboards','Reports and printing','Mobile/PWA','Offline functionality','Automatic synchronization','Subscription management','Existing authorized features'],restrictions:[]},
-    private:{id:'private',code:'PRIVATE',name:'Private School',price:200,billingPeriod:'term',durationDays:null,status:'active',rights:['Full EduTrack application access','All core school-management functionality','500 SMS credits per paid term','SMS balance tracking','Existing authorized features'],restrictions:[]}
+    government:{id:'government',code:'GOVERNMENT',name:'Public / Government School',price:2,billingPeriod:'term',durationDays:null,status:'active',rights:['Full EduTrack application access','Student management','Teacher/staff management','Attendance','Examination management','Score entry','Broadsheet','Format A/B/C','Result slips','Mock examinations','Result publication','Analysis and rankings','KG assessment','Conduct, attitude and interest','Remarks','Announcements','Parent/student dashboards','Reports and printing','Mobile/PWA','Offline functionality','Automatic synchronization','Subscription management','Existing authorized features'],restrictions:[]},
+    private:{id:'private',code:'PRIVATE',name:'Private School',price:5,billingPeriod:'term',durationDays:null,status:'active',rights:['Full EduTrack application access','All core school-management functionality','500 SMS credits per paid term','SMS balance tracking','Existing authorized features'],restrictions:[]}
   };
   var CLASSES = ['KG 1','KG 2','Basic 1','Basic 2','Basic 3','Basic 4','Basic 5','Basic 6','JHS 1','JHS 2','JHS 3'];
   var GH = {
@@ -45470,8 +45470,8 @@ window.addEventListener('load', function v61Init() {
   };
 
   var PACKAGE_DEFS = {
-    government: { id:'government', code:'GOVERNMENT', name:'Government/Public School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'One free first term for eligible Government/Public schools; subsequent terms are GH₵1 per active student / term.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','Central government calendar','Optional paid SMS credits'], restrictions:[] },
-    private: { id:'private', code:'PRIVATE', name:'Private School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'Paid term renewal at GH₵1 per active student / term with 500 SMS credits.', access:['Full EduTrack application access','Up to 300 students','Up to 15 teachers/staff','School-managed calendar','500 SMS credits per term'], restrictions:[] }
+    government: { id:'government', code:'GOVERNMENT', name:'Public / Government School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'One free first term for eligible Government/Public schools; subsequent terms are GH₵2 per active student / term.', access:['Full EduTrack application access','Unlimited students','Up to 15 teachers/staff','Central government calendar','Optional paid SMS credits'], restrictions:[] },
+    private: { id:'private', code:'PRIVATE', name:'Private School', status:'active', billingPeriod:'term', durationDays:null, renewalRule:'Paid term renewal at GH₵5 per active student / term with 500 SMS credits.', access:['Full EduTrack application access','Unlimited students','Up to 15 teachers/staff','School-managed calendar','500 SMS credits per term'], restrictions:[] }
   };var CLASS_OPTIONS = ['KG 1','KG 2','Basic 1','Basic 2','Basic 3','Basic 4','Basic 5','Basic 6','JHS 1','JHS 2','JHS 3'];
 
   function get(k, fallback){ try{ var v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?fallback:v; }catch(e){ return fallback; } }
@@ -51145,32 +51145,32 @@ const GH_REGIONS_DISTRICTS = {
 
 function v67GetPrices() {
   return {
-    government: { amount: 1, pricePerStudentGhs: 1, label: 'Government/Public School' },
-    private: { amount: 1, pricePerStudentGhs: 1, label: 'Private School' },
+    government: { amount: 2, pricePerStudentGhs: 2, label: 'Public / Government School' },
+    private: { amount: 5, pricePerStudentGhs: 5, label: 'Private School' },
     updatedBy: 'EduTrack pricing policy', updatedAt: ''
   };
 }
 
 function v67SavePrices() {
-  if (typeof toast === 'function') toast('Pricing is fixed at GH₵1 per active student per academic term and is calculated by the server.', 'info');
+  if (typeof toast === 'function') toast('Pricing is fixed at GH₵2 for Government/Public schools and GH₵5 for Private schools per active student per academic term, calculated by the server.', 'info');
   v67RenderPriceControlModule();
 }
 
 function v67SyncPricesToUI() {
   ['#pkg-government .pkg-price', '#subv2-renew-price-government', '#pkg-private .pkg-price', '#subv2-renew-price-private'].forEach(function(selector) {
-    document.querySelectorAll(selector).forEach(function(el) { el.textContent = 'GH₵1 per active student / term'; });
+    document.querySelectorAll(selector).forEach(function(el) { el.textContent = selector.indexOf('government')>=0 ? 'GH₵2 per active student / term' : 'GH₵5 per active student / term'; });
   });
   const amtEl = document.getElementById('sub-pay-amount-val');
   if (amtEl && window.subSelectedPkg) amtEl.textContent = 'Calculated from active students at checkout';
 }
 
 const _origSubGetPackagePrice = window.subGetPackagePrice;
-window.subGetPackagePrice = function() { return 'GH₵1 per active student / term'; };
+window.subGetPackagePrice = function(pkg) { return (pkg || window.subSelectedPkg) === 'government' ? 'GH₵2 per active student / term' : 'GH₵5 per active student / term'; };
 
 function v67RenderPriceControlModule() {
   const container = document.getElementById('v67-price-control-module');
   if (!container) return;
-  container.innerHTML = '<div style="background:linear-gradient(135deg,#0d1b3e,#1a3a6b);color:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem"><h3 style="font-size:.95rem;font-weight:800;margin-bottom:.25rem">Subscription Pricing Policy</h3><p style="font-size:.78rem;opacity:.9">GH₵1 per active student per academic term. The server calculates the active-student count when a payment is initialized; client-side prices and administrator overrides are not accepted.</p></div>';
+  container.innerHTML = '<div style="background:linear-gradient(135deg,#0d1b3e,#1a3a6b);color:#fff;border-radius:10px;padding:1rem;margin-bottom:1rem"><h3 style="font-size:.95rem;font-weight:800;margin-bottom:.25rem">Subscription Pricing Policy</h3><p style="font-size:.78rem;opacity:.9">GH₵2 for Government/Public schools and GH₵5 for Private schools per active student per academic term. The server calculates the active-student count when a payment is initialized; client-side prices and administrator overrides are not accepted.</p></div>';
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -52030,7 +52030,7 @@ function v70Set(k,v)  { try { localStorage.setItem(k, JSON.stringify(v)); } catc
 
 // ── PACKAGE META ──────────────────────────────────────────────────────────
 const V70_PACKAGES = [
-  { id: 'government', label: '🏛️ Government/Public School', icon: '🏛️' },
+  { id: 'government', label: '🏛️ Public / Government School', icon: '🏛️' },
   { id: 'private',    label: '🏫 Private School',            icon: '🏫' },
 ];
 
@@ -52052,7 +52052,7 @@ function v70GetActivePrices() {
 // ── APPLY ACTIVE PRICES TO UI (subscription pages) ────────────────────────
 function v70SyncPricesToUI() {
   ['#pkg-government .pkg-price', '#subv2-renew-price-government', '#pkg-private .pkg-price', '#subv2-renew-price-private'].forEach(function(selector) {
-    document.querySelectorAll(selector).forEach(function(el) { el.textContent = 'GH₵1 per active student / term'; });
+    document.querySelectorAll(selector).forEach(function(el) { el.textContent = selector.indexOf('government')>=0 ? 'GH₵2 per active student / term' : 'GH₵5 per active student / term'; });
   });
   const amtEl = document.getElementById('sub-pay-amount-val');
   if (amtEl && window.subSelectedPkg) amtEl.textContent = 'Calculated from active students at checkout';
@@ -52222,7 +52222,7 @@ function v70ActivatePrice(recId) {
 
 // ── SAVE FORM HANDLER ─────────────────────────────────────────────────────
 window.v70SavePriceForm = function() {
-  if (typeof toast === 'function') toast('Pricing is fixed at GH₵1 per active student per academic term. Use the server quote for the payable amount.', 'info');
+  if (typeof toast === 'function') toast('Pricing is fixed at GH₵2 for Government/Public schools and GH₵5 for Private schools per active student per academic term. Use the server quote for the payable amount.', 'info');
 };
 
 window.v70DeactivatePrice = v70DeactivatePrice;
@@ -147455,7 +147455,7 @@ window.SRG_ANNUAL = (function(){
     type=(type==='public'||type==='government')?'government':(type==='private'?'private':null);if(!type)return;
     var card=byId('subv2-renew-pkg-'+type);if(typeof window.subv2RenewSelectPackage==='function')window.subv2RenewSelectPackage(type,card);
     document.querySelectorAll('#subv2-renew-package-grid .pkg-card').forEach(function(c){c.style.display=c.id==='subv2-renew-pkg-'+type?'':'none'});
-    var label=byId('subv2-renew-package-label');if(label)label.textContent=type==='government'?'Government/Public School':'Private School';
+    var label=byId('subv2-renew-package-label');if(label)label.textContent=type==='government'?'Public / Government School':'Private School';
   }
   function install(){
     var grid=byId('subv2-renew-package-grid');if(!grid)return;
@@ -147923,12 +147923,12 @@ if(document.body)new MutationObserver(install).observe(document.body,{childList:
             '<div class="sub-section-title" style="margin-top:1rem">② Select Subscription Package</div>' +
             '<div id="subv2-renew-package-grid" class="pkg-grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">' +
               '<div class="pkg-card" id="subv2-renew-pkg-government" onclick="subv2RenewSelectPackage(\'government\',this)">' +
-                '<div class="pkg-icon">🏛️</div><div class="pkg-name">Government/Public School</div><div class="pkg-price" id="subv2-renew-price-government">GH₵1 per active student / term</div><div class="pkg-period">Per Active Student · Per Academic Term</div>' +
-                '<ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Centrally controlled government calendar</li><li>Optional paid SMS credits</li></ul>' +
+                '<div class="pkg-icon">🏛️</div><div class="pkg-name">Public / Government School</div><div class="pkg-price" id="subv2-renew-price-government">GH₵2 per active student / term</div><div class="pkg-period">Per Active Student · Per Academic Term</div>' +
+                '<ul class="pkg-features"><li>Unlimited Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>Centrally controlled government calendar</li><li>Optional paid SMS credits</li></ul>' +
               '</div>' +
               '<div class="pkg-card" id="subv2-renew-pkg-private" onclick="subv2RenewSelectPackage(\'private\',this)">' +
-                '<div class="pkg-icon">🏫</div><div class="pkg-name">Private School</div><div class="pkg-price" id="subv2-renew-price-private">GH₵1 per active student / term</div><div class="pkg-period">Per Active Student · Per Academic Term</div>' +
-                '<ul class="pkg-features"><li>Up to 300 Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed academic calendar</li></ul>' +
+                '<div class="pkg-icon">🏫</div><div class="pkg-name">Private School</div><div class="pkg-price" id="subv2-renew-price-private">GH₵5 per active student / term</div><div class="pkg-period">Per Active Student · Per Academic Term</div>' +
+                '<ul class="pkg-features"><li>Unlimited Students</li><li>Up to 15 Teachers/Staff</li><li>Full EduTrack Package</li><li>500 SMS Credits / Term</li><li>School-managed academic calendar</li></ul>' +
               '</div>' +
             '</div>' +
             '<div id="subv2-renew-package-error" style="color:#c0392b;font-size:.78rem;margin-top:.5rem;display:none">⚠ Please select a subscription package.</div>' +
@@ -148969,7 +148969,7 @@ if(document.body)new MutationObserver(install).observe(document.body,{childList:
   var selectedPackage = window.subv2RenewSelectedPackage = null;
   function periodLabel(){ var e=el('subv2-renew-period'); return e?.selectedOptions?.[0]?.textContent || '—'; }
   function period(){ return val('subv2-renew-period'); }
-  function packageName(){ return ({government:'Government/Public School',private:'Private School'})[selectedPackage] || '—'; }
+  function packageName(){ return ({government:'Public / Government School',private:'Private School'})[selectedPackage] || '—'; }
   window.subv2RenewSelectPackage = function(pkg, card){ if(pkg!=='government'&&pkg!=='private') return; selectedPackage=pkg; window.subv2RenewSelectedPackage=pkg; document.querySelectorAll('#subv2-renew-package-grid .pkg-card').forEach(function(c){c.classList.remove('selected');}); if(card) card.classList.add('selected'); var er=el('subv2-renew-package-error'); if(er) er.style.display='none'; if(el('subv2-renew-package-label')) el('subv2-renew-package-label').textContent=packageName(); loadQuote(); };
   function schoolLookup(){
     if(window.EDUTRACK_SUB_V2 && typeof window.EDUTRACK_SUB_V2.findSchool==='function') return window.EDUTRACK_SUB_V2.findSchool(val('subv2-renew-school'),val('subv2-renew-region'),val('subv2-renew-district'));
@@ -149035,8 +149035,7 @@ if(document.body)new MutationObserver(install).observe(document.body,{childList:
 (function(){
   'use strict';
   function currentPrices(){
-    if(typeof window.v70GetActivePrices==='function') return window.v70GetActivePrices();
-    return {government:1,private:1};
+    return {government:2,private:5};
   }
   function syncRenewalCards(){
     var p=currentPrices();
@@ -149044,13 +149043,13 @@ if(document.body)new MutationObserver(install).observe(document.body,{childList:
       var price=pkg in p ? Number(p[pkg]) : NaN;
       if(!Number.isFinite(price)) return;
       var renewalTarget=document.getElementById('subv2-renew-price-'+pkg);
-      if(renewalTarget) renewalTarget.textContent='GH₵1 per active student / term';
+      if(renewalTarget) renewalTarget.textContent='GH₵'+price+' per active student / term';
       var registrationTarget=document.querySelector('#pkg-'+pkg+' .pkg-price');
-      if(registrationTarget) registrationTarget.textContent='GH₵1 per active student / term';
+      if(registrationTarget) registrationTarget.textContent='GH₵'+price+' per active student / term';
     });
     var selectedAmount=document.getElementById('sub-pay-amount-val');
     var selected=window.subSelectedPkg;
-    if(selectedAmount && selected && Number.isFinite(Number(p[selected]))) selectedAmount.textContent='GH₵1 per active student / term';
+    if(selectedAmount && selected && Number.isFinite(Number(p[selected]))) selectedAmount.textContent='GH₵'+Number(p[selected])+' per active student / term';
   }
   window.emsSyncRenewalPackagePrices=syncRenewalCards;
   var originalSave=window.v70SavePriceForm;
@@ -149542,8 +149541,8 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   'use strict';
   if(window.EDUTRACK_SUBSCRIPTION_POLICY) return;
   var MODEL={
-    government:{id:'government',name:'EduTrack Government School Plan',pricePerStudentGhs:1,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:true,smsIncluded:0,termCalendar:'central'},
-    private:{id:'private',name:'EduTrack Private School Plan',pricePerStudentGhs:1,currency:'GHS',billingPeriod:'term',capacity:{students:300,staff:15},firstTermFree:false,smsIncluded:500,termCalendar:'school'}
+    government:{id:'government',name:'EduTrack Government School Plan',pricePerStudentGhs:2,currency:'GHS',billingPeriod:'term',capacity:{students:null,unlimitedStudents:true,staff:15},firstTermFree:true,smsIncluded:0,termCalendar:'central'},
+    private:{id:'private',name:'EduTrack Private School Plan',pricePerStudentGhs:5,currency:'GHS',billingPeriod:'term',capacity:{students:null,unlimitedStudents:true,staff:15},firstTermFree:false,smsIncluded:500,termCalendar:'school'}
   };
   function byId(id){return document.getElementById(id)}
   function val(id){var el=byId(id);return el?String(el.value||'').trim():''}
@@ -149559,11 +149558,11 @@ window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshL
   function identityKey(school){return [school.name,school.region,school.district].map(normalized).join('|')}
   function newestSchool(){try{var rows=typeof v2GetArr==='function'?v2GetArr(SUB_KEYS.schools):[];return rows.slice().sort(function(a,b){return String(b.registeredAt||'').localeCompare(String(a.registeredAt||''))})[0]||null}catch(e){return null}}
   function updateStoredSchool(){var school=newestSchool();if(!school)return null;var type=getType(),plan=planFor(type),term=getTerm(),now=new Date().toISOString();school.schoolType=type;school.subscriptionPlan=type;school.type=type==='government'?'GOVERNMENT':'PRIVATE';school.planName=plan.name;school.pricePerStudentGhs=plan.pricePerStudentGhs;school.priceAtSubscription=null;school.currency=plan.currency;school.billingPeriod='term';school.capacityLimits={students:plan.capacity.students,staff:plan.capacity.staff};school.smsCreditsIncluded=plan.smsIncluded;school.smsCreditsRemaining=plan.smsIncluded;school.termCalendar=plan.termCalendar;school.academicYear=term.academicYear;school.termNumber=term.termNumber;school.termStartDate=term.startDate;school.termEndDate=term.endDate;school.governmentTermId=term.governmentTermId;school.termDurationDays=term.durationDays;school.firstTermFreeIdentityKey=identityKey(school);school.firstTermFreeUsed=type==='government'?(school.firstTermFreeUsed!==false):false;school.firstTermFreeUsedAt=type==='government'?now:null;school.paymentStatus=type==='government'?'free_term':'pending';school.paymentRequired=type==='private';if(type==='private'){school.status='pending_payment';school.expiryDate=term.endDate?new Date(term.endDate+'T23:59:59.999Z').toISOString():school.expiryDate}else{school.status='trial';if(term.endDate)school.expiryDate=new Date(term.endDate+'T23:59:59.999Z').toISOString()}var rows=v2GetArr(SUB_KEYS.schools);var index=rows.findIndex(function(item){return item.id===school.id});if(index>=0){rows[index]=school;v2SetArr(SUB_KEYS.schools,rows)}return school}
-  function summary(type){var plan=planFor(type),term=getTerm();if(!plan)return '<strong>Select one school type.</strong>';var lines=['<strong>'+esc(plan.name)+'</strong> · <strong>GH₵'+plan.pricePerStudentGhs+' per active student / term</strong>','Amount due: the server calculates GH₵1 × the current active-student count before payment.'];if(plan.firstTermFree)lines.push('<span style="color:#176b45;font-weight:800">First complete term free once per school</span>');if(plan.smsIncluded)lines.push('<span style="color:#0e7c86;font-weight:800">'+plan.smsIncluded+' SMS credits included per term</span>');lines.push(plan.termCalendar==='central'?'Government term dates are centrally controlled.':'Private school chooses reopening and vacation dates.');if(type==='private'&&term.durationDays)lines.push('Selected term: '+term.durationDays+' days');return lines.join('<br>')}
-  function render(){var form=byId('subv2-schoolreg-form');if(!form)return;var grid=form.querySelector('.sub-form-grid');if(!grid)return;var type=byId('subv2-sch-school-type');if(!type){var block=document.createElement('div');block.className='sub-form-group';block.style.gridColumn='1/-1';block.innerHTML='<label>School Type <span class="sub-req-star">*</span></label><select id="subv2-sch-school-type"><option value="" selected disabled>Select school type</option><option value="government">Government / Public School</option><option value="private">Private School</option></select><div id="edutrack-plan-summary" style="margin-top:.55rem;padding:.65rem .75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd;color:#234;font-size:.78rem;line-height:1.45"></div>';grid.insertBefore(block,grid.firstChild);type=byId('subv2-sch-school-type');type.addEventListener('change',render);['subv2-sch-academic-year','subv2-sch-term-number','subv2-sch-government-term','subv2-sch-start-date','subv2-sch-end-date'].forEach(function(id){var holder=document.createElement('div');holder.className='sub-form-group';holder.dataset.policyField=id;var label=id==='subv2-sch-academic-year'?'Academic Year':id==='subv2-sch-term-number'?'Term':id==='subv2-sch-government-term'?'Government Calendar Term':id==='subv2-sch-start-date'?'Reopening Date':'Vacation / Closing Date';var input=id==='subv2-sch-term-number'?'<select id="'+id+'"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>':id==='subv2-sch-government-term'?'<input id="'+id+'" type="text" value="central-current" readonly>':'<input id="'+id+'" type="'+(id.indexOf('date')>=0?'date':'text')+'" '+(id==='subv2-sch-academic-year'?'value="2026/2027" placeholder="YYYY/YYYY"':'')+'>';holder.innerHTML='<label>'+label+' <span class="sub-req-star">*</span></label>'+input;grid.insertBefore(holder,grid.children[1]);var inputEl=byId(id);if(inputEl)inputEl.addEventListener('input',render)});}
+  function summary(type){var plan=planFor(type),term=getTerm();if(!plan)return '<strong>Select one school type.</strong>';var lines=['<strong>'+esc(plan.name)+'</strong> · <strong>GH₵'+plan.pricePerStudentGhs+' per active student / term</strong>','Amount due: the server calculates GH₵'+plan.pricePerStudentGhs+' × the current active-student count before payment.'];if(plan.firstTermFree)lines.push('<span style="color:#176b45;font-weight:800">First complete term free once per school</span>');if(plan.smsIncluded)lines.push('<span style="color:#0e7c86;font-weight:800">'+plan.smsIncluded+' SMS credits included per term</span>');lines.push(plan.termCalendar==='central'?'Government term dates are centrally controlled.':'Private school chooses reopening and vacation dates.');if(type==='private'&&term.durationDays)lines.push('Selected term: '+term.durationDays+' days');return lines.join('<br>')}
+  function render(){var form=byId('subv2-schoolreg-form');if(!form)return;var grid=form.querySelector('.sub-form-grid');if(!grid)return;var type=byId('subv2-sch-school-type');if(!type){var block=document.createElement('div');block.className='sub-form-group';block.style.gridColumn='1/-1';block.innerHTML='<label>School Type <span class="sub-req-star">*</span></label><select id="subv2-sch-school-type"><option value="" selected disabled>Select school type</option><option value="government">Public / Government School</option><option value="private">Private School</option></select><div id="edutrack-plan-summary" style="margin-top:.55rem;padding:.65rem .75rem;border:1px solid #8bcbd2;border-radius:8px;background:#effbfd;color:#234;font-size:.78rem;line-height:1.45"></div>';grid.insertBefore(block,grid.firstChild);type=byId('subv2-sch-school-type');type.addEventListener('change',render);['subv2-sch-academic-year','subv2-sch-term-number','subv2-sch-government-term','subv2-sch-start-date','subv2-sch-end-date'].forEach(function(id){var holder=document.createElement('div');holder.className='sub-form-group';holder.dataset.policyField=id;var label=id==='subv2-sch-academic-year'?'Academic Year':id==='subv2-sch-term-number'?'Term':id==='subv2-sch-government-term'?'Government Calendar Term':id==='subv2-sch-start-date'?'Reopening Date':'Vacation / Closing Date';var input=id==='subv2-sch-term-number'?'<select id="'+id+'"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>':id==='subv2-sch-government-term'?'<input id="'+id+'" type="text" value="central-current" readonly>':'<input id="'+id+'" type="'+(id.indexOf('date')>=0?'date':'text')+'" '+(id==='subv2-sch-academic-year'?'value="2026/2027" placeholder="YYYY/YYYY"':'')+'>';holder.innerHTML='<label>'+label+' <span class="sub-req-star">*</span></label>'+input;grid.insertBefore(holder,grid.children[1]);var inputEl=byId(id);if(inputEl)inputEl.addEventListener('input',render)});}
     var isPrivate=(type.value==='private');document.querySelectorAll('[data-policy-field]').forEach(function(el){var id=el.dataset.policyField;el.style.display=(isPrivate||id==='subv2-sch-academic-year'||id==='subv2-sch-term-number'||id==='subv2-sch-government-term')?'':'none'});var sum=byId('edutrack-plan-summary'),summaryHtml=summary(type.value);if(sum&&sum.innerHTML!==summaryHtml)sum.innerHTML=summaryHtml;var government=byId('subv2-sch-government-term');if(government)government.parentElement.style.display=isPrivate?'none':'';}
-  function install(){render();var submit=window.subv2SchoolRegSubmit;if(typeof submit==='function'&&!submit.__part46){var wrapped=function(){if(!validRegistration())return false;var result=submit.apply(this,arguments);var school=updateStoredSchool();if(school){var details=byId('subv2-schoolreg-success-details');if(details){details.insertAdjacentHTML('beforeend','<div class="school-detail-row"><span class="label">Plan</span><span class="value">'+esc(school.planName)+' · GH₵'+(school.pricePerStudentGhs||1)+' per active student / term</span></div><div class="school-detail-row"><span class="label">Term</span><span class="value">'+esc(school.academicYear)+' · Term '+esc(school.termNumber)+'</span></div><div class="school-detail-row"><span class="label">Capacity</span><span class="value">'+school.capacityLimits.students+' students · '+school.capacityLimits.staff+' teachers/staff</span></div>'+(school.schoolType==='private'?'<div class="school-detail-row"><span class="label">SMS</span><span class="value">'+school.smsCreditsIncluded+' credits included</span></div><div style="margin-top:.7rem;padding:.7rem;background:#fff4e5;border:1px solid #e8a33d;border-radius:8px;color:#8a5300;font-weight:700">Payment required before private-school activation. Use the Paystack renewal flow after registration to activate this school.</div>':'<div class="school-detail-row"><span class="label">First Term</span><span class="value" style="color:#176b45">FREE — one-time school offer</span></div>'));}}return result};wrapped.__part46=true;window.subv2SchoolRegSubmit=wrapped;}}
-  window.EDUTRACK_SUBSCRIPTION_POLICY={version:'part57-active-student-term-v1',pricePerStudentGhs:1,plans:MODEL,planFor:planFor,term:getTerm,validateRegistration:validRegistration,install:install};
+  function install(){render();var submit=window.subv2SchoolRegSubmit;if(typeof submit==='function'&&!submit.__part46){var wrapped=function(){if(!validRegistration())return false;var result=submit.apply(this,arguments);var school=updateStoredSchool();if(school){var details=byId('subv2-schoolreg-success-details');if(details){details.insertAdjacentHTML('beforeend','<div class="school-detail-row"><span class="label">Plan</span><span class="value">'+esc(school.planName)+' · GH₵'+school.pricePerStudentGhs+' per active student / term</span></div><div class="school-detail-row"><span class="label">Term</span><span class="value">'+esc(school.academicYear)+' · Term '+esc(school.termNumber)+'</span></div><div class="school-detail-row"><span class="label">Capacity</span><span class="value">'+'Unlimited students · '+school.capacityLimits.staff+' teachers/staff</span></div>'+(school.schoolType==='private'?'<div class="school-detail-row"><span class="label">SMS</span><span class="value">'+school.smsCreditsIncluded+' credits included</span></div><div style="margin-top:.7rem;padding:.7rem;background:#fff4e5;border:1px solid #e8a33d;border-radius:8px;color:#8a5300;font-weight:700">Payment required before private-school activation. Use the Paystack renewal flow after registration to activate this school.</div>':'<div class="school-detail-row"><span class="label">First Term</span><span class="value" style="color:#176b45">FREE — one-time school offer</span></div>'));}}return result};wrapped.__part46=true;window.subv2SchoolRegSubmit=wrapped;}}
+  window.EDUTRACK_SUBSCRIPTION_POLICY={version:'subscription-part1-school-type-pricing-v1',schoolTypeRatesGhs:{government:2,private:5},plans:MODEL,planFor:planFor,term:getTerm,validateRegistration:validRegistration,install:install};
   var observer=new MutationObserver(install);if(document.body)observer.observe(document.body,{childList:true,subtree:true});setTimeout(install,200);setTimeout(install,1000);setTimeout(install,2500);
 })();
 </script>

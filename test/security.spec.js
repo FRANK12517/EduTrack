@@ -105,14 +105,14 @@ async function run() {
     const paymentOne = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE, 'x-idempotency-key': 'payment-key-1' }, body: JSON.stringify({ schoolId, schoolType: 'government', planId: 'government', academicYear: '2026/2027', termNumber: 1, amount: 1, currency: 'USD', durationDays: 1 }) });
     assert.equal(paymentOne.status, 201);
     const intent = await paymentOne.json();
-    assert.equal(intent.amount, 10000);
-    assert.equal(intent.amountGhs, 100);
+    assert.equal(intent.amount, 20000);
+    assert.equal(intent.amountGhs, 200);
     assert.equal(intent.activeStudentCount, 100);
     assert.equal(intent.currency, 'GHS');
     const paymentRepeat = await request('/api/payments/initialize', { method: 'POST', headers: { 'content-type': 'application/json', cookie: sessionCookie, origin: BASE, 'x-idempotency-key': 'payment-key-1' }, body: JSON.stringify({ planId: 'government', amount: 999999 }) });
     assert.equal(paymentRepeat.status, 200);
     assert.equal((await paymentRepeat.json()).reference, intent.reference);
-    const event = JSON.stringify({ id: 'evt_1', event: 'charge.success', data: { reference: intent.reference, status: 'success', amount: 10000, currency: 'GHS' } });
+    const event = JSON.stringify({ id: 'evt_1', event: 'charge.success', data: { reference: intent.reference, status: 'success', amount: 20000, currency: 'GHS' } });
     const signature = crypto.createHmac('sha512', WEBHOOK_SECRET).update(event).digest('hex');
     const webhook = await request('/api/payments/paystack/webhook', { method: 'POST', headers: { 'content-type': 'application/json', 'x-paystack-signature': signature }, body: event });
     assert.equal(webhook.status, 200);

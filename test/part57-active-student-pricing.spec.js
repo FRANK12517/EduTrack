@@ -5,11 +5,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const policy = require('../app/subscription-policy');
 
-for (const [count, expectedGhs] of [[1, 1], [100, 100], [300, 300], [325, 325]]) {
-  const result = policy.calculateSubscriptionAmount(count);
+for (const [count, expectedGhs] of [[1, 5], [100, 500], [300, 1500], [325, 1625]]) {
+  const result = policy.calculateSubscriptionAmount(count, 'private');
   assert.equal(result.amountGhs, expectedGhs, `${count} active students should cost GH₵${expectedGhs}`);
   assert.equal(result.amountMinor, expectedGhs * 100);
-  assert.equal(result.pricePerStudentGhs, 1);
+  assert.equal(result.pricePerStudentGhs, 5);
   assert.equal(result.currency, 'GHS');
   assert.equal(result.billingPeriod, 'term');
 }
@@ -25,7 +25,7 @@ const initEnd = server.indexOf("req.url === '/api/payments/initialize'", initSta
 assert.ok(initStart >= 0 && initEnd > initStart);
 const paystackInit = server.slice(initStart, initEnd);
 assert.match(paystackInit, /authoritativeSchoolContext/);
-assert.match(paystackInit, /calculateSubscriptionAmount\(context\.activeStudentCount\)/);
+assert.match(paystackInit, /calculateSubscriptionAmount\(context\.activeStudentCount, schoolType\)/);
 assert.match(paystackInit, /amount: pricing\.amountMinor/);
 assert.match(paystackInit, /activeStudentCount: pricing\.activeStudentCount/);
 assert.doesNotMatch(paystackInit, /input\.amount/);

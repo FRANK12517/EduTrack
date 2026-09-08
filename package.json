@@ -47,6 +47,7 @@
     "test:part63": "node test/part63-school-type-selection.spec.js",
     "test:part64": "node test/part64-population-reconciliation-notification.spec.js",
     "test:part65": "node test/part65-end-to-end-subscription-population-verification.spec.js",
+    "test:subscription-part1": "node test/subscription-part1-pricing.spec.js",
     "production:deployment-check": "node scripts/production-deployment-check.js",
     "production:paystack-check": "node scripts/production-paystack-check.js",
     "production:storage-check": "node scripts/production-storage-check.js",

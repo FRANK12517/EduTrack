@@ -54,7 +54,7 @@ async function run() {
       assert.equal(dashboard.notification.newActiveStudents, 25);
       assert.equal(dashboard.notification.currentActiveStudents, 325);
       assert.equal(dashboard.notification.carryForwardStudents, 25);
-      assert.equal(dashboard.notification.nextSubscriptionAmountGhs, 325);
+      assert.equal(dashboard.notification.nextSubscriptionAmountGhs, 1625);
       assert.equal(dashboard.reportCardCheck.status, 'discrepancy');
       assert.equal(dashboard.reportCardCheck.difference, 5);
       assert.equal(dashboard.classes.length, 1);
@@ -83,7 +83,7 @@ async function run() {
       dashboard = (await response.json()).dashboard;
       assert.equal(dashboard.notification.state, 'negative_difference');
       assert.equal(dashboard.notification.message, '10 fewer active students than at subscription.');
-      assert.equal(dashboard.notification.nextSubscriptionAmountGhs, 290);
+      assert.equal(dashboard.notification.nextSubscriptionAmountGhs, 1450);
       response = await request(`/api/subscriptions/population-dashboard?schoolId=${otherId}`, { headers });
       assert.equal(response.status, 200, 'the existing developer fixture may request an explicitly selected school');
       const otherDashboard = (await response.json()).dashboard;

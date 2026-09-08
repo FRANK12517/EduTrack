@@ -91,8 +91,8 @@ async function run() {
       const privatePayment = await response.json();
       assert.equal(privatePayment.schoolType, 'private');
       assert.equal(privatePayment.activeStudentCount, 3);
-      assert.equal(privatePayment.pricePerStudentGhs, 1);
-      assert.equal(privatePayment.amountGhs, 3);
+      assert.equal(privatePayment.pricePerStudentGhs, 5);
+      assert.equal(privatePayment.amountGhs, 15);
 
       response = await request('/api/payments/initialize', { method: 'POST', headers: { ...headers, 'x-idempotency-key': 'part63-cross-school' }, body: JSON.stringify({ schoolId: governmentSchoolId, schoolType: 'government', planId: 'government', academicYear: '2026/2027', termNumber: 1, amount: 1, currency: 'GHS' }) });
       assert.equal(response.status, 403, 'school-scoped users cannot initialize another school subscription');
@@ -101,7 +101,7 @@ async function run() {
 
       const stored = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
       const intent = stored.paymentIntents.find(row => row.idempotencyKey === 'part63-private-valid');
-      assert.equal(intent.amount, 300);
+      assert.equal(intent.amount, 1500);
     } finally {
       child.kill('SIGTERM');
     }

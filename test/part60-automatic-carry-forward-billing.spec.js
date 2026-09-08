@@ -19,7 +19,7 @@ const htmlSource = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 assert.match(serverSource, /calculateCarryForwardForSchool/);
 assert.match(serverSource, /carry-forward\/calculate/);
 assert.match(serverSource, /nextSubscriptionBillablePopulation/);
-assert.match(serverSource, /calculateSubscriptionAmount\(context\.activeStudentCount\)/);
+assert.match(serverSource, /calculateSubscriptionAmount\(context\.activeStudentCount, schoolType\)/);
 assert.match(relationalSource, /subscription_carry_forward_records/);
 assert.match(relationalSource, /beginTransaction/);
 assert.match(schemaSource, /carry_forward_previous_unique/);
@@ -83,7 +83,7 @@ async function run() {
       assert.equal(dashboard.carryForwardPopulation, 25);
       assert.equal(dashboard.currentActivePopulation, 325);
       assert.equal(dashboard.nextSubscriptionBillablePopulation, 325);
-      assert.equal(dashboard.amountDueGhs, 325);
+      assert.equal(dashboard.amountDueGhs, 1625);
       const stored = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
       assert.equal(stored.subscriptionCarryForwardRecords.length, 1);
       assert.equal(stored.students.length, 325, 'carry-forward calculation does not mutate student records');

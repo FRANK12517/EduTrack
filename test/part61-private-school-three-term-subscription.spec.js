@@ -69,8 +69,8 @@ async function run() {
       assert.equal(first.status, 201);
       const firstPayload = await first.json();
       assert.equal(firstPayload.subscriptionSequence, 1);
-      assert.equal(firstPayload.amountGhs, 325, 'payment amount is based on authoritative active students');
-      assert.equal(firstPayload.amount, 32500);
+      assert.equal(firstPayload.amountGhs, 1625, 'payment amount is based on authoritative active students');
+      assert.equal(firstPayload.amount, 162500);
       const second = await init({ ...base, termNumber: 2, reopeningDate: '2027-01-05', closingDate: '2027-04-20', amount: 1 }, 'term-2');
       assert.equal(second.status, 201);
       assert.equal((await second.json()).subscriptionSequence, 2);
@@ -103,7 +103,7 @@ async function run() {
       assert.equal(crossSchool.status, 200);
       assert.equal((await crossSchool.json()).dashboard.privateSubscriptionCountForAcademicYear, 0, 'private subscription dashboard does not leak another school state');
       const stored = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      assert.equal(stored.paymentIntents.find(row => row.idempotencyKey === 'term-1').amount, 32500);
+      assert.equal(stored.paymentIntents.find(row => row.idempotencyKey === 'term-1').amount, 162500);
     } finally {
       if (!child.killed) child.kill('SIGTERM');
     }

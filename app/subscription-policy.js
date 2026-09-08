@@ -1,19 +1,20 @@
 'use strict';
 
-const POLICY_VERSION = 'part57-active-student-term-v1';
+const POLICY_VERSION = 'subscription-part1-school-type-pricing-v1';
 const CURRENCY = 'GHS';
-const PRICE_PER_STUDENT_GHS = 1.00;
-const PRICE_PER_STUDENT_MINOR = 100;
+const SCHOOL_TYPE_RATES = Object.freeze({ government: 2.00, private: 5.00 });
+const PRICE_PER_STUDENT_GHS = SCHOOL_TYPE_RATES.private;
+const PRICE_PER_STUDENT_MINOR = PRICE_PER_STUDENT_GHS * 100;
 const BILLING_PERIOD = 'term';
 const MAX_PRIVATE_TERM_MONTHS = 4;
-const CAPACITY = Object.freeze({ students: 300, staff: 15 });
+const CAPACITY = Object.freeze({ students: null, unlimitedStudents: true, staff: 15 });
 const PLAN_IDS = Object.freeze({ government: 'government', private: 'private' });
 const PLANS = Object.freeze({
   government: Object.freeze({
     id: 'government',
     name: 'EduTrack Government School Plan',
-    pricePerStudentGhs: PRICE_PER_STUDENT_GHS,
-    pricePerStudentMinor: PRICE_PER_STUDENT_MINOR,
+    pricePerStudentGhs: SCHOOL_TYPE_RATES.government,
+    pricePerStudentMinor: SCHOOL_TYPE_RATES.government * 100,
     currency: CURRENCY,
     billingPeriod: BILLING_PERIOD,
     durationDays: null,
@@ -26,8 +27,8 @@ const PLANS = Object.freeze({
   private: Object.freeze({
     id: 'private',
     name: 'EduTrack Private School Plan',
-    pricePerStudentGhs: PRICE_PER_STUDENT_GHS,
-    pricePerStudentMinor: PRICE_PER_STUDENT_MINOR,
+    pricePerStudentGhs: SCHOOL_TYPE_RATES.private,
+    pricePerStudentMinor: SCHOOL_TYPE_RATES.private * 100,
     currency: CURRENCY,
     billingPeriod: BILLING_PERIOD,
     durationDays: null,
@@ -57,14 +58,19 @@ function validateActiveStudentCount(value) {
   return count;
 }
 
-function calculateSubscriptionAmount(activeStudentCount) {
+function calculateSubscriptionAmount(activeStudentCount, schoolType) {
   const count = validateActiveStudentCount(activeStudentCount);
+  const type = normalizeSchoolType(schoolType);
+  if (!type) throw new Error('schoolType must be government or private');
+  const pricePerStudentGhs = SCHOOL_TYPE_RATES[type];
+  const pricePerStudentMinor = pricePerStudentGhs * 100;
   return Object.freeze({
     activeStudentCount: count,
-    pricePerStudentGhs: PRICE_PER_STUDENT_GHS,
-    pricePerStudentMinor: PRICE_PER_STUDENT_MINOR,
-    amountGhs: Number((count * PRICE_PER_STUDENT_GHS).toFixed(2)),
-    amountMinor: count * PRICE_PER_STUDENT_MINOR,
+    schoolType: type,
+    pricePerStudentGhs,
+    pricePerStudentMinor,
+    amountGhs: Number((count * pricePerStudentGhs).toFixed(2)),
+    amountMinor: count * pricePerStudentMinor,
     currency: CURRENCY,
     billingPeriod: BILLING_PERIOD,
   });
@@ -141,9 +147,9 @@ function validateCapacity(studentCount, staffCount) {
   return {
     students,
     staff,
-    studentsWithinStandard: students <= CAPACITY.students,
+    studentsWithinStandard: true,
     staffWithinStandard: staff <= CAPACITY.staff,
-    additionalStudents: Math.max(0, students - CAPACITY.students),
+    additionalStudents: 0,
     additionalStaff: Math.max(0, staff - CAPACITY.staff),
   };
 }
@@ -168,7 +174,7 @@ function quote({ schoolType, term, activeStudentCount = null, firstTermFreeUsed 
   const plan = planForSchoolType(schoolType);
   if (!plan) throw new Error('Unsupported school type');
   const free = plan.firstTermFree && firstTermFreeEligibility({ firstTermFreeUsed, schoolIdentityExists });
-  const pricing = activeStudentCount == null ? null : calculateSubscriptionAmount(activeStudentCount);
+  const pricing = activeStudentCount == null ? null : calculateSubscriptionAmount(activeStudentCount, plan.id);
   const amountGhs = pricing ? (free ? 0 : pricing.amountGhs) : null;
   const amountMinor = pricing ? (free ? 0 : pricing.amountMinor) : null;
   return {
@@ -199,6 +205,7 @@ module.exports = {
   CURRENCY,
   PRICE_PER_STUDENT_GHS,
   PRICE_PER_STUDENT_MINOR,
+  SCHOOL_TYPE_RATES,
   BILLING_PERIOD,
   MAX_PRIVATE_TERM_MONTHS,
   CAPACITY,

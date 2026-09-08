@@ -5,17 +5,17 @@ const path = require('node:path');
 const policy = require('../app/subscription-policy');
 
 assert.deepEqual(Object.keys(policy.PLANS).sort(), ['government', 'private']);
-assert.equal(policy.PLANS.government.pricePerStudentGhs, 1);
-assert.equal(policy.PLANS.government.pricePerStudentMinor, 100);
+assert.equal(policy.PLANS.government.pricePerStudentGhs, 2);
+assert.equal(policy.PLANS.government.pricePerStudentMinor, 200);
 assert.equal(policy.PLANS.government.currency, 'GHS');
 assert.equal(policy.PLANS.government.firstTermFree, true);
 assert.equal(policy.PLANS.government.smsIncluded, 0);
-assert.equal(policy.PLANS.private.pricePerStudentGhs, 1);
-assert.equal(policy.PLANS.private.pricePerStudentMinor, 100);
+assert.equal(policy.PLANS.private.pricePerStudentGhs, 5);
+assert.equal(policy.PLANS.private.pricePerStudentMinor, 500);
 assert.equal(policy.PLANS.private.currency, 'GHS');
 assert.equal(policy.PLANS.private.firstTermFree, false);
 assert.equal(policy.PLANS.private.smsIncluded, 500);
-assert.deepEqual(policy.PLANS.private.capacity, { students: 300, staff: 15 });
+assert.deepEqual(policy.PLANS.private.capacity, { students: null, unlimitedStudents: true, staff: 15 });
 
 assert.equal(policy.normalizeSchoolType('Public'), 'government');
 assert.equal(policy.normalizeSchoolType('private school'), 'private');
@@ -36,9 +36,9 @@ assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'government'
 assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'private', schoolIdentityKey: 'school-1', firstTermFreeUsed: false }), false);
 assert.equal(policy.firstTermFreeEligibilityForSchool({ schoolType: 'government', schoolIdentityKey: '', firstTermFreeUsed: false }), false);
 assert.equal(policy.quote({ schoolType: 'government', activeStudentCount: 100, firstTermFreeUsed: false, schoolIdentityExists: false }).amountGhs, 0);
-assert.equal(policy.quote({ schoolType: 'government', activeStudentCount: 325, firstTermFreeUsed: true, schoolIdentityExists: false }).amountGhs, 325);
-assert.equal(policy.quote({ schoolType: 'private', activeStudentCount: 100, firstTermFreeUsed: false, schoolIdentityExists: false }).amountGhs, 100);
-assert.deepEqual(policy.validateCapacity(301, 16), { students: 301, staff: 16, studentsWithinStandard: false, staffWithinStandard: false, additionalStudents: 1, additionalStaff: 1 });
+assert.equal(policy.quote({ schoolType: 'government', activeStudentCount: 325, firstTermFreeUsed: true, schoolIdentityExists: false }).amountGhs, 650);
+assert.equal(policy.quote({ schoolType: 'private', activeStudentCount: 100, firstTermFreeUsed: false, schoolIdentityExists: false }).amountGhs, 500);
+assert.deepEqual(policy.validateCapacity(1000000, 16), { students: 1000000, staff: 16, studentsWithinStandard: true, staffWithinStandard: false, additionalStudents: 0, additionalStaff: 1 });
 
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');

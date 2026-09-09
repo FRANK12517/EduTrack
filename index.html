@@ -90257,6 +90257,15 @@ document.addEventListener('DOMContentLoaded', () => {
     wireShowPageLms();
     wireShowPageSchoolWidget();
     wireParentPortalLms();
+    // FIX: the STUDENT login card (built by injectStudentLoginCard) was only
+    // ever invoked reactively from inside openStudentModal() — i.e. by a
+    // click on a button that injectStudentLoginCard() itself creates. With
+    // no boot-time call, the card was never appended to .login-level-grid,
+    // so it never appeared on the home page and had nothing for the
+    // six-login-card controller to bind to. Wiring it into boot() mirrors
+    // the existing injectLoginCard()/boot() pattern used for the PARENT
+    // card (see "LOGIN CARD" section above) so STUDENT behaves identically.
+    injectStudentLoginCard();
     // resume an active student session across a page refresh (offline-first app)
     var sess = readLS(K.studentSession, {active:false});
     if (sess.active && sess.usid){

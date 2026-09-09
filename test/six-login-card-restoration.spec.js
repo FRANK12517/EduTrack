@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const root=path.join(__dirname,'..');
+const auth=fs.readFileSync(path.join(root,'privileged-auth.js'),'utf8');
+const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+for(const level of ['NATIONAL','REGIONAL','DISTRICT','SCHOOL','PARENT']) assert.match(html,new RegExp(`data-level=["']${level}["']`),level+' existing card remains');
+assert.match(auth,/function restoreStudentLoginCard\(\)/,'deterministic Student restoration is installed');
+assert.match(auth,/dataset\.level = 'STUDENT'/,'Student card retains its exact portal identity');
+assert.match(auth,/EMS_LMS\.Student\.openModal/,'Student card opens the existing portal');
+assert.match(auth,/querySelectorAll\('\.login-level-btn\[data-level="STUDENT"\]'/,'duplicate Student cards are removed');
+assert.match(auth,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/,'mobile layout uses two bounded columns');
+assert.match(html,/window\.GH_REGIONS_DISTRICTS\[this\.value\]/,'existing Region to District cascade remains authoritative');
+console.log('Six login-card restoration and Region/District preservation contract passed.');

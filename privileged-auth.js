@@ -255,3 +255,68 @@
   script.dataset.edutrackSchoolSidebar = 'true';
   document.head.appendChild(script);
 })();
+
+// The Student portal is defined by the existing LMS bundle, but its login card
+// was historically injected only after that very large bundle completed. Keep
+// the portal implementation intact while making its entry point deterministic.
+(function restoreStudentLoginCard() {
+  'use strict';
+  function ensureCard() {
+    var grid = document.querySelector('.login-level-grid');
+    if (!grid) return false;
+    var cards = Array.prototype.slice.call(grid.querySelectorAll('.login-level-btn[data-level="STUDENT"]'));
+    var card = cards.shift();
+    cards.forEach(function (duplicate) { duplicate.remove(); });
+    if (!card) {
+      card = document.createElement('button');
+      card.id = 'sd-login-btn';
+      card.type = 'button';
+      card.className = 'login-level-btn';
+      card.dataset.level = 'STUDENT';
+      card.setAttribute('aria-pressed', 'false');
+      card.setAttribute('data-ai-protected', 'true');
+      card.innerHTML = '<span class="icon">🎒</span>STUDENT';
+      var school = grid.querySelector('.login-level-btn[data-level="SCHOOL"]');
+      grid.insertBefore(card, school || null);
+    }
+    card.id = 'sd-login-btn';
+    card.style.gridColumn = '2';
+    card.style.gridRow = '2';
+    if (!card.dataset.studentPortalFallback) {
+      card.dataset.studentPortalFallback = 'true';
+      card.addEventListener('click', function () {
+        var tries = 0;
+        (function openWhenReady() {
+          if (window.EMS_LMS && window.EMS_LMS.Student && typeof window.EMS_LMS.Student.openModal === 'function') {
+            window.EMS_LMS.Student.openModal();
+            return;
+          }
+          if (++tries < 40) setTimeout(openWhenReady, 100);
+        })();
+      });
+    }
+    return true;
+  }
+  function installStyle() {
+    if (document.getElementById('edutrack-six-card-layout-style')) return;
+    var style = document.createElement('style');
+    style.id = 'edutrack-six-card-layout-style';
+    style.textContent = '@media(max-width:420px){.login-level-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.login-level-grid>.login-level-btn{grid-column:auto!important;grid-row:auto!important;min-width:0}}';
+    document.head.appendChild(style);
+  }
+  var observedRoot = null;
+  var cardObserver = new MutationObserver(function () { ensureCard(); });
+  function watchLogin() {
+    var root = document.getElementById('login-screen');
+    if (!root || root === observedRoot) return;
+    cardObserver.disconnect();
+    cardObserver.observe(root, { childList: true, subtree: true });
+    observedRoot = root;
+  }
+  function refresh() { installStyle(); ensureCard(); watchLogin(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', refresh);
+  else refresh();
+  setTimeout(refresh, 0);
+  setTimeout(refresh, 600);
+  window.EDUTRACK_LOGIN_CARDS = { ensureStudent: ensureCard, refresh: refresh };
+})();

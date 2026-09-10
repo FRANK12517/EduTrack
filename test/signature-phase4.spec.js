@@ -1,0 +1,17 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const server=fs.readFileSync('server.js','utf8');
+const relational=fs.readFileSync('db/relational.js','utf8');
+const ui=fs.readFileSync('index.html','utf8');
+assert.match(ui,/dsigOpen\('KG1'\)/);
+assert.match(ui,/dsigOpen\('KG2'\)/);
+assert.match(ui,/sig-grid-jhs/);
+assert.match(server,/ownerType==='CLASS_TEACHER'/);
+assert.match(server,/teacher_class_assignments/);
+assert.match(server,/input\.staffId,input\.classId/);
+assert.match(relational,/owner_type VARCHAR\(24\)/);
+assert.match(relational,/class_id VARCHAR\(80\)/);
+assert.match(relational,/staff_id VARCHAR\(80\)/);
+assert.match(relational,/AND staff_id=\? AND class_id=\?/);
+console.log('Signature Phase 4 class-specific digital/upload isolation contract passed.');

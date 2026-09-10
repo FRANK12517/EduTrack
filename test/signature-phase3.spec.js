@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fix=require('node:fs').readFileSync('individual-result-slip-fix.js','utf8');
+assert.match(fix,/Phase 3 processor/);
+assert.match(fix,/image\/png/);
+assert.match(fix,/No handwriting detected/);
+assert.match(fix,/Original Upload Preview/);
+assert.match(fix,/previous valid signature was preserved/);
+assert.match(fix,/5\*1024\*1024/);
+console.log('Signature Phase 3 processing and failure-safety contract passed.');

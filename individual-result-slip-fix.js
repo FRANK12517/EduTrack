@@ -158,15 +158,24 @@
 // signature store and result-slip renderer. Only the processed transparent
 // PNG becomes active after processing succeeds.
 (function(){
+  // Phase 3 processor: remove light paper, preserve ink geometry, and crop only
+  // transparent margins. No redraw, rescale, or aspect-ratio transformation.
+  window.processSignatureData=function(raw, callback){
+    try{var img=new Image();img.onload=function(){try{var c=document.createElement('canvas'),x=c.getContext('2d');c.width=img.naturalWidth||img.width;c.height=img.naturalHeight||img.height;x.drawImage(img,0,0);var d=x.getImageData(0,0,c.width,c.height),p=d.data,minX=c.width,minY=c.height,maxX=-1,maxY=-1;for(var i=0;i<p.length;i+=4){var r=p[i],g=p[i+1],b=p[i+2],v=(r+g+b)/3;if(r>=200&&g>=200&&b>=200){p[i+3]=0;continue}if(v>180)p[i+3]=Math.max(0,Math.round(255*(200-v)/20));if(p[i+3]>8){var n=i/4,xx=n%c.width,yy=Math.floor(n/c.width);if(xx<minX)minX=xx;if(xx>maxX)maxX=xx;if(yy<minY)minY=yy;if(yy>maxY)maxY=yy}}if(maxX<minX||maxY<minY)throw new Error('No handwriting detected');x.putImageData(d,0,0);var pad=2,left=Math.max(0,minX-pad),top=Math.max(0,minY-pad),right=Math.min(c.width-1,maxX+pad),bottom=Math.min(c.height-1,maxY+pad),out=document.createElement('canvas');out.width=right-left+1;out.height=bottom-top+1;out.getContext('2d').drawImage(c,left,top,out.width,out.height,0,0,out.width,out.height);callback(out.toDataURL('image/png'))}catch(e){callback(null)}};img.onerror=function(){callback(null)};img.src=raw}catch(e){callback(null)}};
   function safeUpload(input){
     var file=input&&input.files&&input.files[0]; if(!file)return;
     var allowed=['image/png','image/jpeg','image/webp'];
     if(allowed.indexOf(String(file.type||'').toLowerCase())<0||file.size>5*1024*1024){if(typeof toast==='function')toast('Unsupported signature image. Use PNG, JPG or WEBP up to 5 MB.','warn');input.value='';return;}
     var reader=new FileReader(); reader.onload=function(e){
       var raw=e.target.result, overlay=document.getElementById('ht-sig-processing-overlay');
+      var original=document.getElementById('ht-sig-original-preview-img');
+      if(!original){original=document.createElement('img');original.id='ht-sig-original-preview-img';original.alt='Original Upload Preview';original.title='Original Upload Preview';original.style.cssText='max-width:100%;max-height:100%;object-fit:contain;display:none;opacity:.35;z-index:1';var box=document.getElementById('ht-sig-preview-box');if(box)box.insertBefore(original,box.firstChild);}
+      original.src=raw; original.style.display='block';
       if(overlay)overlay.style.display='flex';
       if(typeof processSignatureData!=='function'){if(overlay)overlay.style.display='none';return;}
+      var completed=false;
       processSignatureData(raw,function(processed){
+        if(completed||!processed||processed===raw||String(processed).indexOf('data:image/')!==0){if(overlay)overlay.style.display='none';if(typeof toast==='function')toast('Signature processing failed. The previous valid signature was preserved.','error');return;} completed=true;
         if(typeof updateActiveSignature==='function')updateActiveSignature('ht',raw,processed);
         var img=document.getElementById('ht-sig-preview-img'); if(img){img.src=processed;img.style.display='block';}
         if(overlay)overlay.style.display='none';

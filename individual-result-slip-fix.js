@@ -154,6 +154,29 @@
   setInterval(installGlobalWrapper, 1500);
 })();
 
+// Signature upload safety override: keep raw paper/photo out of the active
+// signature store and result-slip renderer. Only the processed transparent
+// PNG becomes active after processing succeeds.
+(function(){
+  function safeUpload(input){
+    var file=input&&input.files&&input.files[0]; if(!file)return;
+    var allowed=['image/png','image/jpeg','image/webp'];
+    if(allowed.indexOf(String(file.type||'').toLowerCase())<0||file.size>5*1024*1024){if(typeof toast==='function')toast('Unsupported signature image. Use PNG, JPG or WEBP up to 5 MB.','warn');input.value='';return;}
+    var reader=new FileReader(); reader.onload=function(e){
+      var raw=e.target.result, overlay=document.getElementById('ht-sig-processing-overlay');
+      if(overlay)overlay.style.display='flex';
+      if(typeof processSignatureData!=='function'){if(overlay)overlay.style.display='none';return;}
+      processSignatureData(raw,function(processed){
+        if(typeof updateActiveSignature==='function')updateActiveSignature('ht',raw,processed);
+        var img=document.getElementById('ht-sig-preview-img'); if(img){img.src=processed;img.style.display='block';}
+        if(overlay)overlay.style.display='none';
+        if(typeof toast==='function')toast('Signature uploaded, processed and saved.','success');
+      });
+    }; reader.readAsDataURL(file); input.value='';
+  }
+  window.handleHtSigUploadUpgraded=safeUpload;
+})();
+
 /* Mobile presentation and print-quality fixes for the existing official
  * workflows. This layer changes layout only; data, calculations, RBAC and
  * persistence continue to use their original implementations. */

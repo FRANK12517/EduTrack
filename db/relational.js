@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
+const { getTiDbConnectionOptions, hasExplicitTiDbConfiguration } = require('../lib/tidb-config');
 const subscriptionPolicy = require('../app/subscription-policy');
 
 const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -11,11 +12,27 @@ const SCHEMA_VERSION = 25;
 let pool;
 let initialized;
 
-function isConfigured() { return Boolean(DATABASE_URL); }
-function requireConfigured() { if (!isConfigured()) throw new Error('EDUTRACK_DATABASE_URL is required for the relational authority layer'); }
+function isConfigured() { return Boolean(DATABASE_URL || hasExplicitTiDbConfiguration()); }
+function requireConfigured() { if (!isConfigured()) throw new Error('Relational database connection configuration is required for the relational authority layer'); }
 function getPool() {
   requireConfigured();
-  if (!pool) pool = mysql.createPool({ uri: DATABASE_URL, waitForConnections: true, connectionLimit: Number(process.env.EDUTRACK_DB_POOL_SIZE || 5), queueLimit: 0, multipleStatements: false, decimalNumbers: true });
+  if (!pool) {
+    const connectionOptions = DATABASE_URL && !hasExplicitTiDbConfiguration()
+      ? { uri: DATABASE_URL }
+      : getTiDbConnectionOptions();
+    pool = mysql.createPool({
+      ...connectionOptions,
+      ssl: {
+        ...connectionOptions.ssl,
+        rejectUnauthorized: true,
+      },
+      waitForConnections: true,
+      connectionLimit: Number(process.env.EDUTRACK_DB_POOL_SIZE || 5),
+      queueLimit: 0,
+      multipleStatements: false,
+      decimalNumbers: true,
+    });
+  }
   return pool;
 }
 function newId(prefix) { return `${prefix}_${crypto.randomBytes(12).toString('hex')}`; }

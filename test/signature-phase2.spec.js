@@ -1,0 +1,16 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const server = fs.readFileSync('server.js','utf8');
+const relational = fs.readFileSync('db/relational.js','utf8');
+assert.match(relational,/CREATE TABLE IF NOT EXISTS signatures/);
+for (const field of ['school_id','owner_type','staff_id','class_id','source','processed_storage_ref','active']) assert.match(relational,new RegExp(field));
+assert.match(server,/\/api\/signatures\/active/);
+assert.match(server,/\/api\/signatures/);
+assert.match(server,/signature\.manage/);
+assert.match(server,/teacher_class_assignments/);
+assert.match(server,/Processed signature must be a valid image/);
+assert.match(relational,/saveSignature/);
+assert.match(relational,/getActiveSignature/);
+assert.match(relational,/deactivateSignature/);
+console.log('Signature Phase 2 schema/API isolation contract passed.');

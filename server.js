@@ -10,6 +10,7 @@ const authorization = require('./app/auth/authorization');
 const administrativeScope = require('./app/auth/administrative-scope');
 const privateStorage = require('./app/private-storage');
 const subscriptionPolicy = require('./app/subscription-policy');
+const subscriptionEntitlements = require('./app/subscription-entitlements');
 
 const ROOT = __dirname;
 const SERVERLESS_RUNTIME = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -231,8 +232,9 @@ function rawBody(req, limit = MAX_BODY_BYTES) {
   });
 }
 async function body(req, limit = MAX_BODY_BYTES) {
+  if (req._parsedBody !== undefined) return req._parsedBody;
   const raw = await rawBody(req, limit);
-  try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error('Invalid JSON'); }
+  try { req._parsedBody = raw ? JSON.parse(raw) : {}; return req._parsedBody; } catch { throw new Error('Invalid JSON'); }
 }
 function publicUser(user) { const value={ id:user.id,email:user.email,staffId:user.staffId||null,role:user.role,hierarchy:user.hierarchy,scope:user.scope||null }; if(user.authMode==='developer')Object.assign(value,{authMode:'developer',isDeveloper:true,developerStaffId:user.developerStaffId,developerLevel:user.developerLevel,developerRole:user.developerRole,region:user.region||null,district:user.district||null}); return value; }
 function developerPrincipal(session) { return { id:session.developerId,email:null,staffId:session.developerStaffId,role:'DEVELOPER_ROOT',hierarchy:'ALL',scope:['NATIONAL','REGIONAL','DISTRICT','SCHOOL'],authMode:'developer',isDeveloper:true,developerStaffId:session.developerStaffId,developerLevel:session.developerLevel,developerRole:session.developerRole,region:session.region||null,district:session.district||null,active:true }; }
@@ -293,10 +295,12 @@ async function authorize(req, res, db, options = {}) {
   const auth = authUser(req, db);
   if (!auth) { auditSecurityEvent(db, 'UNAUTHORIZED_API_ACCESS', req, { endpoint: req.url }); if (!relational.isConfigured()) saveDb(db); else await relational.appendAudit({ id: id('audit'), action: 'UNAUTHORIZED_API_ACCESS', at: new Date().toISOString(), ip: clientIp(req), endpoint: req.url }); json(res, 401, { error: 'Authentication required' }); return null; }
   const decision = await authorization.authorize(auth, req, options);
-  if (!decision.allowed || (options.dashboard && !dashboardAllowed(auth.user, options.dashboard))) {
+  const featureSchoolId = options.scope?.schoolId || options.schoolId;
+  const featureAllowed = !options.feature || !featureSchoolId || await schoolFeatureAllowed(featureSchoolId, options.feature, db);
+  if (!decision.allowed || !featureAllowed || (options.dashboard && !dashboardAllowed(auth.user, options.dashboard))) {
     const event = { id: id('audit'), action: 'FORBIDDEN_API_ACCESS', at: new Date().toISOString(), userId: auth.user.id, ip: clientIp(req), role: auth.user.role, endpoint: req.url, reason: decision.reason || 'dashboard_denied' };
     if (!relational.isConfigured()) { auditSecurityEvent(db, 'FORBIDDEN_API_ACCESS', req, { userId: auth.user.id, endpoint: req.url, role: auth.user.role, reason: event.reason }); saveDb(db); } else await relational.appendAudit(event);
-    json(res, 403, { error: 'Permission denied' }); return null;
+    json(res, 403, { error: !featureAllowed ? 'This module is not available for Public/Government School subscriptions.' : 'Permission denied' }); return null;
   }
   return decision.auth;
 }
@@ -430,6 +434,10 @@ async function persistedSchoolType(schoolId, db) {
     ? (await relational.domainRows('SELECT ownership_type FROM schools WHERE id=? AND active=TRUE LIMIT 1', [schoolId]))[0]
     : (db.schools || []).find(row => String(row.id) === String(schoolId) && row.active !== false);
   return subscriptionPolicy.normalizeSchoolType(school?.ownership_type || school?.ownershipType);
+}
+async function schoolFeatureAllowed(schoolId, feature, db) {
+  const type = await persistedSchoolType(schoolId, db);
+  return type ? subscriptionEntitlements.canSchoolAccessFeature(type, feature) : false;
 }
 function subscriptionDates(term, now = new Date()) {
   const start = term?.startDate || now.toISOString().slice(0, 10);
@@ -607,6 +615,18 @@ async function handler(req, res) {
     catch { return json(res, 503, { error: 'Service unavailable' }); }
   }
   const db = loadDb();
+  const restrictedPath = req.url.split('?')[0];
+  const restrictedFeature = restrictedPath.startsWith('/api/fees/') ? 'fees' : restrictedPath.startsWith('/api/transport/') ? 'transport' : restrictedPath.startsWith('/api/hostel/') ? 'hostel' : restrictedPath.startsWith('/api/communications/') || restrictedPath.startsWith('/api/chat/') ? 'communications' : null;
+  if (restrictedFeature) {
+    let requested = {};
+    if (req.method !== 'GET') { try { requested = await body(req); } catch { return json(res, 400, { error: 'Invalid JSON' }); } }
+    const actor = authUser(req, db);
+    const schoolId = new URL(req.url, 'http://edutrack.local').searchParams.get('schoolId') || requested.schoolId || requested.scope?.schoolId || requested.payment?.schoolId || requested.fee?.schoolId || actor?.schoolId || null;
+    if (schoolId) {
+      const auth = await authorize(req, res, db, { feature: restrictedFeature, scope: { schoolId } });
+      if (!auth) return;
+    }
+  }
   if (relational.isConfigured()) await relational.hydrateAuthState(db);
   cleanup(db);
   res.setHeader('X-Request-ID', correlationId(req));
@@ -618,11 +638,13 @@ async function handler(req, res) {
   if (req.method === 'GET' && req.url.startsWith('/api/quizzes/')) { const id=decodeURIComponent(req.url.split('?')[0].split('/').pop()); const auth=await authorize(req,res,db,{roles:['STUDENT']}); if(!auth)return; try { const quiz=await relational.getStudentQuiz(id,auth.user.id); if(!quiz)return json(res,404,{error:'Quiz not found'}); return json(res,200,quiz); } catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'POST' && req.url === '/api/quizzes/submit') { if(!requireSameOrigin(req,res))return; let input; try{input=await body(req);requireFields(input,['quizId','answers']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{roles:['STUDENT']}); if(!auth)return; try { const result=await relational.submitStudentQuiz(input,auth.user.id); await auditDomainMutation(auth,'QUIZ_SUBMITTED',req,{quizId:input.quizId,attemptId:result.attempt&&result.attempt.id}); return json(res,200,result); } catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'GET' && req.url === '/api/health') { try { if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' }); if (relational.isConfigured()) await relational.ensureInitialized(); return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' }); } catch { return json(res, 503, { ok: false, error: 'Service unavailable' }); } }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/subscriptions/private-entitlements') { const query=new URL(req.url,'http://edutrack.local').searchParams; const schoolId=validateText(query.get('schoolId'),{required:true,max:80,pattern:/^[A-Za-z0-9._-]+$/}); const feature=query.get('feature')||null; if(!schoolId)return json(res,400,{error:'schoolId is required'}); const auth=await authorize(req,res,db,{permission:'reporting.read',scope:{schoolId}}); if(!auth)return; try { const context=await authoritativeSchoolContext(auth,schoolId,db); if(!context)return json(res,404,{error:'School not found'}); const schoolType=subscriptionPolicy.normalizeSchoolType(context.school.ownership_type||context.school.ownershipType); let subscriptions=[]; if(relational.isConfigured()) subscriptions=await relational.domainRows("SELECT school_type,term_start_date,term_end_date,starts_at,expires_at,status FROM subscriptions WHERE school_id=? AND school_type='private'",[schoolId]); else subscriptions=(db.subscriptions||[]).filter(row=>String(row.schoolId||row.school_id)===String(schoolId)); const features=feature?[feature]:subscriptionEntitlements.PRIVATE_SCHOOL_FEATURES; const entitlements=Object.fromEntries(features.map(name=>[name,subscriptionEntitlements.privateFeatureEntitlement({schoolType,subscriptions,feature:name})])); return json(res,200,{schoolId,schoolType,entitlements}); } catch(error){return domainErrorResponse(res,error);} }
   if (req.method === 'POST' && /^\/api\/fees\/[A-Za-z0-9_-]+\/publish$/.test(req.url.split('?')[0])) {
     if (!requireSameOrigin(req, res)) return;
     const feeId = req.url.split('/')[3];
     const auth = await authorize(req, res, db, { roles: ['HEADTEACHER', 'SCHOOL_ACCOUNTANT', 'ACCOUNTANT'], permission: 'fees.manage' });
     if (!auth) return;
+    if (!(await schoolFeatureAllowed(auth.user.schoolId, 'fees', db))) return json(res, 403, { error: 'This module is not available for Public/Government School subscriptions.' });
     const fees = db.schoolFees || (db.schoolFees = []);
     const fee = fees.find(item => item.id === feeId && (!auth.user.schoolId || item.schoolId === auth.user.schoolId));
     if (!fee) return json(res, 404, { error: 'Fee not found in your school' });
@@ -635,6 +657,7 @@ async function handler(req, res) {
     if (!requireSameOrigin(req, res)) return;
     const auth = await authorize(req, res, db, { roles: ['HEADTEACHER', 'SCHOOL_ACCOUNTANT', 'ACCOUNTANT'], permission: 'fees.manage' });
     if (!auth) return;
+    if (!(await schoolFeatureAllowed(auth.user.schoolId, 'fees', db))) return json(res, 403, { error: 'This module is not available for Public/Government School subscriptions.' });
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid payment payload' }); }
     const payment = input && input.payment;
     if (!payment || !payment.id || !payment.receiptNo || !payment.studentId || !(Number(payment.amount) > 0)) return json(res, 400, { error: 'Invalid payment payload' });
@@ -649,6 +672,7 @@ async function handler(req, res) {
     if (!requireSameOrigin(req, res)) return;
     const auth = await authorize(req, res, db, { roles: ['HEADTEACHER', 'SCHOOL_ACCOUNTANT', 'ACCOUNTANT'], permission: 'fees.manage' });
     if (!auth) return;
+    if (!(await schoolFeatureAllowed(auth.user.schoolId, 'fees', db))) return json(res, 403, { error: 'This module is not available for Public/Government School subscriptions.' });
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid fee payload' }); }
     const fee = input && input.fee; if (!fee || !fee.id || !fee.name || Number(fee.amount) <= 0) return json(res, 400, { error: 'Invalid fee payload' });
     db.schoolFees ||= []; const existing = db.schoolFees.find(item => item.id === String(fee.id));

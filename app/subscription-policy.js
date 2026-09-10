@@ -2,7 +2,8 @@
 
 const POLICY_VERSION = 'subscription-part1-school-type-pricing-v1';
 const CURRENCY = 'GHS';
-const SCHOOL_TYPE_RATES = Object.freeze({ government: 2.00, private: 5.00 });
+const SCHOOL_TYPE_RATES_MINOR = Object.freeze({ government: 200, private: 500 });
+const SCHOOL_TYPE_RATES = Object.freeze({ government: SCHOOL_TYPE_RATES_MINOR.government / 100, private: SCHOOL_TYPE_RATES_MINOR.private / 100 });
 const PRICE_PER_STUDENT_GHS = SCHOOL_TYPE_RATES.private;
 const PRICE_PER_STUDENT_MINOR = PRICE_PER_STUDENT_GHS * 100;
 const BILLING_PERIOD = 'term';
@@ -63,7 +64,7 @@ function calculateSubscriptionAmount(activeStudentCount, schoolType) {
   const type = normalizeSchoolType(schoolType);
   if (!type) throw new Error('schoolType must be government or private');
   const pricePerStudentGhs = SCHOOL_TYPE_RATES[type];
-  const pricePerStudentMinor = pricePerStudentGhs * 100;
+  const pricePerStudentMinor = SCHOOL_TYPE_RATES_MINOR[type];
   return Object.freeze({
     activeStudentCount: count,
     schoolType: type,
@@ -206,6 +207,7 @@ module.exports = {
   PRICE_PER_STUDENT_GHS,
   PRICE_PER_STUDENT_MINOR,
   SCHOOL_TYPE_RATES,
+  SCHOOL_TYPE_RATES_MINOR,
   BILLING_PERIOD,
   MAX_PRIVATE_TERM_MONTHS,
   CAPACITY,

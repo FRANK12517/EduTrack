@@ -959,6 +959,12 @@ async function handler(req, res) {
     if(input.ownerType==='CLASS_TEACHER'){const rows=await relational.academicRows('SELECT 1 FROM teacher_class_assignments t JOIN staff st ON st.id=t.staff_id WHERE t.staff_id=? AND t.class_id=? AND t.active=TRUE AND st.school_id=? LIMIT 1',[input.staffId,input.classId,input.schoolId]);if(!rows.length)return json(res,403,{error:'Teacher is not assigned to this class'});}
     return json(res,200,{signature:await relational.getActiveSignature(input)});
   }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/signatures/resolve-result') {
+    const studentId=new URL(req.url,'http://edutrack.local').searchParams.get('studentId'); if(!studentId)return json(res,400,{error:'studentId is required'});
+    const student=(await relational.academicRows('SELECT school_id FROM students WHERE id=? AND status=\'ACTIVE\' LIMIT 1',[studentId]))[0]; if(!student)return json(res,404,{error:'Student not found'});
+    const auth=await authorize(req,res,db,{permission:'reporting.read',scope:{schoolId:student.school_id}}); if(!auth)return;
+    return json(res,200,{signatures:await relational.resolveResultSignatures(studentId)});
+  }
   if (req.method === 'POST' && req.url.split('?')[0] === '/api/signatures') {
     if(!requireSameOrigin(req,res))return; let input; try{input=canonicalDomainPayload(await body(req));requireFields(input,['schoolId','ownerType','source','processedStorageRef']);if(!['HEADTEACHER','CLASS_TEACHER'].includes(input.ownerType)||!['DIGITAL','UPLOAD'].includes(input.source))throw domainInputError('Invalid signature owner or source');if(input.ownerType==='CLASS_TEACHER')requireFields(input,['staffId','classId']);if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(input.processedStorageRef)||input.processedStorageRef.length>7*1024*1024)throw domainInputError('Processed signature must be a valid image under 5 MB');}catch(e){return domainErrorResponse(res,e)}
     const auth=await authorize(req,res,db,{permission:'signature.manage',scope:{schoolId:input.schoolId}});if(!auth)return;

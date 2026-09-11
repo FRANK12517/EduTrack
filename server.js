@@ -15,7 +15,7 @@ const subscriptionEntitlements = require('./app/subscription-entitlements');
 const ROOT = __dirname;
 const SERVERLESS_RUNTIME = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DATA_DIR = path.join(ROOT, 'data');
-const DB_FILE = path.join(DATA_DIR, 'edutrack.json');
+const DB_FILE = process.env.EDUTRACK_DATA_FILE ? path.resolve(process.env.EDUTRACK_DATA_FILE) : path.join(DATA_DIR, 'edutrack.json');
 const PORT = Number(process.env.PORT || 3000);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const RESET_TTL_MS = 15 * 60 * 1000;
@@ -31,7 +31,7 @@ const RESET_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 5, blockMs: 15 * 60
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_BYTES = 8192;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'OPTIONS']);
-const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'admin-dashboard-separation.js', 'school-sidebar.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'individual-result-slip-fix.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css', 'edutrack-polish.css']);
+const SAFE_PUBLIC_FILES = new Set(['index.html', 'privileged-auth.js', 'startup-readiness.js', 'school-login-boot.js', 'school-module-loader.js', 'attendance-register-ui.js', 'admin-dashboard-separation.js', 'school-sidebar.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'individual-result-slip-fix.js', 'edutrack-design-system.css', 'edutrack-shell.css', 'edutrack-dashboard.css', 'edutrack-dense.css', 'edutrack-polish.css']);
 const ALLOWED_ORIGINS = new Set(String(process.env.EDUTRACK_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const UPLOAD_LIMITS = Object.freeze({ passport: 5 * 1024 * 1024, profile: 5 * 1024 * 1024, document: 15 * 1024 * 1024, report: 25 * 1024 * 1024 });
@@ -429,6 +429,26 @@ async function authoritativeSchoolContext(auth, requestedSchoolId, db) {
   const count = (db.students || []).filter(row => String(row.schoolId || row.school_id) === schoolId && String(row.status || 'ACTIVE').toUpperCase() === 'ACTIVE').length;
   return { school, schoolId, activeStudentCount: count, db };
 }
+function normalizedLoginText(value) { return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase(); }
+function normalizedDistrictText(value) { return normalizedLoginText(value).replace(/\bMETROPOLITAN\b/g, 'METRO').replace(/\bSEKONDI\b/g, 'SECONDI'); }
+function normalizedSchoolRole(value) {
+  const role = normalizedLoginText(value).replace(/[^A-Z0-9]+/g, ' ').trim();
+  return ({ 'HEAD TEACHER': 'HEADTEACHER', HEADMASTER: 'HEADTEACHER', HEADMISTRESS: 'HEADTEACHER', TEACHER: 'TEACHER', 'CLASSROOM TEACHER': 'TEACHER' })[role] || role.replace(/\s+/g, '_');
+}
+function provisionTestSchoolFixture(db) {
+  if (process.env.NODE_ENV !== 'test' || process.env.EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE !== 'true') return false;
+  const accessCode = process.env.EDUTRACK_TEST_SCHOOL_ACCESS_CODE;
+  const staffId = process.env.EDUTRACK_TEST_SCHOOL_STAFF_ID;
+  if (!accessCode || !staffId) throw new Error('Test school fixture credentials are required only when the fixture is enabled');
+  const fixtureId = 'test-school-western-sekondi'; const userId = 'test-headteacher-western-sekondi'; const now = new Date().toISOString();
+  const school = { id: fixtureId, tenantId: 'test-tenant-western-sekondi', name: 'EduTrack Test School', region: 'WESTERN', district: 'SECONDI TAKORADI METROPOLITAN', active: true, status: 'ACTIVE', developmentFixture: true, createdAt: now, updatedAt: now };
+  const user = { id: userId, email: 'headteacher.test@edutrack.invalid', staffId, passwordHash: hashPassword(accessCode), accessCodeHash: hashPassword(accessCode), role: 'HEADTEACHER', hierarchy: 'SCHOOL', scope: { tenantId: school.tenantId, schoolId: fixtureId }, schoolId: fixtureId, active: true, developmentFixture: true, failedLoginCount: 0, lockedUntil: null, createdAt: now, updatedAt: now };
+  const staff = { id: 'test-staff-western-sekondi', userId, staffId, staffIdentifier: staffId, fullName: 'Test Headteacher', role: 'HEADTEACHER', schoolId: fixtureId, tenantId: school.tenantId, region: school.region, district: school.district, status: 'ACTIVE', developmentFixture: true, createdAt: now, updatedAt: now };
+  const upsert = (rows, record) => { const index = rows.findIndex(row => String(row.id) === String(record.id)); if (index >= 0) rows[index] = { ...rows[index], ...record }; else rows.push(record); };
+  upsert(db.schools, school); upsert(db.users, user); upsert(db.staff, staff); db.subscriptions ||= [];
+  if (!db.subscriptions.some(row => String(row.schoolId) === fixtureId && row.developmentFixture)) db.subscriptions.push({ id: 'test-sub-western-sekondi', schoolId: fixtureId, tenantId: school.tenantId, status: 'ACTIVE', active: true, developmentFixture: true, expiresAt: '2099-12-31T23:59:59.999Z', createdAt: now, updatedAt: now });
+  return true;
+}
 async function persistedSchoolType(schoolId, db) {
   const school = relational.isConfigured()
     ? (await relational.domainRows('SELECT ownership_type FROM schools WHERE id=? AND active=TRUE LIMIT 1', [schoolId]))[0]
@@ -615,6 +635,7 @@ async function handler(req, res) {
     catch { return json(res, 503, { error: 'Service unavailable' }); }
   }
   const db = loadDb();
+  if (provisionTestSchoolFixture(db)) saveDb(db);
   const restrictedPath = req.url.split('?')[0];
   const restrictedFeature = restrictedPath.startsWith('/api/fees/') ? 'fees' : restrictedPath.startsWith('/api/transport/') ? 'transport' : restrictedPath.startsWith('/api/hostel/') ? 'hostel' : restrictedPath.startsWith('/api/communications/') || restrictedPath.startsWith('/api/chat/') ? 'communications' : null;
   if (restrictedFeature) {
@@ -876,6 +897,23 @@ async function handler(req, res) {
     const loginAudit = { id: id('audit'), userId: user.id, action: 'SUPER_ADMIN_LOGIN_SUCCESS', at: now.toISOString(), ip: clientIp(req), severity: 'high' };
     if (relational.isConfigured()) await relational.appendAudit(loginAudit); else { db.audit.push(loginAudit); saveDb(db); }
     return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
+  }
+  if (req.method === 'POST' && req.url === '/api/school-login') {
+    let input; try { input = await body(req); } catch { return json(res, 400, { error: GENERIC_AUTH_ERROR }); }
+    if (Object.keys(input || {}).some(key => !['region', 'district', 'accessCode', 'staffId', 'role'].includes(key))) return json(res, 400, { error: GENERIC_AUTH_ERROR });
+    const region = validateText(input.region, { required: true, max: 160, pattern: /^[A-Za-z][A-Za-z .'-]*$/ });
+    const district = validateText(input.district, { required: true, max: 180, pattern: /^[A-Za-z][A-Za-z .'-]*$/ });
+    const accessCode = validateText(input.accessCode, { required: true, max: 256 }); const staffId = validateText(input.staffId, { required: true, max: 120, pattern: /^[A-Za-z0-9._-]+$/ }); const role = normalizedSchoolRole(input.role);
+    const ipKey = limitKey(req, 'school-login'); const accountKey = limitKey(req, `school-account:${staffId || 'unknown'}`); const ipState = checkLimit(ipKey, LOGIN_LIMIT); const accountState = checkLimit(accountKey, LOGIN_LIMIT);
+    if (ipState.blocked || accountState.blocked) return json(res, 429, { error: GENERIC_AUTH_ERROR, retryAfter: Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0) }, { 'Retry-After': String(Math.max(ipState.retryAfter || 1, accountState.retryAfter || 1)) });
+    const user = db.users.find(item => item.active && normalizedLoginText(item.staffId) === normalizedLoginText(staffId) && normalizedSchoolRole(item.role) === role && (!item.developmentFixture || DEV_ACCESS_ENABLED || process.env.EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE === 'true'));
+    const school = user && db.schools.find(item => String(item.id) === String(user.schoolId)); const staff = user && db.staff.find(item => String(item.userId || item.user_id || '') === String(user.id) && String(item.schoolId || item.school_id || '') === String(user.schoolId) && String(item.status || 'ACTIVE').toUpperCase() === 'ACTIVE');
+    const subscription = school && (db.subscriptions || []).find(item => String(item.schoolId || item.school_id) === String(school.id) && item.active !== false && String(item.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && (!item.expiresAt || new Date(item.expiresAt) > new Date()));
+    const valid = Boolean(region && district && accessCode && staffId && role && user && school && staff && school.active !== false && String(school.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && subscription && normalizedLoginText(school.region).replace(/ REGION$/, '') === normalizedLoginText(region).replace(/ REGION$/, '') && normalizedDistrictText(school.district) === normalizedDistrictText(district) && (!user.lockedUntil || new Date(user.lockedUntil) <= new Date()) && verifyPassword(accessCode, user.accessCodeHash));
+    if (!valid) { const reason = !user ? 'STAFF_NOT_FOUND' : !school ? 'SCHOOL_NOT_FOUND' : !staff ? 'STAFF_ASSIGNMENT_MISSING' : !subscription ? 'SUBSCRIPTION_INACTIVE' : normalizedLoginText(school.region).replace(/ REGION$/, '') !== normalizedLoginText(region).replace(/ REGION$/, '') ? 'REGION_MISMATCH' : normalizedDistrictText(school.district) !== normalizedDistrictText(district) ? 'DISTRICT_MISMATCH' : !verifyPassword(accessCode, user.accessCodeHash) ? 'ACCESS_CODE_MISMATCH' : 'AUTHENTICATION_REJECTED'; if (process.env.NODE_ENV === 'test') console.warn('[test school-login rejected]', reason, { staffId: staffId || null, role: role || null, region: region || null, district: district || null, dataFile: DB_FILE }); registerFailure(ipKey, LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT); auditSecurityEvent(db, 'SCHOOL_LOGIN_REJECTED', req, { severity: 'medium', reason: process.env.NODE_ENV === 'test' ? reason : undefined }); saveDb(db); return json(res, 401, { error: GENERIC_AUTH_ERROR }); }
+    clearLimit(ipKey); clearLimit(accountKey); user.failedLoginCount = 0; user.lockedUntil = null; const rawToken = randomToken(); const now = new Date(); const session = { id: id('ses'), tokenHash: tokenHash(rawToken), userId: user.id, createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString() };
+    db.sessions.push(session); auditSecurityEvent(db, 'SCHOOL_LOGIN_SUCCESS', req, { userId: user.id, schoolId: school.id, role: user.role, result: 'success' }); saveDb(db);
+    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user), school: { id: school.id, tenantId: school.tenantId || school.tenant_id || null, name: school.name, region: school.region, district: school.district }, dashboard: 'school-general' }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
   }
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
@@ -1313,6 +1351,41 @@ Write a concise professional education insight for the ' + level + ' level.');
     const relative = path.relative(ROOT, safe);
     if (relative.startsWith('..') || path.isAbsolute(relative) || requested.includes('\\0') || requested.split('/').some(part => part.startsWith('.')) || !SAFE_PUBLIC_FILES.has(relative) || !fs.existsSync(safe) || fs.statSync(safe).isDirectory()) return json(res, 404, { error: 'Not found' });
     const ext = path.extname(safe); const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+    if (relative === 'index.html') {
+      // The legacy page is an accumulated application bundle: dozens of feature
+      // scripts execute while the unauthenticated login shell is parsing. Keep
+      // the core/login block synchronous, but retain later feature scripts as
+      // inert nodes until the person starts authentication. This removes their
+      // work from the critical login-shell path without deleting any route.
+      let shell = fs.readFileSync(safe).toString('latin1');
+      // These optional theme files are not present in this distribution. Their
+      // stale links return JSON 404 responses and cause strict MIME warnings;
+      // the complete shell styling remains embedded in index.html.
+      shell = shell.replace(/<link\b[^>]*href=["'](?:\/?)(?:edutrack-design-system|edutrack-shell|edutrack-dashboard|edutrack-dense|edutrack-polish)\.css[^>]*>\s*/gi, '');
+      // A later legacy bridge registers optional result helpers during shell
+      // boot. Keep its namespace available while those result modules remain
+      // inert for the thin School-login path.
+      shell = shell.replace(/<head(\s[^>]*)?>/i, tag => `${tag}<script>window.EduTrackLegacyAcademicAdapter=window.EduTrackLegacyAcademicAdapter||{};</script>`);
+      // The legacy authority marker can run after a deferred script has replaced
+      // its optional login helper. A marker must not make the public shell fail.
+      shell = shell.replace('window.v43DoLogin._part9Authoritative=true;', 'if(window.v43DoLogin)window.v43DoLogin._part9Authoritative=true;');
+      // The core declares this authoritative cascade as a top-level `const`.
+      // Expose that same object to the external, thin School-login adapter;
+      // no region or district data is copied or maintained separately.
+      shell = shell.replace('const GH_REGIONS_DISTRICTS = {', 'window.GH_REGIONS_DISTRICTS = {');
+      let scriptIndex = -1;
+      shell = shell.replace(/<script\b[^>]*>/gi, tag => {
+        scriptIndex += 1;
+        return scriptIndex > 24 && scriptIndex < 244
+          ? tag.replace(/^<script/i, `<script type="application/x-edutrack-lazy" data-edutrack-lazy="true" data-edutrack-script-index="${scriptIndex}"`)
+          : tag;
+      });
+      const attendanceUi = Buffer.from(`<script>
+        (function(){'use strict';var activated=false;function activate(){if(activated)return;activated=true;document.querySelectorAll('script[data-edutrack-lazy="true"]').forEach(function(node){var script=document.createElement('script');Array.prototype.forEach.call(node.attributes,function(attribute){if(attribute.name!=='type'&&attribute.name!=='data-edutrack-lazy')script.setAttribute(attribute.name,attribute.value)});script.text=node.textContent;node.parentNode.replaceChild(script,node)});window.dispatchEvent(new CustomEvent('edutrack:legacy-modules-activated'))}document.addEventListener('click',function(event){var target=event.target&&event.target.closest&&event.target.closest('.login-level-btn:not([data-level="SCHOOL"])');if(target)activate()},true);window.EDUTRACK_BOOT={activateLegacyModules:activate};})();
+      </script><script src="startup-readiness.js" defer></script><script src="school-module-loader.js" defer></script><script src="school-login-boot.js" defer></script><script src="attendance-register-ui.js" defer></script>`);
+      res.writeHead(200, { 'Content-Type': types[ext], ...securityHeaders() });
+      return res.end(Buffer.concat([Buffer.from(shell, 'latin1'), attendanceUi]));
+    }
     res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', ...securityHeaders() }); return fs.createReadStream(safe).pipe(res);
   }
   json(res, 404, { error: 'Not found' });
@@ -1320,6 +1393,12 @@ Write a concise professional education insight for the ' + level + ' level.');
 
 if (!(SERVERLESS_RUNTIME && process.env.NODE_ENV === 'production')) ensureData();
 function startServer() {
+  // A test server is not ready until its explicitly enabled disposable fixture
+  // has been written.  This keeps browser and direct API tests on one dataset.
+  if (process.env.NODE_ENV === 'test' && process.env.EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE === 'true') {
+    const db = loadDb();
+    if (provisionTestSchoolFixture(db)) saveDb(db);
+  }
   return http.createServer((req, res) => handler(req, res).catch(() => json(res, 500, { error: 'Internal server error' }))).listen(PORT, () => console.log(`EduTrack server listening on port ${PORT}`));
 }
 if (require.main === module) {

@@ -18,6 +18,7 @@
     "production:preflight": "node scripts/production-preflight.js",
     "production:release-gate": "node scripts/production-release-gate.js",
     "production:release-gate:json": "node scripts/production-release-gate.js --json",
+    "test:school-login-thin": "node test/school-login-thin-boot.browser.spec.js",
     "test:part39-adapter": "node test/part39-deployment-adapter.spec.js",
     "test:part39-staging-deployment.browser": "node test/part39-staging-deployment.browser.spec.js",
     "test:part39": "node test/part39-deployment-repair.spec.js && node test/part39-deployment-adapter.spec.js",

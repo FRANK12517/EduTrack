@@ -67,12 +67,14 @@ async function assertTogglePreservesValue(page, id) {
   });
   try {
     await waitForServer();
-    const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true });
+    const browser = await chromium.launch({ headless: true });
     try {
       for (const viewport of [{ width: 1280, height: 900 }, { width: 414, height: 896 }]) {
         const page = await browser.newPage({ viewport, hasTouch: viewport.width < 600, isMobile: viewport.width < 600 });
-        await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
-        await page.locator('#sd-login-btn').waitFor({ state: 'attached', timeout: 5000 });
+        // The single-file application is intentionally large (~12 MB); wait for
+        // the committed document response, then assert the actual login DOM.
+        await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'commit', timeout: 30000 });
+        await page.locator('#sd-login-btn').waitFor({ state: 'attached', timeout: 30000 });
         const levels = await page.locator('.login-level-btn').evaluateAll(nodes => nodes.map(node => node.dataset.level));
         assert.deepEqual(levels.slice().sort(), ['DISTRICT', 'NATIONAL', 'PARENT', 'REGIONAL', 'SCHOOL', 'STUDENT'], 'all six login cards must remain available');
         assert.equal(await page.locator('.login-level-btn').count(), 6);

@@ -1,0 +1,61 @@
+name: TiDB relational signature verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'db/**'
+      - 'lib/tidb-config.js'
+      - 'server.js'
+      - 'test/**signature*'
+      - 'test/part20-rbac-tenant-isolation.spec.js'
+      - '.github/workflows/relational-signature.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'db/**'
+      - 'lib/tidb-config.js'
+      - 'server.js'
+      - 'test/**signature*'
+      - 'test/part20-rbac-tenant-isolation.spec.js'
+      - '.github/workflows/relational-signature.yml'
+
+jobs:
+  tidb-relational-signatures:
+    name: TiDB signature persistence and migration gate
+    runs-on: ubuntu-latest
+    env:
+      # An isolated, disposable TiDB branch/database; GitHub masks its value.
+      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_TEST_DATABASE_URL }}
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require isolated TiDB test connection
+        shell: bash
+        run: |
+          if [ -z "$EDUTRACK_DATABASE_URL" ]; then
+            echo 'EDUTRACK_TIDB_TEST_DATABASE_URL is required for the TiDB release gate.' >&2
+            exit 1
+          fi
+          case "$EDUTRACK_DATABASE_URL" in
+            mysql:*|mariadb:*) ;;
+            *) echo 'The TiDB test connection must use a MySQL-compatible URL.' >&2; exit 1 ;;
+          esac
+      - name: Verify TiDB connectivity without disclosing connection details
+        run: node -e "require('./db/relational').getPool().query('SELECT VERSION()').then(() => console.log('TiDB connectivity verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB connectivity failed.'); process.exit(1); })"
+      - name: Initialize additive schema
+        run: npm run db:migrate
+      - name: Verify signature contracts and tenant isolation
+        run: |
+          node test/signature-phase2.spec.js
+          node test/signature-phase3.spec.js
+          node test/signature-phase4.spec.js
+          node test/signature-phase5.spec.js
+          npm run test:part20
+      - name: Verify representative additive migration is idempotent
+        run: npm run db:migrate

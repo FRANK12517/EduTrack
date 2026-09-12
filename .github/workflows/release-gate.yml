@@ -18,6 +18,7 @@ jobs:
       TIDB_USER: ${{ secrets.TIDB_USER }}
       TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
       TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+      TIDB_CA_CERT: ${{ secrets.TIDB_CA_CERT }}
       DB_HOST: ${{ secrets.TIDB_HOST }}
       DB_PORT: ${{ secrets.TIDB_PORT }}
       DB_USER: ${{ secrets.TIDB_USER }}
@@ -37,7 +38,7 @@ jobs:
       - name: Verify required TiDB secrets are configured
         shell: bash
         run: |
-          for variable in TIDB_HOST TIDB_PORT TIDB_USER TIDB_PASSWORD TIDB_DATABASE DB_CA_CERT; do
+          for variable in TIDB_HOST TIDB_PORT TIDB_USER TIDB_PASSWORD TIDB_DATABASE TIDB_CA_CERT; do
             if [ -z "${!variable}" ]; then
               echo "Required TiDB release-gate secret is missing: ${variable}" >&2
               exit 1
@@ -46,6 +47,6 @@ jobs:
       - name: Verify TLS connection to TiDB Cloud
         run: node -e "require('./db/relational').getPool().query('SELECT 1').then(() => console.log('TiDB TLS connection verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB TLS connection failed.'); process.exit(1); })"
       - name: Run additive database migration
-        run: npm run db:migrate
+        run: node scripts/migrate-db.js
       - name: Run release checks
         run: npm run check

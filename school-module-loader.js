@@ -6,7 +6,7 @@
   var activatingGroups = new Map();
   var registry = {
     CORE_LOGIN: [],
-    SCHOOL_GENERAL: ['/school-sidebar.js?v=20260911-school-general'],
+    SCHOOL_GENERAL: ['/school-sidebar.js?v=20260911-school-general', '/school-user-guide.js?v=20260914-school-guide-foundation'],
     SCHOOL_ADMIN: [], SCHOOL_ACADEMICS: [], SCHOOL_ATTENDANCE: [], SCHOOL_RESULTS: [],
     SCHOOL_ADMISSIONS: ['/online-admission.js', '/admissions-review.js'], SCHOOL_FINANCE: [],
     SCHOOL_STAFF: [], SCHOOL_STUDENTS: [], SCHOOL_TRANSPORT: ['/transport-management.js'],
@@ -46,6 +46,7 @@
   async function activateSchoolGeneral(context) {
     var startedAt = performance.now();
     await loadScript(registry.SCHOOL_GENERAL[0], 'school-general-sidebar');
+    await loadScript(registry.SCHOOL_GENERAL[1], 'school-general-guide');
     var sidebar = window.EDUTRACK_SCHOOL_SIDEBAR;
     if (!sidebar || typeof sidebar.refresh !== 'function') throw new Error('School sidebar unavailable');
     var dashboard = document.getElementById('page-dashboard');

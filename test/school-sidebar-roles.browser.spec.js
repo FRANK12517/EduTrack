@@ -34,7 +34,7 @@ function fixture() {
     window.CONFIG={schoolType:'PRIVATE'};window.showPage=function(id,el){window.__lastTarget='page:'+id;document.querySelectorAll('[id^=page-]').forEach(n=>n.classList.add('hidden'));var p=document.getElementById('page-'+id);if(p)p.classList.remove('hidden');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active')};
     window.fmsShowPage=function(id){window.__lastTarget='fms:'+id};window.emsDoLogout=function(){window.__lastTarget='session:logout'};window.EMS_SLD={openSection:function(id){window.__lastTarget='section:'+id}};window.EMS_I18N={openSwitcher:function(){window.__lastTarget='api:EMS_I18N.openSwitcher'}};window.EMS_GNSIS_LIFE={open:function(id){window.__lastTarget='workflow:'+id}};window.EDUTRACK_STAFF_MANAGEMENT_PART3={open:function(){window.__lastTarget='api:EDUTRACK_STAFF_MANAGEMENT_PART3.open'}};
     ['GES_TEACHER_ASSIGN_UI','GES_ROLE_ASSIGN_UI','GES_RESULT_PUBLISH_UI','GES_RESULT_BLOCK_UI','GES_MOCK_RESULT_PUBLISH_UI','GES_MOCK_RESULT_BLOCK_UI'].forEach(n=>window[n]={render:function(){}});
-    ['EDUTRACK_ONLINE_ADMISSIONS','EDUTRACK_COMMUNICATION_HUB','EDUTRACK_CHAT','EDUTRACK_CONTROL_PANEL','EDUTRACK_QUIZ_MODULE','EDUTRACK_ADMISSIONS_REVIEW'].forEach(n=>window[n]={open:function(){window.__lastTarget='api:'+n+'.open'}});
+    ['EDUTRACK_ONLINE_ADMISSIONS','EDUTRACK_COMMUNICATION_HUB','EDUTRACK_CHAT','EDUTRACK_CONTROL_PANEL','EDUTRACK_QUIZ_MODULE','EDUTRACK_ADMISSIONS_REVIEW'].forEach(n=>window[n]={open:function(){window.__lastTarget='api:'+n+'.open'}});window.EDUTRACK_SCHOOL_GUIDE={open:function(){window.__lastTarget='guide:school'}};
   </script></body></html>`;
 }
 
@@ -76,6 +76,7 @@ function fixture() {
         assert.equal(await page.locator('#ng-cat-shared').evaluate(n => n.classList.contains('open')), true);
         assert.deepEqual(await page.locator('#school-smart-management > .nav-group-items > .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolNav)), ['AI Analytics Engine','Workflow Automation','Business Intelligence','Student Health','Library','Timetable AI','Procurement','Guidance & Counselling']);
         assert.deepEqual(await page.locator('#school-student-admission > .nav-group-items > .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolNav)), ['New Student Admission','Transfer Admission','Student Search / Profile','Online Admission','Admissions Review']);
+        assert.equal(await page.locator('#school-student-admission > .nav-group-header .nav-label').textContent(), 'Student Admission & Transfer Management');
         assert.deepEqual(await page.locator('#school-integrated-modules > .nav-group-items > .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolNav)), ['Communication Hub','Chat','Control Panel','Analytics Narrative','Quiz','Transport Management','Hostel Management','QR Attendance']);
         assert.equal(await page.locator('#school-integrated-modules [data-school-nav="Online Admission"],#school-integrated-modules [data-school-nav="Admissions Review"]').count(), 0);
         assert.equal(await page.locator('#sg-school-level').getByText('Next', { exact:true }).count(), 0);

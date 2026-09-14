@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const guide=fs.readFileSync(path.join(__dirname,'..','school-user-guide.js'),'utf8');
+for(const term of ['admission','GNSIS','transfer','PGSID','attendance','teacher attendance','score','results','result slip','mock','fee','receipt','users','roles','staff','LMS','sporting activities','AI','timetable','transport','hostel','communication','health','library','procurement','counselling','QR attendance'])assert.match(guide,new RegExp(term,'i'),'missing searchable guide term: '+term);
+for(const control of ['Save Score','Publish Results','Block Result','Cloud Sync','PGSID','Record Payment','Generate','Approve','Reject'])assert.match(guide,new RegExp("['\"]"+control),'missing contextual tooltip: '+control);
+for(const control of ['Previous','Next','Skip','Close','Restart Tour'])assert.match(guide,new RegExp(control),'missing tour control: '+control);
+assert.match(guide,/data-guide-walkthrough/);
+assert.match(guide,/function targets\(topic\)/);
+assert.match(guide,/function visible\(label\)/);
+assert.match(guide,/Access Denied or Restricted Feature/i);
+assert.match(guide,/Pending Synchronization/i);
+assert.match(guide,/Payment Successful or Failed/i);
+console.log('School user guide Part 8 assistance-system coverage passed.');

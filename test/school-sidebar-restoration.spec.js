@@ -21,7 +21,7 @@ const labels = [
   'STAFF MANAGEMENT', 'User Accounts & Access Control', 'Staff Registry',
   'Assign Class to Teachers', 'Reassign Class', 'Assign Roles',
   'Publish Results', 'Block Result', 'Publish Mock Results', 'Block Mock Result',
-  'STUDENT ADMISSION', 'New Student Admission', 'Transfer Admission',
+  'Student Admission & Transfer Management', 'New Student Admission', 'Transfer Admission',
   'Student Search / Profile', 'Score Entry', 'Multi-Subject Entry', 'Mock Entry',
   'Pupil Setup', 'SMS Logs', 'Pupils Report', 'Audit Trail', 'Attendance Reports',
   'Automation Hub', 'Headteacher Critical Alert (3-Day)', 'SHEP Activities',
@@ -97,9 +97,12 @@ for (const api of [
 }
 assert.match(sidebar, /EMS_SLD&&EMS_SLD\.openSection/);
 assert.match(sidebar, /EMS_GNSIS_LIFE&&EMS_GNSIS_LIFE\.open/);
+assert.match(sidebar, /Student Admission & Transfer Management/);
+assert.match(sidebar, /EDUTRACK_SCHOOL_GUIDE&&window\.EDUTRACK_SCHOOL_GUIDE\.open/);
 assert.match(sidebar, /data-private-school-feature/);
 assert.match(sidebar, /ASSISTANTHEAD/);
 assert.match(server, /school-sidebar\.js/);
+assert.match(server, /school-user-guide\.js/, 'School guide must be served as a public School module');
 assert.match(auth, /school-sidebar\.js\?v=20260908-school-sidebar-restoration-v2/);
 assert.match(auth, /script\.dataset\.edutrackSchoolSidebar/);
 assert.match(auth, /function restoreSchoolSession\(\)/);

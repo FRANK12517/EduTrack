@@ -1,0 +1,23 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const root=path.join(__dirname,'..');
+const guide=fs.readFileSync(path.join(root,'school-user-guide.js'),'utf8');
+const sidebar=fs.readFileSync(path.join(root,'school-sidebar.js'),'utf8');
+for(const title of ['Common Workflows','Teacher Daily Workflow','Headteacher Daily Workflow','Admission Workflow','Fee Workflow','Pupil Attendance Workflow','Teacher Attendance Workflow','Security & Data Accuracy','Mobile Help','Info & Session'])assert.ok(guide.includes(`title:'${title}'`),'missing Part 9 guide entry: '+title);
+assert.match(guide,/Login → Dashboard → review notifications → Pupils Register \/ Attendance/i);
+assert.match(guide,/Cloud Sync \/ Integrity Check → Log Out/i);
+assert.match(guide,/Online Admission \/ Admissions Review where applicable/i);
+assert.match(guide,/Fee Setup → Class Structures → Record Payment → Receipt Registry → Outstanding Fees → Financial Reports/);
+assert.match(guide,/Never share credentials; protect confidential/i);
+assert.match(guide,/never bypass RBAC or manipulate protected routes/i);
+assert.match(guide,/overlays are scrollable and dismissible/i);
+assert.match(guide,/User Guide → Copyright → Acknowledgement → Developer → Log Out/);
+const infoStart=sidebar.indexOf("var info=");
+const infoEnd=sidebar.indexOf(";\nwrap.innerHTML",infoStart);
+const info=sidebar.slice(infoStart,infoEnd);
+let previous=-1;
+for(const label of ['User Guide','Copyright','Acknowledgement','Developer','Log Out']){const at=info.indexOf("'"+label+"'");assert.ok(at>previous,'Info & Session order broken at '+label);previous=at;}
+assert.ok(!info.slice(info.indexOf("'Log Out'")+1).match(/(?:guide|page|item|api|sld|result)\('/),'Nothing may appear after Log Out in Info & Session.');
+console.log('School user guide Part 9 daily workflow, safety, mobile, and Info & Session coverage passed.');

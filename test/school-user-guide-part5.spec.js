@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const guide=fs.readFileSync(path.join(__dirname,'..','school-user-guide.js'),'utf8');
+for(const label of ['Student Database','Result Slip','Mock Result','Mock Exam Analysis','Broadsheet','Rankings','Chart Analysis','Index Generator','Result Processing Workflow','Mock Results Workflow'])assert.ok(guide.includes(label),'missing Part 5 guide entry: '+label);
+assert.match(guide,/school-data isolation applies/i);
+assert.match(guide,/Preview → verify → Print\/Export where supported/);
+assert.match(guide,/interpret rankings with broader academic information/i);
+assert.match(guide,/Setup\/Config → Subject Config → Teacher\/Class Assignment → Score Entry/);
+assert.match(guide,/Mock Entry → Mock Result → Mock Exam Analysis → review\/correct → Publish Mock Results/);
+assert.match(guide,/does not change formats, calculations, PGSID, data records or result-publication rules/i);
+console.log('School user guide Part 5 shared academic, result and analysis coverage passed.');

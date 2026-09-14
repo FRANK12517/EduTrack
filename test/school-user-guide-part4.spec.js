@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const guide=fs.readFileSync(path.join(__dirname,'..','school-user-guide.js'),'utf8');
+for(const label of ['Score Entry','Multi-Subject Entry','Mock Entry','Pupils Register','Pupil Setup','SMS Logs','Pupils Report','Audit Trail','Attendance Reports','Automation Hub','Headteacher Critical Alert (3-Day)','SHEP Activities','Subject Register','Sporting Activities','Learning Management (LMS)'])assert.ok(guide.includes(label),'missing Part 4 guide entry: '+label);
+assert.match(guide,/teachers only for authorized classes\/subjects/i);
+assert.match(guide,/Present, Absent, Tardy or Excused/);
+assert.match(guide,/audit history must not be manipulated/i);
+assert.match(guide,/sports events, equipment, attendance and achievements/i);
+assert.match(guide,/lessons, assignments\/homework, quizzes, discussion and learning resources/i);
+assert.match(guide,/n\.title='Help available: '/,'major School controls must receive accessible help tooltips');
+console.log('School user guide Part 4 teachers, pupils, activities and LMS coverage passed.');

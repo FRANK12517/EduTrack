@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const guide=fs.readFileSync(path.join(__dirname,'..','school-user-guide.js'),'utf8');
+for(const label of ['Integrity Check','Cloud Sync','User Accounts & Access Control','Staff Registry','Assign Class to Teachers','Reassign Class','Assign Roles','Publish Results','Block Result','Publish Mock Results','Block Mock Result','New Student Admission','Transfer Admission','Student Search / Profile'])assert.match(guide,new RegExp(label.replace(/[&/]/g,'\\$&')),'missing Part 3 guide entry: '+label);
+assert.match(guide,/never attempt direct database manipulation/i);
+assert.match(guide,/cloud endpoint is unreachable/i);
+assert.match(guide,/cannot grant District, Regional or National access/i);
+assert.match(guide,/least-privilege/i);
+assert.match(guide,/does not delete underlying scores/i);
+assert.match(guide,/must not receive a new permanent identity/i);
+assert.match(guide,/GNSIS admission transfer PGSID student search/i);
+assert.match(guide,/section\.access/,'guide entries must follow visible School navigation');
+console.log('School user guide Part 3 coverage and authorization safeguards passed.');

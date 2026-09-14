@@ -1380,6 +1380,15 @@ Write a concise professional education insight for the ' + level + ' level.');
           ? tag.replace(/^<script/i, `<script type="application/x-edutrack-lazy" data-edutrack-lazy="true" data-edutrack-script-index="${scriptIndex}"`)
           : tag;
       });
+      // The login form reads the already-established Region → District map as
+      // soon as School is selected.  Keep the script that owns that map live:
+      // it is data needed by the public authentication form, not a post-login
+      // feature module.  The map is still defined once in index.html and is
+      // never copied into this server adapter.
+      shell = shell.replace(
+        /<script type="application\/x-edutrack-lazy" data-edutrack-lazy="true" data-edutrack-script-index="(\d+)"([^>]*)>([\s\S]*?window\.GH_REGIONS_DISTRICTS\s*=\s*\{[\s\S]*?)<\/script>/,
+        '<script data-edutrack-script-index="$1"$2>$3</script>'
+      );
       const attendanceUi = Buffer.from(`<script>
         (function(){'use strict';var activated=false;function activate(){if(activated)return;activated=true;document.querySelectorAll('script[data-edutrack-lazy="true"]').forEach(function(node){var script=document.createElement('script');Array.prototype.forEach.call(node.attributes,function(attribute){if(attribute.name!=='type'&&attribute.name!=='data-edutrack-lazy')script.setAttribute(attribute.name,attribute.value)});script.text=node.textContent;node.parentNode.replaceChild(script,node)});window.dispatchEvent(new CustomEvent('edutrack:legacy-modules-activated'))}document.addEventListener('click',function(event){var target=event.target&&event.target.closest&&event.target.closest('.login-level-btn:not([data-level="SCHOOL"])');if(target)activate()},true);window.EDUTRACK_BOOT={activateLegacyModules:activate};})();
       </script><script src="startup-readiness.js" defer></script><script src="school-module-loader.js" defer></script><script src="school-login-boot.js" defer></script><script src="attendance-register-ui.js" defer></script>`);

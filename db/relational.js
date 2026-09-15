@@ -65,38 +65,37 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS signatures (id VARCHAR(80) PRIMARY KEY, school_id VARCHAR(80) NOT NULL, owner_type VARCHAR(24) NOT NULL, owner_id VARCHAR(80) NULL, staff_id VARCHAR(80) NULL, class_id VARCHAR(80) NULL, source VARCHAR(16) NOT NULL, processed_storage_ref TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, academic_year_id VARCHAR(80) NULL, term_id VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, deactivated_at TIMESTAMP NULL, KEY signature_active_scope (school_id,owner_type,owner_id,class_id,active), CONSTRAINT signature_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE RESTRICT, CONSTRAINT signature_staff_fk FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT, CONSTRAINT signature_class_fk FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE RESTRICT) ENGINE=InnoDB`
 ];
 
-async function alignLegacyAdmissionHistoryUserForeignKey(conn) {
-  const [columns] = await conn.query(`SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
-    FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND ((TABLE_NAME = 'users' AND COLUMN_NAME = 'id')
-        OR (TABLE_NAME = 'admission_status_history' AND COLUMN_NAME = 'changed_by_user_id'))`);
-  const usersId = columns.find((column) => column.TABLE_NAME === 'users' && column.COLUMN_NAME === 'id');
-  const changedBy = columns.find((column) => column.TABLE_NAME === 'admission_status_history' && column.COLUMN_NAME === 'changed_by_user_id');
-  if (!usersId || !changedBy) return;
+function quoteIdentifier(identifier) { return `\`${String(identifier).replace(/`/g, '``')}\``; }
 
-  const [foreignKeys] = await conn.query(`SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME
-    FROM information_schema.KEY_COLUMN_USAGE
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND REFERENCED_TABLE_NAME = 'users'
-      AND REFERENCED_COLUMN_NAME = 'id'`);
-  const admissionHistoryKey = foreignKeys.find((key) => key.TABLE_NAME === 'admission_status_history'
-    && key.COLUMN_NAME === 'changed_by_user_id' && key.CONSTRAINT_NAME === 'fk_admhist_changer');
-  if (!admissionHistoryKey) return;
+async function alignLegacyUserForeignKeys(conn) {
+  const [users] = await conn.query(`SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id'`);
+  if (!users.length) return;
+  const [foreignKeys] = await conn.query(`SELECT k.TABLE_NAME, k.COLUMN_NAME, k.CONSTRAINT_NAME,
+      c.COLUMN_TYPE, c.IS_NULLABLE, r.UPDATE_RULE, r.DELETE_RULE
+    FROM information_schema.KEY_COLUMN_USAGE k
+    JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA = k.TABLE_SCHEMA
+      AND c.TABLE_NAME = k.TABLE_NAME AND c.COLUMN_NAME = k.COLUMN_NAME
+    JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+      AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+    WHERE k.TABLE_SCHEMA = DATABASE()
+      AND k.REFERENCED_TABLE_NAME = 'users'
+      AND k.REFERENCED_COLUMN_NAME = 'id'`);
+  if (!foreignKeys.length) return;
 
   const expectedType = CANONICAL_USER_ID_COLUMN.toLowerCase();
-  if (String(usersId.COLUMN_TYPE).toLowerCase() === expectedType
-    && String(changedBy.COLUMN_TYPE).toLowerCase() === expectedType) return;
+  if (String(users[0].COLUMN_TYPE).toLowerCase() === expectedType
+    && foreignKeys.every((key) => String(key.COLUMN_TYPE).toLowerCase() === expectedType)) return;
 
-  const otherLegacyReferences = foreignKeys.filter((key) => key.CONSTRAINT_NAME !== 'fk_admhist_changer');
-  if (otherLegacyReferences.length) {
-    throw new Error(`Legacy users.id conversion is blocked by additional foreign keys: ${otherLegacyReferences.map((key) => `${key.TABLE_NAME}.${key.COLUMN_NAME} (${key.CONSTRAINT_NAME})`).join(', ')}.`);
+  const incompatible = foreignKeys.filter((key) => String(key.COLUMN_TYPE).toLowerCase() !== 'bigint');
+  if (String(users[0].COLUMN_TYPE).toLowerCase() !== 'bigint' || incompatible.length) {
+    throw new Error('Legacy users.id conversion requires every existing user foreign-key column to be BIGINT.');
   }
 
-  await conn.query('ALTER TABLE admission_status_history DROP FOREIGN KEY fk_admhist_changer');
-  await conn.query(`ALTER TABLE admission_status_history MODIFY COLUMN changed_by_user_id ${CANONICAL_USER_ID_COLUMN} NULL`);
+  for (const key of foreignKeys) await conn.query(`ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} DROP FOREIGN KEY ${quoteIdentifier(key.CONSTRAINT_NAME)}`);
+  for (const key of foreignKeys) await conn.query(`ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} MODIFY COLUMN ${quoteIdentifier(key.COLUMN_NAME)} ${CANONICAL_USER_ID_COLUMN} ${key.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'}`);
   await conn.query(`ALTER TABLE users MODIFY COLUMN id ${CANONICAL_USER_ID_COLUMN} NOT NULL`);
-  await conn.query('ALTER TABLE admission_status_history ADD CONSTRAINT fk_admhist_changer FOREIGN KEY (changed_by_user_id) REFERENCES users(id)');
+  for (const key of foreignKeys) await conn.query(`ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} ADD CONSTRAINT ${quoteIdentifier(key.CONSTRAINT_NAME)} FOREIGN KEY (${quoteIdentifier(key.COLUMN_NAME)}) REFERENCES users(id) ON DELETE ${key.DELETE_RULE} ON UPDATE ${key.UPDATE_RULE}`);
 }
 const QUIZ_TABLES = [`CREATE TABLE IF NOT EXISTS quizzes (id VARCHAR(80) PRIMARY KEY,tenant_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,class_id VARCHAR(80) NULL,title VARCHAR(255) NOT NULL,status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',duration_seconds INT NULL,created_by VARCHAR(80) NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,KEY quiz_scope (tenant_id,school_id,status)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_questions (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,position_no INT NOT NULL,prompt TEXT NOT NULL,question_type VARCHAR(32) NOT NULL,options_json JSON NULL,correct_answer VARCHAR(255) NULL,points DECIMAL(8,2) NOT NULL DEFAULT 1,CONSTRAINT qq_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,UNIQUE KEY qq_position (quiz_id,position_no)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_attempts (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,student_user_id VARCHAR(80) NOT NULL,started_at TIMESTAMP NOT NULL,submitted_at TIMESTAMP NULL,score DECIMAL(8,2) NULL,points_possible DECIMAL(8,2) NULL,percentage DECIMAL(8,2) NULL,status VARCHAR(32) NOT NULL DEFAULT 'IN_PROGRESS',UNIQUE KEY quiz_attempt_once (quiz_id,student_user_id),CONSTRAINT qa_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_responses (id VARCHAR(80) PRIMARY KEY,attempt_id VARCHAR(80) NOT NULL,question_id VARCHAR(80) NOT NULL,answer_value VARCHAR(255) NULL,is_correct BOOLEAN NOT NULL DEFAULT FALSE,points_awarded DECIMAL(8,2) NOT NULL DEFAULT 0,created_at TIMESTAMP NOT NULL,UNIQUE KEY qr_once (attempt_id,question_id),CONSTRAINT qr_attempt_fk FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,CONSTRAINT qr_question_fk FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE) ENGINE=InnoDB`];
   const ADMISSION_TABLES = ["CREATE TABLE IF NOT EXISTS pending_admission_applications (id VARCHAR(80) PRIMARY KEY,application_reference VARCHAR(40) NOT NULL UNIQUE,admission_type VARCHAR(20) NOT NULL,tenant_id VARCHAR(80) NULL,region_id VARCHAR(80) NOT NULL,district_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,level VARCHAR(80) NOT NULL,class_id VARCHAR(80) NOT NULL,applicant_json JSON NOT NULL,guardian_json JSON NOT NULL,documents_json JSON NULL,status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',submitted_at TIMESTAMP NOT NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,UNIQUE KEY pending_duplicate (school_id,admission_type,applicant_hash,status),applicant_hash CHAR(64) NOT NULL,KEY pending_school_status (school_id,status)) ENGINE=InnoDB"];
@@ -177,7 +176,7 @@ async function migrate() {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    await alignLegacyAdmissionHistoryUserForeignKey(conn);
+    await alignLegacyUserForeignKeys(conn);
     await conn.query(TABLES[0]);
     const [rows] = await conn.query('SELECT version FROM schema_migrations WHERE version = ?', [SCHEMA_VERSION]);
     if (!rows.length) {

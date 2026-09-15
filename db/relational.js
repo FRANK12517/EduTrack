@@ -103,6 +103,13 @@ async function alignLegacyUserForeignKeys(conn) {
     && !foreignKeys.some((key) => key.CONSTRAINT_NAME === 'credentials_user_fk')) {
     foreignKeys.push({ ...credentialConstraints[0], ...credentialColumns[0], UPDATE_RULE: 'RESTRICT', DELETE_RULE: 'CASCADE' });
   }
+  if (String(users[0].COLUMN_TYPE).toLowerCase() === CANONICAL_USER_ID_COLUMN.toLowerCase()
+    && credentialColumns.length && String(credentialColumns[0].COLUMN_TYPE).toLowerCase() === 'bigint'
+    && !foreignKeys.some((key) => key.CONSTRAINT_NAME === 'credentials_user_fk')) {
+    await queryWithSchemaRetry(conn, 'ALTER TABLE credentials DROP FOREIGN KEY credentials_user_fk');
+    await queryWithSchemaRetry(conn, 'ALTER TABLE credentials MODIFY COLUMN user_id VARCHAR(80) NOT NULL');
+    await queryWithSchemaRetry(conn, 'ALTER TABLE credentials ADD CONSTRAINT credentials_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE');
+  }
   if (!foreignKeys.length) return;
 
   const expectedType = CANONICAL_USER_ID_COLUMN.toLowerCase();

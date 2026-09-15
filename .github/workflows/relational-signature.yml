@@ -48,6 +48,8 @@ jobs:
           esac
       - name: Verify TiDB connectivity without disclosing connection details
         run: node -e "require('./db/relational').getPool().query('SELECT VERSION()').then(() => console.log('TiDB connectivity verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB connectivity failed.'); process.exit(1); })"
+      - name: Diagnose legacy admission foreign-key metadata
+        run: node -e "const db=require('./db/relational').getPool(); Promise.all([db.query(\"SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,CHARACTER_SET_NAME,COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND (COLUMN_NAME='changed_by_user_id' OR (TABLE_NAME='users' AND COLUMN_NAME='id')) ORDER BY TABLE_NAME,COLUMN_NAME\"),db.query(\"SELECT TABLE_NAME,COLUMN_NAME,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME,CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND CONSTRAINT_NAME='fk_admist_changer'\")]).then(([columns,constraints])=>{console.log(JSON.stringify({admissionForeignKeyColumns:columns[0],admissionForeignKeyConstraints:constraints[0]}));return db.end()}).catch(async error=>{console.error('Admission foreign-key metadata inspection failed.');await db.end();process.exit(1)})"
       - name: Initialize additive schema
         run: npm run db:migrate
       - name: Verify signature contracts and tenant isolation

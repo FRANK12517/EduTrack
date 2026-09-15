@@ -140,6 +140,11 @@ async function migrate() {
   requireConfigured();
   const db = getPool();
   const conn = await db.getConnection();
+  const query = conn.query.bind(conn);
+  conn.query = async (statement, ...params) => {
+    try { return await query(statement, ...params); }
+    catch (error) { error.edutrackStatement = statement; throw error; }
+  };
   try {
     await conn.beginTransaction();
     await conn.query(TABLES[0]);

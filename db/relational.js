@@ -9,7 +9,6 @@ const subscriptionPolicy = require('../app/subscription-policy');
 
 const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL || '';
 const SCHEMA_VERSION = 25;
-const CANONICAL_USER_ID_COLUMN = 'VARCHAR(80)';
 let pool;
 let initialized;
 
@@ -64,40 +63,6 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS teacher_class_assignments (staff_id VARCHAR(80) NOT NULL, class_id VARCHAR(80) NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, assigned_at TIMESTAMP NOT NULL, PRIMARY KEY (staff_id,class_id), CONSTRAINT tca_staff_fk FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE, CONSTRAINT tca_class_fk FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE) ENGINE=InnoDB`,
   `CREATE TABLE IF NOT EXISTS signatures (id VARCHAR(80) PRIMARY KEY, school_id VARCHAR(80) NOT NULL, owner_type VARCHAR(24) NOT NULL, owner_id VARCHAR(80) NULL, staff_id VARCHAR(80) NULL, class_id VARCHAR(80) NULL, source VARCHAR(16) NOT NULL, processed_storage_ref TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, academic_year_id VARCHAR(80) NULL, term_id VARCHAR(80) NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, deactivated_at TIMESTAMP NULL, KEY signature_active_scope (school_id,owner_type,owner_id,class_id,active), CONSTRAINT signature_school_fk FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE RESTRICT, CONSTRAINT signature_staff_fk FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT, CONSTRAINT signature_class_fk FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE RESTRICT) ENGINE=InnoDB`
 ];
-
-async function alignLegacyAdmissionHistoryUserForeignKey(conn) {
-  const [columns] = await conn.query(`SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
-    FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND ((TABLE_NAME = 'users' AND COLUMN_NAME = 'id')
-        OR (TABLE_NAME = 'admission_status_history' AND COLUMN_NAME = 'changed_by_user_id'))`);
-  const usersId = columns.find((column) => column.TABLE_NAME === 'users' && column.COLUMN_NAME === 'id');
-  const changedBy = columns.find((column) => column.TABLE_NAME === 'admission_status_history' && column.COLUMN_NAME === 'changed_by_user_id');
-  if (!usersId || !changedBy) return;
-
-  const [foreignKeys] = await conn.query(`SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME
-    FROM information_schema.KEY_COLUMN_USAGE
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND REFERENCED_TABLE_NAME = 'users'
-      AND REFERENCED_COLUMN_NAME = 'id'`);
-  const admissionHistoryKey = foreignKeys.find((key) => key.TABLE_NAME === 'admission_status_history'
-    && key.COLUMN_NAME === 'changed_by_user_id' && key.CONSTRAINT_NAME === 'fk_admhist_changer');
-  if (!admissionHistoryKey) return;
-
-  const expectedType = CANONICAL_USER_ID_COLUMN.toLowerCase();
-  if (String(usersId.COLUMN_TYPE).toLowerCase() === expectedType
-    && String(changedBy.COLUMN_TYPE).toLowerCase() === expectedType) return;
-
-  const otherLegacyReferences = foreignKeys.filter((key) => key.CONSTRAINT_NAME !== 'fk_admhist_changer');
-  if (otherLegacyReferences.length) {
-    throw new Error('Legacy users.id conversion is blocked by additional foreign keys and requires an explicit compatibility migration.');
-  }
-
-  await conn.query('ALTER TABLE admission_status_history DROP FOREIGN KEY fk_admhist_changer');
-  await conn.query(`ALTER TABLE admission_status_history MODIFY COLUMN changed_by_user_id ${CANONICAL_USER_ID_COLUMN} NULL`);
-  await conn.query(`ALTER TABLE users MODIFY COLUMN id ${CANONICAL_USER_ID_COLUMN} NOT NULL`);
-  await conn.query('ALTER TABLE admission_status_history ADD CONSTRAINT fk_admhist_changer FOREIGN KEY (changed_by_user_id) REFERENCES users(id)');
-}
 const QUIZ_TABLES = [`CREATE TABLE IF NOT EXISTS quizzes (id VARCHAR(80) PRIMARY KEY,tenant_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,class_id VARCHAR(80) NULL,title VARCHAR(255) NOT NULL,status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',duration_seconds INT NULL,created_by VARCHAR(80) NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,KEY quiz_scope (tenant_id,school_id,status)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_questions (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,position_no INT NOT NULL,prompt TEXT NOT NULL,question_type VARCHAR(32) NOT NULL,options_json JSON NULL,correct_answer VARCHAR(255) NULL,points DECIMAL(8,2) NOT NULL DEFAULT 1,CONSTRAINT qq_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,UNIQUE KEY qq_position (quiz_id,position_no)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_attempts (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,student_user_id VARCHAR(80) NOT NULL,started_at TIMESTAMP NOT NULL,submitted_at TIMESTAMP NULL,score DECIMAL(8,2) NULL,points_possible DECIMAL(8,2) NULL,percentage DECIMAL(8,2) NULL,status VARCHAR(32) NOT NULL DEFAULT 'IN_PROGRESS',UNIQUE KEY quiz_attempt_once (quiz_id,student_user_id),CONSTRAINT qa_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_responses (id VARCHAR(80) PRIMARY KEY,attempt_id VARCHAR(80) NOT NULL,question_id VARCHAR(80) NOT NULL,answer_value VARCHAR(255) NULL,is_correct BOOLEAN NOT NULL DEFAULT FALSE,points_awarded DECIMAL(8,2) NOT NULL DEFAULT 0,created_at TIMESTAMP NOT NULL,UNIQUE KEY qr_once (attempt_id,question_id),CONSTRAINT qr_attempt_fk FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,CONSTRAINT qr_question_fk FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE) ENGINE=InnoDB`];
   const ADMISSION_TABLES = ["CREATE TABLE IF NOT EXISTS pending_admission_applications (id VARCHAR(80) PRIMARY KEY,application_reference VARCHAR(40) NOT NULL UNIQUE,admission_type VARCHAR(20) NOT NULL,tenant_id VARCHAR(80) NULL,region_id VARCHAR(80) NOT NULL,district_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,level VARCHAR(80) NOT NULL,class_id VARCHAR(80) NOT NULL,applicant_json JSON NOT NULL,guardian_json JSON NOT NULL,documents_json JSON NULL,status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',submitted_at TIMESTAMP NOT NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,UNIQUE KEY pending_duplicate (school_id,admission_type,applicant_hash,status),applicant_hash CHAR(64) NOT NULL,KEY pending_school_status (school_id,status)) ENGINE=InnoDB"];
 const COMMUNICATION_TABLES = [`CREATE TABLE IF NOT EXISTS communication_campaigns (id VARCHAR(80) PRIMARY KEY,tenant_id VARCHAR(80) NULL,scope_json JSON NULL,name VARCHAR(180) NULL,channel VARCHAR(20) NOT NULL,subject VARCHAR(255) NULL,message TEXT NOT NULL,audience_json JSON NOT NULL,recipient_count INT NOT NULL DEFAULT 0,schedule_at TIMESTAMP NULL,status VARCHAR(30) NOT NULL DEFAULT 'DRAFT',created_by VARCHAR(80) NULL,idempotency_key VARCHAR(120) NULL,created_at TIMESTAMP NOT NULL, sent_at TIMESTAMP NULL,updated_at TIMESTAMP NOT NULL,UNIQUE KEY communication_idempotency (created_by,idempotency_key),KEY communication_scope_status (tenant_id,status)) ENGINE=InnoDB`, `CREATE TABLE IF NOT EXISTS communication_campaign_recipients (id VARCHAR(80) PRIMARY KEY,campaign_id VARCHAR(80) NOT NULL,recipient_user_id VARCHAR(80) NULL,recipient_student_id VARCHAR(80) NULL,destination VARCHAR(254) NULL,status VARCHAR(30) NOT NULL DEFAULT 'PENDING',provider_reference VARCHAR(160) NULL,failure_reason TEXT NULL,delivered_at TIMESTAMP NULL,created_at TIMESTAMP NOT NULL,UNIQUE KEY communication_recipient_once (campaign_id,destination)) ENGINE=InnoDB`];
@@ -175,9 +140,13 @@ async function migrate() {
   requireConfigured();
   const db = getPool();
   const conn = await db.getConnection();
+  const query = conn.query.bind(conn);
+  conn.query = async (statement, ...params) => {
+    try { return await query(statement, ...params); }
+    catch (error) { error.edutrackStatement = statement; throw error; }
+  };
   try {
     await conn.beginTransaction();
-    await alignLegacyAdmissionHistoryUserForeignKey(conn);
     await conn.query(TABLES[0]);
     const [rows] = await conn.query('SELECT version FROM schema_migrations WHERE version = ?', [SCHEMA_VERSION]);
     if (!rows.length) {

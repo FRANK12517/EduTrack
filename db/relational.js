@@ -90,7 +90,7 @@ async function alignLegacyAdmissionHistoryUserForeignKey(conn) {
 
   const otherLegacyReferences = foreignKeys.filter((key) => key.CONSTRAINT_NAME !== 'fk_admhist_changer');
   if (otherLegacyReferences.length) {
-    throw new Error(`Legacy users.id conversion is blocked by additional foreign keys: ${otherLegacyReferences.map((key) => `${key.TABLE_NAME}.${key.COLUMN_NAME} (${key.CONSTRAINT_NAME})`).join(', ')}.`);
+    throw new Error('Legacy users.id conversion is blocked by additional foreign keys and requires an explicit compatibility migration.');
   }
 
   await conn.query('ALTER TABLE admission_status_history DROP FOREIGN KEY fk_admhist_changer');

@@ -93,16 +93,6 @@ async function alignLegacyUserForeignKeys(conn) {
     WHERE k.TABLE_SCHEMA = DATABASE()
       AND k.REFERENCED_TABLE_NAME = 'users'
       AND k.REFERENCED_COLUMN_NAME = 'id'`);
-  const [credentialColumns] = await conn.query(`SELECT COLUMN_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'credentials' AND COLUMN_NAME = 'user_id'`);
-  const [credentialConstraints] = await conn.query(`SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME
-    FROM information_schema.KEY_COLUMN_USAGE
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'credentials'
-      AND COLUMN_NAME = 'user_id' AND CONSTRAINT_NAME = 'credentials_user_fk'`);
-  if (credentialColumns.length && credentialConstraints.length
-    && !foreignKeys.some((key) => key.CONSTRAINT_NAME === 'credentials_user_fk')) {
-    foreignKeys.push({ ...credentialConstraints[0], ...credentialColumns[0], UPDATE_RULE: 'RESTRICT', DELETE_RULE: 'CASCADE' });
-  }
   if (!foreignKeys.length) return;
 
   const expectedType = CANONICAL_USER_ID_COLUMN.toLowerCase();
@@ -110,14 +100,13 @@ async function alignLegacyUserForeignKeys(conn) {
     && foreignKeys.every((key) => String(key.COLUMN_TYPE).toLowerCase() === expectedType)) return;
 
   const incompatible = foreignKeys.filter((key) => String(key.COLUMN_TYPE).toLowerCase() !== 'bigint');
-  const userType = String(users[0].COLUMN_TYPE).toLowerCase();
-  if (!['bigint', expectedType].includes(userType) || incompatible.length) {
+  if (String(users[0].COLUMN_TYPE).toLowerCase() !== 'bigint' || incompatible.length) {
     throw new Error('Legacy users.id conversion requires every existing user foreign-key column to be BIGINT.');
   }
 
   for (const key of foreignKeys) await queryWithSchemaRetry(conn, `ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} DROP FOREIGN KEY ${quoteIdentifier(key.CONSTRAINT_NAME)}`);
   for (const key of foreignKeys) await queryWithSchemaRetry(conn, `ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} MODIFY COLUMN ${quoteIdentifier(key.COLUMN_NAME)} ${CANONICAL_USER_ID_COLUMN} ${key.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'}`);
-  if (userType !== expectedType) await queryWithSchemaRetry(conn, `ALTER TABLE users MODIFY COLUMN id ${CANONICAL_USER_ID_COLUMN} NOT NULL`);
+  await queryWithSchemaRetry(conn, `ALTER TABLE users MODIFY COLUMN id ${CANONICAL_USER_ID_COLUMN} NOT NULL`);
   for (const key of foreignKeys) await queryWithSchemaRetry(conn, `ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} ADD CONSTRAINT ${quoteIdentifier(key.CONSTRAINT_NAME)} FOREIGN KEY (${quoteIdentifier(key.COLUMN_NAME)}) REFERENCES users(id) ON DELETE ${key.DELETE_RULE} ON UPDATE ${key.UPDATE_RULE}`);
 }
 const QUIZ_TABLES = [`CREATE TABLE IF NOT EXISTS quizzes (id VARCHAR(80) PRIMARY KEY,tenant_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,class_id VARCHAR(80) NULL,title VARCHAR(255) NOT NULL,status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',duration_seconds INT NULL,created_by VARCHAR(80) NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,KEY quiz_scope (tenant_id,school_id,status)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_questions (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,position_no INT NOT NULL,prompt TEXT NOT NULL,question_type VARCHAR(32) NOT NULL,options_json JSON NULL,correct_answer VARCHAR(255) NULL,points DECIMAL(8,2) NOT NULL DEFAULT 1,CONSTRAINT qq_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,UNIQUE KEY qq_position (quiz_id,position_no)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_attempts (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,student_user_id VARCHAR(80) NOT NULL,started_at TIMESTAMP NOT NULL,submitted_at TIMESTAMP NULL,score DECIMAL(8,2) NULL,points_possible DECIMAL(8,2) NULL,percentage DECIMAL(8,2) NULL,status VARCHAR(32) NOT NULL DEFAULT 'IN_PROGRESS',UNIQUE KEY quiz_attempt_once (quiz_id,student_user_id),CONSTRAINT qa_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_responses (id VARCHAR(80) PRIMARY KEY,attempt_id VARCHAR(80) NOT NULL,question_id VARCHAR(80) NOT NULL,answer_value VARCHAR(255) NULL,is_correct BOOLEAN NOT NULL DEFAULT FALSE,points_awarded DECIMAL(8,2) NOT NULL DEFAULT 0,created_at TIMESTAMP NOT NULL,UNIQUE KEY qr_once (attempt_id,question_id),CONSTRAINT qr_attempt_fk FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,CONSTRAINT qr_question_fk FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE) ENGINE=InnoDB`];

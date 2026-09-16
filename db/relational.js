@@ -66,17 +66,6 @@ const TABLES = [
 ];
 
 function quoteIdentifier(identifier) { return `\`${String(identifier).replace(/`/g, '``')}\``; }
-const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-async function queryWithSchemaRetry(conn, statement) {
-  for (let attempt = 0; ; attempt += 1) {
-    try { return await conn.query(statement); }
-    catch (error) {
-      if (!/Information schema is changed/.test(String(error.message)) || attempt === 4) throw error;
-      await pause(100 * (attempt + 1));
-    }
-  }
-}
 
 async function alignLegacyUserForeignKeys(conn) {
   const [users] = await conn.query(`SELECT COLUMN_TYPE FROM information_schema.COLUMNS
@@ -103,10 +92,10 @@ async function alignLegacyUserForeignKeys(conn) {
     throw new Error('Legacy users.id conversion requires every existing user foreign-key column to be BIGINT.');
   }
 
-  for (const key of foreignKeys) await queryWithSchemaRetry(conn, `ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} DROP FOREIGN KEY ${quoteIdentifier(key.CONSTRAINT_NAME)}`);
-  for (const key of foreignKeys) await queryWithSchemaRetry(conn, `ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} MODIFY COLUMN ${quoteIdentifier(key.COLUMN_NAME)} ${CANONICAL_USER_ID_COLUMN} ${key.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'}`);
-  await queryWithSchemaRetry(conn, `ALTER TABLE users MODIFY COLUMN id ${CANONICAL_USER_ID_COLUMN} NOT NULL`);
-  for (const key of foreignKeys) await queryWithSchemaRetry(conn, `ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} ADD CONSTRAINT ${quoteIdentifier(key.CONSTRAINT_NAME)} FOREIGN KEY (${quoteIdentifier(key.COLUMN_NAME)}) REFERENCES users(id) ON DELETE ${key.DELETE_RULE} ON UPDATE ${key.UPDATE_RULE}`);
+  for (const key of foreignKeys) await conn.query(`ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} DROP FOREIGN KEY ${quoteIdentifier(key.CONSTRAINT_NAME)}`);
+  for (const key of foreignKeys) await conn.query(`ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} MODIFY COLUMN ${quoteIdentifier(key.COLUMN_NAME)} ${CANONICAL_USER_ID_COLUMN} ${key.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'}`);
+  await conn.query(`ALTER TABLE users MODIFY COLUMN id ${CANONICAL_USER_ID_COLUMN} NOT NULL`);
+  for (const key of foreignKeys) await conn.query(`ALTER TABLE ${quoteIdentifier(key.TABLE_NAME)} ADD CONSTRAINT ${quoteIdentifier(key.CONSTRAINT_NAME)} FOREIGN KEY (${quoteIdentifier(key.COLUMN_NAME)}) REFERENCES users(id) ON DELETE ${key.DELETE_RULE} ON UPDATE ${key.UPDATE_RULE}`);
 }
 const QUIZ_TABLES = [`CREATE TABLE IF NOT EXISTS quizzes (id VARCHAR(80) PRIMARY KEY,tenant_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,class_id VARCHAR(80) NULL,title VARCHAR(255) NOT NULL,status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',duration_seconds INT NULL,created_by VARCHAR(80) NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,KEY quiz_scope (tenant_id,school_id,status)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_questions (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,position_no INT NOT NULL,prompt TEXT NOT NULL,question_type VARCHAR(32) NOT NULL,options_json JSON NULL,correct_answer VARCHAR(255) NULL,points DECIMAL(8,2) NOT NULL DEFAULT 1,CONSTRAINT qq_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,UNIQUE KEY qq_position (quiz_id,position_no)) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_attempts (id VARCHAR(80) PRIMARY KEY,quiz_id VARCHAR(80) NOT NULL,student_user_id VARCHAR(80) NOT NULL,started_at TIMESTAMP NOT NULL,submitted_at TIMESTAMP NULL,score DECIMAL(8,2) NULL,points_possible DECIMAL(8,2) NULL,percentage DECIMAL(8,2) NULL,status VARCHAR(32) NOT NULL DEFAULT 'IN_PROGRESS',UNIQUE KEY quiz_attempt_once (quiz_id,student_user_id),CONSTRAINT qa_quiz_fk FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE) ENGINE=InnoDB`,`CREATE TABLE IF NOT EXISTS quiz_responses (id VARCHAR(80) PRIMARY KEY,attempt_id VARCHAR(80) NOT NULL,question_id VARCHAR(80) NOT NULL,answer_value VARCHAR(255) NULL,is_correct BOOLEAN NOT NULL DEFAULT FALSE,points_awarded DECIMAL(8,2) NOT NULL DEFAULT 0,created_at TIMESTAMP NOT NULL,UNIQUE KEY qr_once (attempt_id,question_id),CONSTRAINT qr_attempt_fk FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,CONSTRAINT qr_question_fk FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE) ENGINE=InnoDB`];
   const ADMISSION_TABLES = ["CREATE TABLE IF NOT EXISTS pending_admission_applications (id VARCHAR(80) PRIMARY KEY,application_reference VARCHAR(40) NOT NULL UNIQUE,admission_type VARCHAR(20) NOT NULL,tenant_id VARCHAR(80) NULL,region_id VARCHAR(80) NOT NULL,district_id VARCHAR(80) NOT NULL,school_id VARCHAR(80) NOT NULL,level VARCHAR(80) NOT NULL,class_id VARCHAR(80) NOT NULL,applicant_json JSON NOT NULL,guardian_json JSON NOT NULL,documents_json JSON NULL,status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',submitted_at TIMESTAMP NOT NULL,created_at TIMESTAMP NOT NULL,updated_at TIMESTAMP NOT NULL,UNIQUE KEY pending_duplicate (school_id,admission_type,applicant_hash,status),applicant_hash CHAR(64) NOT NULL,KEY pending_school_status (school_id,status)) ENGINE=InnoDB"];

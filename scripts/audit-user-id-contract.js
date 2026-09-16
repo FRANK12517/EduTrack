@@ -17,6 +17,8 @@ async function main() {
       CHARACTER_SET_NAME, COLLATION_NAME
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id'`);
+    const [userMetrics] = await db.query(`SELECT COUNT(*) AS rows_total, COUNT(DISTINCT id) AS distinct_ids,
+      COUNT(*) - COUNT(DISTINCT id) AS duplicate_ids, MAX(id) AS maximum_legacy_id FROM users`);
     const [foreignKeys] = await db.query(`SELECT k.TABLE_NAME, k.COLUMN_NAME, k.CONSTRAINT_NAME,
       k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, c.DATA_TYPE, c.COLUMN_TYPE,
       c.IS_NULLABLE, c.CHARACTER_MAXIMUM_LENGTH, c.CHARACTER_SET_NAME, c.COLLATION_NAME,
@@ -89,7 +91,7 @@ async function main() {
       const [rows] = await db.query(`SHOW CREATE TABLE ${quoteIdentifier(table)}`);
       definitions[table] = rows[0]?.['Create Table'] || null;
     }
-    console.log(JSON.stringify({ userId: userId[0] || null, foreignKeys, references, tableDefinitions: definitions }));
+    console.log(JSON.stringify({ userId: userId[0] || null, userMetrics: userMetrics[0], foreignKeys, references, tableDefinitions: definitions }));
   } finally {
     await db.end();
   }

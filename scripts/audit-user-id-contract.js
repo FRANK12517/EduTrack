@@ -13,12 +13,42 @@ function isNumericType(type) {
 async function main() {
   const db = relational.getPool();
   try {
+    const describe = async (table) => {
+      try {
+        const [rows] = await db.query(`SHOW CREATE TABLE ${quoteIdentifier(table)}`);
+        return rows[0]?.['Create Table'] || null;
+      } catch { return null; }
+    };
     const [userId] = await db.query(`SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH,
       CHARACTER_SET_NAME, COLLATION_NAME
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id'`);
     const [userMetrics] = await db.query(`SELECT COUNT(*) AS rows_total, COUNT(DISTINCT id) AS distinct_ids,
       COUNT(*) - COUNT(DISTINCT id) AS duplicate_ids, MAX(id) AS maximum_legacy_id FROM users`);
+    const [accountMetrics] = await db.query(`SELECT
+      COUNT(*) AS users_total,
+      SUM(school_id IS NULL) AS users_without_school,
+      COUNT(DISTINCT school_id) AS distinct_school_references,
+      SUM(password_hash IS NULL OR password_hash = '') AS users_without_password_hash,
+      MIN(CHAR_LENGTH(password_hash)) AS minimum_password_hash_length,
+      MAX(CHAR_LENGTH(password_hash)) AS maximum_password_hash_length,
+      SUM(password_hash REGEXP '^\\\\$2[aby]\\\\$') AS bcrypt_hashes,
+      SUM(password_hash REGEXP '^\\\\$argon2') AS argon2_hashes
+      FROM users`);
+    const [roleMetrics] = await db.query(`SELECT role, COUNT(*) AS user_count FROM users GROUP BY role ORDER BY role`);
+    const [schoolMapping] = await db.query(`SELECT
+      SUM(users.school_id IS NOT NULL AND schools.id IS NULL) AS orphan_school_references,
+      SUM(users.school_id IS NOT NULL AND schools.id IS NOT NULL) AS mapped_school_references
+      FROM users LEFT JOIN schools ON users.school_id = schools.id`);
+    const legacyStructures = {
+      users: await describe('users'),
+      schools: await describe('schools'),
+      staff: await describe('staff'),
+      credentials: await describe('credentials'),
+      roles: await describe('roles'),
+      userRoles: await describe('user_roles'),
+      tenantMemberships: await describe('tenant_memberships')
+    };
     const [foreignKeys] = await db.query(`SELECT k.TABLE_NAME, k.COLUMN_NAME, k.CONSTRAINT_NAME,
       k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, c.DATA_TYPE, c.COLUMN_TYPE,
       c.IS_NULLABLE, c.CHARACTER_MAXIMUM_LENGTH, c.CHARACTER_SET_NAME, c.COLLATION_NAME,
@@ -91,7 +121,7 @@ async function main() {
       const [rows] = await db.query(`SHOW CREATE TABLE ${quoteIdentifier(table)}`);
       definitions[table] = rows[0]?.['Create Table'] || null;
     }
-    console.log(JSON.stringify({ userId: userId[0] || null, userMetrics: userMetrics[0], foreignKeys, references, tableDefinitions: definitions }));
+    console.log(JSON.stringify({ userId: userId[0] || null, userMetrics: userMetrics[0], accountMetrics: accountMetrics[0], roleMetrics, schoolMapping: schoolMapping[0], legacyStructures, foreignKeys, references, tableDefinitions: definitions }));
   } finally {
     await db.end();
   }

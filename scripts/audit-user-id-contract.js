@@ -46,9 +46,23 @@ async function main() {
       values.push({ name: index.INDEX_NAME, unique: !Boolean(index.NON_UNIQUE), position: Number(index.SEQ_IN_INDEX) });
       indexMap.set(key, values);
     }
+    const referenceColumns = new Map(candidates.map((column) => [`${column.TABLE_NAME}.${column.COLUMN_NAME}`, column]));
+    for (const key of foreignKeys) {
+      const reference = `${key.TABLE_NAME}.${key.COLUMN_NAME}`;
+      if (!referenceColumns.has(reference)) referenceColumns.set(reference, {
+        TABLE_NAME: key.TABLE_NAME,
+        COLUMN_NAME: key.COLUMN_NAME,
+        DATA_TYPE: key.DATA_TYPE,
+        COLUMN_TYPE: key.COLUMN_TYPE,
+        IS_NULLABLE: key.IS_NULLABLE,
+        CHARACTER_MAXIMUM_LENGTH: key.CHARACTER_MAXIMUM_LENGTH,
+        CHARACTER_SET_NAME: key.CHARACTER_SET_NAME,
+        COLLATION_NAME: key.COLLATION_NAME
+      });
+    }
     const fkMap = new Map(foreignKeys.map((key) => [`${key.TABLE_NAME}.${key.COLUMN_NAME}`, key]));
     const references = [];
-    for (const column of candidates) {
+    for (const column of referenceColumns.values()) {
       const table = quoteIdentifier(column.TABLE_NAME);
       const name = quoteIdentifier(column.COLUMN_NAME);
       const join = `CAST(source.${name} AS CHAR) = CAST(users.id AS CHAR)`;
@@ -66,7 +80,7 @@ async function main() {
         type: { dataType: column.DATA_TYPE, columnType: column.COLUMN_TYPE, nullable: column.IS_NULLABLE === 'YES', length: column.CHARACTER_MAXIMUM_LENGTH, charset: column.CHARACTER_SET_NAME, collation: column.COLLATION_NAME },
         foreignKey: fkMap.get(key) || null,
         indexes: indexMap.get(key) || [],
-        metrics: metrics[0]
+        metrics: Object.fromEntries(Object.entries(metrics[0]).map(([key, value]) => [key, value === null ? 0 : value]))
       });
     }
     const tables = [...new Set(foreignKeys.map((key) => key.TABLE_NAME))];

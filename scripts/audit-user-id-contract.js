@@ -24,7 +24,8 @@ async function main() {
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id'`);
     const [userMetrics] = await db.query(`SELECT COUNT(*) AS rows_total, COUNT(DISTINCT id) AS distinct_ids,
-      COUNT(*) - COUNT(DISTINCT id) AS duplicate_ids, MAX(id) AS maximum_legacy_id FROM users`);
+      COUNT(*) - COUNT(DISTINCT id) AS duplicate_ids,
+      CAST(MAX(id) AS CHAR(80)) AS maximum_legacy_id_text FROM users`);
     const [accountMetrics] = await db.query(`SELECT
       COUNT(*) AS users_total,
       SUM(school_id IS NULL) AS users_without_school,
@@ -98,7 +99,9 @@ async function main() {
       const table = quoteIdentifier(column.TABLE_NAME);
       const name = quoteIdentifier(column.COLUMN_NAME);
       const join = `CAST(source.${name} AS CHAR) = CAST(users.id AS CHAR)`;
-      const max = isNumericType(column.DATA_TYPE) ? `, MAX(source.${name}) AS maximum_value` : '';
+      const max = isNumericType(column.DATA_TYPE)
+        ? `, CAST(MAX(source.${name}) AS CHAR(80)) AS maximum_value_text`
+        : '';
       const [metrics] = await db.query(`SELECT COUNT(*) AS rows_total,
         SUM(source.${name} IS NULL) AS null_rows,
         SUM(source.${name} IS NOT NULL) AS populated_rows,

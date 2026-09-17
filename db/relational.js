@@ -42,7 +42,7 @@ function parseJson(value, fallback) { try { if (value == null) return fallback; 
 
 const TABLES = [
   `CREATE TABLE IF NOT EXISTS schema_migrations (version INT PRIMARY KEY, name VARCHAR(160) NOT NULL, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB`,
-  `CREATE TABLE IF NOT EXISTS users (id VARCHAR(80) PRIMARY KEY, email VARCHAR(254) NOT NULL UNIQUE, staff_id VARCHAR(120) NULL UNIQUE, status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', active BOOLEAN NOT NULL DEFAULT TRUE, development_fixture BOOLEAN NOT NULL DEFAULT FALSE, hierarchy VARCHAR(80) NULL, scope_json JSON NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, revoked_at TIMESTAMP NULL) ENGINE=InnoDB`,
+  `CREATE TABLE IF NOT EXISTS users (id VARCHAR(80) PRIMARY KEY, email VARCHAR(254) NULL UNIQUE, staff_id VARCHAR(120) NULL UNIQUE, status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', active BOOLEAN NOT NULL DEFAULT TRUE, development_fixture BOOLEAN NOT NULL DEFAULT FALSE, hierarchy VARCHAR(80) NULL, scope_json JSON NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, revoked_at TIMESTAMP NULL) ENGINE=InnoDB`,
   `CREATE TABLE IF NOT EXISTS credentials (id VARCHAR(80) PRIMARY KEY, user_id VARCHAR(80) NOT NULL, password_hash TEXT NOT NULL, access_code_hash TEXT NULL, status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, UNIQUE KEY credentials_user_unique (user_id), CONSTRAINT credentials_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE) ENGINE=InnoDB`,
   `CREATE TABLE IF NOT EXISTS roles (id VARCHAR(80) PRIMARY KEY, name VARCHAR(80) NOT NULL UNIQUE, description VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB`,
   `CREATE TABLE IF NOT EXISTS permissions (id VARCHAR(100) PRIMARY KEY, name VARCHAR(120) NOT NULL UNIQUE, description VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB`,
@@ -183,6 +183,7 @@ async function migrate() {
     // These repairs must run even when the current schema version was already
     // recorded by an earlier deployment with an incomplete table definition.
     for (const statement of COMMUNICATION_TABLES) await conn.query(statement);
+    await conn.query('ALTER TABLE users MODIFY email VARCHAR(254) NULL').catch(() => {});
     await conn.query('ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(120) NULL');
     await conn.query('ALTER TABLE communication_campaigns ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(120) NULL');
     await conn.query('ALTER TABLE payment_intents ADD UNIQUE KEY payment_intent_user_key (user_id,idempotency_key)').catch(() => {});
@@ -194,14 +195,14 @@ async function ensureInitialized() { if (!isConfigured()) return false; if (!ini
 
 function rowToUser(row, credential) {
   if (!row) return null;
-  return { id: row.id, email: row.email, staffId: row.staff_id, passwordHash: credential?.password_hash || '', accessCodeHash: credential?.access_code_hash || '', role: row.role_name || null, hierarchy: row.hierarchy, scope: parseJson(row.scope_json, null), active: Boolean(row.active), developmentFixture: Boolean(row.development_fixture), failedLoginCount: 0, lockedUntil: null, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, email: row.email, staffId: row.staff_id, passwordHash: credential?.password_hash || '', accessCodeHash: credential?.access_code_hash || '', credentialStatus: credential?.credential_status || credential?.status || 'ACTIVE', role: row.role_name || null, hierarchy: row.hierarchy, scope: parseJson(row.scope_json, null), active: Boolean(row.active), developmentFixture: Boolean(row.development_fixture), failedLoginCount: 0, lockedUntil: null, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 async function findUser(identifier) {
   await ensureInitialized();
-  const [rows] = await getPool().query(`SELECT u.*, c.password_hash, c.access_code_hash, r.name AS role_name, COALESCE(u.scope_json, tm.scope_json) AS scope_json FROM users u JOIN credentials c ON c.user_id = u.id LEFT JOIN user_roles ur ON ur.user_id = u.id LEFT JOIN roles r ON r.id = ur.role_id LEFT JOIN tenant_memberships tm ON tm.user_id = u.id AND tm.active = TRUE WHERE u.active = TRUE AND LOWER(u.email) = LOWER(?) LIMIT 1`, [identifier]);
+  const [rows] = await getPool().query(`SELECT u.*, c.password_hash, c.access_code_hash, c.status AS credential_status, r.name AS role_name, COALESCE(u.scope_json, tm.scope_json) AS scope_json FROM users u JOIN credentials c ON c.user_id = u.id LEFT JOIN user_roles ur ON ur.user_id = u.id LEFT JOIN roles r ON r.id = ur.role_id LEFT JOIN tenant_memberships tm ON tm.user_id = u.id AND tm.active = TRUE WHERE u.active = TRUE AND LOWER(u.email) = LOWER(?) LIMIT 1`, [identifier]);
   return rowToUser(rows[0], rows[0]);
 }
-async function findUserById(userId){await ensureInitialized();const [rows]=await getPool().query(`SELECT u.*, c.password_hash, c.access_code_hash, r.name AS role_name FROM users u JOIN credentials c ON c.user_id=u.id LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND u.active=TRUE LIMIT 1`,[userId]);return rowToUser(rows[0],rows[0]);}
+async function findUserById(userId){await ensureInitialized();const [rows]=await getPool().query(`SELECT u.*, c.password_hash, c.access_code_hash, c.status AS credential_status, r.name AS role_name FROM users u JOIN credentials c ON c.user_id=u.id LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND u.active=TRUE LIMIT 1`,[userId]);return rowToUser(rows[0],rows[0]);}
 async function upsertUser(user) {
   await ensureInitialized();
   const now = iso(user.updatedAt || new Date()); const created = iso(user.createdAt || now);
@@ -322,7 +323,7 @@ async function getPopulationDashboard(schoolId,subscriptionId){await ensureIniti
 async function createPasswordReset(input){await ensureInitialized();await getPool().query('INSERT INTO password_reset_records (id,user_id,token_hash,created_at,expires_at,used_at) VALUES (?,?,?,?,?,NULL)',[input.id||newId('reset'),input.userId,input.tokenHash,input.createdAt||new Date(),input.expiresAt]);}
 async function findPasswordReset(tokenHash){await ensureInitialized();const [rows]=await getPool().query('SELECT * FROM password_reset_records WHERE token_hash=? AND used_at IS NULL AND expires_at>CURRENT_TIMESTAMP LIMIT 1',[tokenHash]);return rows[0]||null;}
 async function consumePasswordReset(id){await ensureInitialized();const [result]=await getPool().query('UPDATE password_reset_records SET used_at=CURRENT_TIMESTAMP WHERE id=? AND used_at IS NULL AND expires_at>CURRENT_TIMESTAMP',[id]);return result.affectedRows===1;}
-async function updateCredentialHashes(userId,passwordHash,accessCodeHash){await ensureInitialized();await getPool().query('UPDATE credentials SET password_hash=?,access_code_hash=?,updated_at=? WHERE user_id=?',[passwordHash,accessCodeHash||null,iso(new Date()),userId]);await getPool().query('UPDATE server_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL',[userId]);}
+async function updateCredentialHashes(userId,passwordHash,accessCodeHash){await ensureInitialized();await getPool().query("UPDATE credentials SET password_hash=?,access_code_hash=?,status='ACTIVE',updated_at=? WHERE user_id=?",[passwordHash,accessCodeHash||null,iso(new Date()),userId]);await getPool().query('UPDATE server_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND revoked_at IS NULL',[userId]);}
 async function createFileRecord(input){await ensureInitialized();await getPool().query('INSERT INTO file_records (id,owner_user_id,school_id,storage_name,original_name,mime_type,size_bytes,category,associated_entity,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',[input.id||newId('file'),input.ownerUserId,input.schoolId||null,input.storageName,input.originalName,input.mimeType,input.size,input.category,input.associatedEntity||null,iso(input.createdAt||new Date())]);return (await domainRows('SELECT * FROM file_records WHERE id=?',[input.id]))[0]||null;}
 async function findFileRecord(id){await ensureInitialized();const [rows]=await getPool().query('SELECT * FROM file_records WHERE id=? LIMIT 1',[id]);return rows[0]||null;}
 async function migrationCounts(){await ensureInitialized();const names=['payment_intents','payment_transactions','subscriptions','payment_events','password_reset_records','file_records'];const out={};for(const n of names){const [r]=await getPool().query('SELECT COUNT(*) count FROM '+n);out[n]=Number(r[0].count);}return out;}

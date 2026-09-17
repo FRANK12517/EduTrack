@@ -28,6 +28,7 @@ jobs:
       # An isolated, disposable TiDB branch/database; GitHub masks its value.
       EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_TEST_DATABASE_URL }}
       NODE_ENV: test
+      EDUTRACK_ALLOW_ISOLATED_LEGACY_ACCOUNT_CUTOVER: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -22,4 +22,4 @@ async function main() {
   } finally { await db.end(); }
 }
 
-main().catch(() => { console.error('Fresh legacy baseline verification failed.'); process.exitCode = 1; });
+main().catch((error) => { console.error(`Fresh legacy baseline verification failed: ${error.code || 'DATABASE_ERROR'} ${error.message || ''}`); process.exitCode = 1; });

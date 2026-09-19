@@ -1,0 +1,31 @@
+name: Production migration read-only preflight
+
+on:
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    env:
+      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_PRODUCTION_DATABASE_URL }}
+      EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: ${{ secrets.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require explicit production read-only target
+        shell: bash
+        run: |
+          test -n "$EDUTRACK_DATABASE_URL"
+          test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'production-read-only'
+      - name: Test read-only safety guard
+        run: node test/production-preflight-readonly.spec.js
+      - name: Run read-only production preflight
+        run: node scripts/production-migration-preflight.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-migration-preflight
+          path: artifacts/production-migration-preflight.json

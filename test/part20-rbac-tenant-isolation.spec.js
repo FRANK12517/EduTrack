@@ -16,10 +16,9 @@ function request(pathname, options = {}) { return new Promise((resolve, reject) 
 function cookie(response) { return Array.isArray(response.headers['set-cookie']) ? response.headers['set-cookie'][0].split(';')[0] : ''; }
 function waitForServer() { const start=Date.now(); return new Promise((resolve,reject)=>{const poll=()=>request('/api/health').then(r=>r.status===200?resolve():retry()).catch(retry);const retry=()=>Date.now()-start>10000?reject(Error('server readiness timeout')):setTimeout(poll,100);poll();}); }
 async function login(dbKey) { const [email,role]=users[dbKey]; const response=await request('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password:credentials.password,accessCode:credentials.accessCode})}); assert.equal(response.status,200,`${role} login failed`); return cookie(response); }
-async function main() { const migration = require('../db/relational'); const db=await migration.getPool().getConnection(); let server;
+async function main() { const migration = require('../db/relational'); await migration.migrate(); const db=await migration.getPool().getConnection(); let server;
   try {
     await db.query('SET FOREIGN_KEY_CHECKS=0'); for (const table of ['audit_events','server_sessions','tenant_memberships','user_roles','credentials','users','role_permissions','permissions','schools','districts','regions','tenants','roles','payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records','schema_migrations']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=1');
-    const migration = require('../db/relational'); await migration.migrate();
     const now = new Date();
     await db.query("INSERT INTO tenants (id,name,tenant_type,active,created_at,updated_at) VALUES ('tenant-a','Tenant A','SCHOOL_GROUP',1,?,?),('tenant-b','Tenant B','SCHOOL_GROUP',1,?,?)",[now,now,now,now]);
     await db.query("INSERT INTO regions (id,name) VALUES ('region-a','Region A'),('region-b','Region B')");

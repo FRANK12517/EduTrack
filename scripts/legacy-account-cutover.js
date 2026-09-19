@@ -26,6 +26,17 @@ async function legacyInboundForeignKeys(db) {
   return rows;
 }
 
+async function legacyTables(db) {
+  const [rows] = await db.query(`SELECT TABLE_NAME FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME NOT IN (
+      'legacy_account_identity_map','legacy_school_identity_map',
+      'communication_campaigns','communication_campaign_recipients'
+    ) ORDER BY TABLE_NAME`);
+  return rows.map(row => row.TABLE_NAME);
+}
+
+function archiveName(table) { return `legacy_${table}_archive`; }
+
 async function preflight(db, foreignKeys) {
   const [accounts] = await db.query(`SELECT COUNT(*) AS total,
     SUM(school_id IS NULL) AS missing_school,
@@ -58,6 +69,11 @@ async function prepare() {
     const foreignKeys = await legacyInboundForeignKeys(db);
     if (foreignKeys.length !== 12) throw new Error(`Legacy account preflight failed: expected 12 inbound user foreign keys, found ${foreignKeys.length}`);
     const metrics = await preflight(db, foreignKeys);
+    const tables = await legacyTables(db);
+    const archived = tables.map(archiveName);
+    const [existingArchives] = await db.query(`SELECT TABLE_NAME FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN (${archived.map(() => '?').join(',')})`, archived);
+    if (existingArchives.length) throw new Error('Legacy account cutover cannot resume from a partial archive state; restore the fresh isolated baseline before retrying');
     await db.query(`CREATE TABLE IF NOT EXISTS legacy_account_identity_map (
       legacy_user_id_text VARCHAR(80) PRIMARY KEY, canonical_user_id VARCHAR(80) NOT NULL UNIQUE,
       legacy_school_id_text VARCHAR(80) NOT NULL, migration_status VARCHAR(32) NOT NULL,
@@ -73,20 +89,11 @@ async function prepare() {
       SELECT CAST(id AS CHAR(80)),${canonicalId('usr', 'CAST(id AS CHAR)')},CAST(school_id AS CHAR(80)),'PREPARED',CURRENT_TIMESTAMP,
         JSON_OBJECT('legacyRole',role,'credentialTransition','RESET_REQUIRED') FROM users
       ON DUPLICATE KEY UPDATE migration_status=VALUES(migration_status)`);
-    const renames = [
-      ['chat_messages', 'legacy_chat_messages_archive'],
-      ['chat_conversation_participants', 'legacy_chat_conversation_participants_archive'],
-      ['chat_conversations', 'legacy_chat_conversations_archive'],
-      ['users', 'legacy_users_archive'],
-      ['schools', 'legacy_schools_archive']
-    ];
-    for (const [from, to] of renames) if (await tableExists(db, from) && !(await tableExists(db, to))) await db.query(`RENAME TABLE ${qi(from)} TO ${qi(to)}`);
+    // A single multi-table rename keeps the legacy FK graph intact as archives;
+    // all populated identity data remains available for deterministic rollback.
+    await db.query(`RENAME TABLE ${tables.map(table => `${qi(table)} TO ${qi(archiveName(table))}`).join(', ')}`);
     return { needed: true, metrics, foreignKeys };
   } finally { /* relational.migrate owns the shared pool lifecycle */ }
-}
-
-function archivedTableName(name) {
-  return ({ chat_messages: 'legacy_chat_messages_archive', chat_conversation_participants: 'legacy_chat_conversation_participants_archive', chat_conversations: 'legacy_chat_conversations_archive' })[name] || name;
 }
 
 async function materialize(foreignKeys) {
@@ -126,15 +133,6 @@ async function materialize(foreignKeys) {
       JOIN legacy_users_archive u ON CAST(u.id AS CHAR)=m.legacy_user_id_text
       JOIN legacy_school_identity_map s ON s.legacy_school_id_text=m.legacy_school_id_text
       ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),full_name=VALUES(full_name),email=VALUES(email),status='RESET_REQUIRED',updated_at=VALUES(updated_at)`);
-    for (const key of foreignKeys) {
-      const table = archivedTableName(key.TABLE_NAME);
-      if (!(await tableExists(db, table))) throw new Error(`Legacy account cutover failed: ${table} archive is missing`);
-      const [rows] = await db.query(`SELECT COUNT(*) AS populated FROM ${qi(table)} WHERE ${qi(key.COLUMN_NAME)} IS NOT NULL`);
-      if (Number(rows[0].populated) !== 0) throw new Error(`Legacy account cutover failed: ${table}.${key.COLUMN_NAME} became populated`);
-      await db.query(`ALTER TABLE ${qi(table)} DROP FOREIGN KEY ${qi(key.CONSTRAINT_NAME)}`);
-      await db.query(`ALTER TABLE ${qi(table)} MODIFY ${qi(key.COLUMN_NAME)} VARCHAR(80) ${key.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'}`);
-      await db.query(`ALTER TABLE ${qi(table)} ADD CONSTRAINT ${qi(key.CONSTRAINT_NAME)} FOREIGN KEY (${qi(key.COLUMN_NAME)}) REFERENCES users(id) ON UPDATE NO ACTION ON DELETE NO ACTION`);
-    }
     await db.query("UPDATE legacy_account_identity_map SET migration_status='MIGRATED',migrated_at=CURRENT_TIMESTAMP");
     await db.query("UPDATE legacy_school_identity_map SET migration_status='MIGRATED',migrated_at=CURRENT_TIMESTAMP");
     await db.query(`INSERT INTO audit_events (id,event_type,actor_user_id,occurred_at,metadata_json) VALUES

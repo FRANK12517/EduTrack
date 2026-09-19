@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const mysql = require('mysql2/promise');
 const { readonly } = require('../lib/production-preflight-readonly');
+const { options: verifiedTiDbOptions } = require('./verify-production-tidb-secrets');
 
 const TARGET = 'production-read-only';
 function quote(name) { return `\`${String(name).replace(/`/g, '``')}\``; }
@@ -13,14 +14,16 @@ function option(name, fallback) { const i = process.argv.indexOf(name); return i
 function outputPath() { return option('--output', path.join('artifacts', 'production-migration-preflight.json')); }
 function requireTarget(env = process.env, expectedTarget = TARGET) {
   if (!['production-read-only', 'disposable-validation'].includes(expectedTarget) || env.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET !== expectedTarget) throw new Error('Production preflight target is not explicitly authorized as read-only');
+  if (expectedTarget === TARGET) return verifiedTiDbOptions(env);
   if (!env.EDUTRACK_DATABASE_URL || !/^(mysql|mariadb):\/\//.test(env.EDUTRACK_DATABASE_URL)) throw new Error('EDUTRACK_DATABASE_URL must be an explicit MySQL-compatible production connection');
+  return { uri: env.EDUTRACK_DATABASE_URL, ssl: { rejectUnauthorized: true }, multipleStatements: false, decimalNumbers: true };
 }
 function entityType(column) { return /(^id$|_id$|^id_)/i.test(column.COLUMN_NAME); }
 
 async function main() {
   const expectedTarget = option('--target', TARGET);
-  requireTarget(process.env, expectedTarget);
-  const raw = await mysql.createConnection({ uri: process.env.EDUTRACK_DATABASE_URL, ssl: { rejectUnauthorized: true }, multipleStatements: false, decimalNumbers: true });
+  const connectionOptions = requireTarget(process.env, expectedTarget);
+  const raw = await mysql.createConnection(connectionOptions);
   const db = readonly(raw);
   try {
     const [[server]] = await db.query('SELECT DATABASE() AS database_name, VERSION() AS version');

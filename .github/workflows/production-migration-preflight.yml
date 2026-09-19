@@ -7,8 +7,13 @@ jobs:
   preflight:
     runs-on: ubuntu-latest
     env:
-      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_PRODUCTION_DATABASE_URL }}
       EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: ${{ secrets.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET }}
+      TIDB_HOST: ${{ secrets.TIDB_HOST }}
+      TIDB_PORT: ${{ secrets.TIDB_PORT }}
+      TIDB_USER: ${{ secrets.TIDB_USER }}
+      TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+      TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+      TIDB_CA_CERT: ${{ secrets.TIDB_CA_CERT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,8 +24,8 @@ jobs:
       - name: Require explicit production read-only target
         shell: bash
         run: |
-          test -n "$EDUTRACK_DATABASE_URL"
           test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'production-read-only'
+          test -n "$TIDB_HOST" && test -n "$TIDB_PORT" && test -n "$TIDB_USER" && test -n "$TIDB_PASSWORD" && test -n "$TIDB_DATABASE" && test -n "$TIDB_CA_CERT"
       - name: Test read-only safety guard
         run: node test/production-preflight-readonly.spec.js
       - name: Run read-only production preflight

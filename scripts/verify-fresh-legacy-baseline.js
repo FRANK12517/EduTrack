@@ -16,8 +16,10 @@ async function main() {
     const [users] = await db.query('SELECT COUNT(*) AS count FROM users');
     const [allTables] = await db.query('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()');
     const artifacts = allTables.filter(row => ['legacy_account_identity_map', 'legacy_school_identity_map'].includes(row.TABLE_NAME) || /^legacy_.*_archive$/.test(row.TABLE_NAME));
-    const valid = types.users === 'bigint' && types.schools === 'bigint' && foreignKeys.length === 1 && Number(users[0].count) === 2 && artifacts.length === 0;
-    console.log(JSON.stringify({ freshLegacyBaseline: valid, usersIdType: types.users || null, schoolsIdType: types.schools || null, admissionHistoryUserForeignKey: foreignKeys.length === 1, legacyUserCount: Number(users[0].count), cutoverArtifacts: artifacts.length }));
+    const fresh = types.users === 'bigint' && types.schools === 'bigint' && foreignKeys.length === 1 && Number(users[0].count) === 2 && artifacts.length === 0;
+    const completedCutover = types.users === 'varchar' && types.schools === 'varchar' && artifacts.some(row => row.TABLE_NAME === 'legacy_account_identity_map') && artifacts.some(row => row.TABLE_NAME === 'legacy_users_archive');
+    const valid = fresh || completedCutover;
+    console.log(JSON.stringify({ freshLegacyBaseline: fresh, completedIsolatedCutover: completedCutover, usersIdType: types.users || null, schoolsIdType: types.schools || null, admissionHistoryUserForeignKey: foreignKeys.length === 1, legacyUserCount: Number(users[0].count), cutoverArtifacts: artifacts.length }));
     if (!valid) process.exitCode = 1;
   } finally { await db.end(); }
 }

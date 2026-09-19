@@ -3,7 +3,6 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
-const mysql = require('mysql2/promise');
 const { spawn } = require('node:child_process');
 
 const PORT = 3420;
@@ -17,10 +16,9 @@ function request(pathname, options = {}) { return new Promise((resolve, reject) 
 function cookie(response) { return Array.isArray(response.headers['set-cookie']) ? response.headers['set-cookie'][0].split(';')[0] : ''; }
 function waitForServer() { const start=Date.now(); return new Promise((resolve,reject)=>{const poll=()=>request('/api/health').then(r=>r.status===200?resolve():retry()).catch(retry);const retry=()=>Date.now()-start>10000?reject(Error('server readiness timeout')):setTimeout(poll,100);poll();}); }
 async function login(dbKey) { const [email,role]=users[dbKey]; const response=await request('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password:credentials.password,accessCode:credentials.accessCode})}); assert.equal(response.status,200,`${role} login failed`); return cookie(response); }
-async function main() { const db=await mysql.createConnection(DATABASE_URL); let server;
+async function main() { const migration = require('../db/relational'); await migration.migrate(); const db=await migration.getPool().getConnection(); let server;
   try {
-    await db.query('SET FOREIGN_KEY_CHECKS=0'); for (const table of ['audit_events','server_sessions','tenant_memberships','user_roles','credentials','users','role_permissions','permissions','schools','districts','regions','tenants','roles','payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records','schema_migrations']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=1');
-    const migration = require('../db/relational'); await migration.migrate();
+    await db.query('SET FOREIGN_KEY_CHECKS=0'); for (const table of ['audit_events','server_sessions','tenant_memberships','user_roles','credentials','users','schools','districts','regions','tenants','payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=1');
     const now = new Date();
     await db.query("INSERT INTO tenants (id,name,tenant_type,active,created_at,updated_at) VALUES ('tenant-a','Tenant A','SCHOOL_GROUP',1,?,?),('tenant-b','Tenant B','SCHOOL_GROUP',1,?,?)",[now,now,now,now]);
     await db.query("INSERT INTO regions (id,name) VALUES ('region-a','Region A'),('region-b','Region B')");
@@ -42,6 +40,6 @@ async function main() { const db=await mysql.createConnection(DATABASE_URL); let
     await db.query("UPDATE users SET status='ACTIVE', active=1 WHERE id='user-regional'"); await db.query("DELETE FROM tenant_memberships WHERE user_id='user-regional'"); assert.equal((await request('/api/admin/authorization-check?permission=scope.read&regionId=region-a',{headers:{cookie:regionalCookie}})).status,403); await db.query("INSERT INTO tenant_memberships (user_id,tenant_id,scope_json,active) VALUES ('user-regional','tenant-a',?,1)",[JSON.stringify({tenantIds:['tenant-a'],regionIds:['region-a']})]); await db.query("DELETE FROM user_roles WHERE user_id='user-regional'"); assert.equal((await request('/api/admin/authorization-check?permission=scope.read&regionId=region-a',{headers:{cookie:regionalCookie}})).status,403);
     const [audit] = await db.query("SELECT event_type FROM audit_events WHERE event_type='FORBIDDEN_API_ACCESS'"); assert.ok(audit.length >= 1);
     console.log('Part 20 RBAC and tenant isolation suite passed.');
-  } finally { if(server&&!server.killed)server.kill('SIGTERM'); const migration = require('../db/relational'); await migration.close().catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=0'); for(const table of ['audit_events','server_sessions','tenant_memberships','user_roles','credentials','users','schools','districts','regions','tenants']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=1'); await db.end(); }
+  } finally { if(server&&!server.killed)server.kill('SIGTERM'); await db.query('SET FOREIGN_KEY_CHECKS=0'); for(const table of ['audit_events','server_sessions','tenant_memberships','user_roles','credentials','users','schools','districts','regions','tenants']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=1'); db.release(); await migration.close().catch(()=>{}); }
 }
 main().catch(e=>{console.error(e.stack||e);process.exitCode=1;});

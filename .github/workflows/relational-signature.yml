@@ -2,6 +2,12 @@ name: TiDB relational signature verification
 
 on:
   workflow_dispatch:
+    inputs:
+      run_legacy_cutover:
+        description: 'Run the coordinated legacy entity cutover after inventory succeeds'
+        required: true
+        default: false
+        type: boolean
   pull_request:
     paths:
       - 'db/**'
@@ -26,8 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # An isolated, disposable TiDB branch/database; GitHub masks its value.
-      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_TEST_DATABASE_URL }}
+      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL }}
       NODE_ENV: test
+      EDUTRACK_ALLOW_ISOLATED_LEGACY_ACCOUNT_CUTOVER: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,7 +46,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$EDUTRACK_DATABASE_URL" ]; then
-            echo 'EDUTRACK_TIDB_TEST_DATABASE_URL is required for the TiDB release gate.' >&2
+            echo 'EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL is required for the fresh TiDB migration gate.' >&2
             exit 1
           fi
           case "$EDUTRACK_DATABASE_URL" in
@@ -48,9 +55,20 @@ jobs:
           esac
       - name: Verify TiDB connectivity without disclosing connection details
         run: node -e "require('./db/relational').getPool().query('SELECT VERSION()').then(() => console.log('TiDB connectivity verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB connectivity failed.'); process.exit(1); })"
-      - name: Initialize additive schema
+      - name: Verify fresh legacy baseline without DDL
+        run: node scripts/verify-fresh-legacy-baseline.js
+      - name: Inventory complete legacy entity graph without DDL
+        run: node scripts/audit-legacy-entity-graph.js --output artifacts/legacy-entity-graph.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-entity-graph
+          path: artifacts/legacy-entity-graph.json
+          if-no-files-found: error
+      - name: Run coordinated cutover and initialize canonical schema
+        if: inputs.run_legacy_cutover == true
         run: npm run db:migrate
       - name: Verify signature contracts and tenant isolation
+        if: inputs.run_legacy_cutover == true
         run: |
           node test/signature-phase2.spec.js
           node test/signature-phase3.spec.js
@@ -58,4 +76,5 @@ jobs:
           node test/signature-phase5.spec.js
           npm run test:part20
       - name: Verify representative additive migration is idempotent
+        if: inputs.run_legacy_cutover == true
         run: npm run db:migrate

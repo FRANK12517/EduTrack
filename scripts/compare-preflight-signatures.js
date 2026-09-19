@@ -1,0 +1,10 @@
+'use strict';
+const fs = require('node:fs');
+const [beforePath, afterPath, output] = process.argv.slice(2);
+if (!beforePath || !afterPath || !output) throw new Error('Usage: compare-preflight-signatures <before> <after> <output>');
+const before = JSON.parse(fs.readFileSync(beforePath, 'utf8')); const after = JSON.parse(fs.readFileSync(afterPath, 'utf8'));
+const keys = ['sha256', 'tables', 'columns', 'foreignKeys', 'indexes', 'rowCountSignature', 'schemaMigrations'];
+const unchanged = keys.every(key => before[key] === after[key]);
+const report = { target: 'DISPOSABLE', mode: 'READ_ONLY', before: Object.fromEntries(keys.map(k => [k, before[k]])), after: Object.fromEntries(keys.map(k => [k, after[k]])), unchanged };
+fs.writeFileSync(output, JSON.stringify(report, null, 2), { mode: 0o600 });
+if (!unchanged) { console.error('DATABASE MUTATION DETECTED — DISPOSABLE PREFLIGHT VALIDATION FAILED'); process.exitCode = 1; } else console.log('Database signatures are identical.');

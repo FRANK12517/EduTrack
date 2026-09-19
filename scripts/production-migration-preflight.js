@@ -9,15 +9,17 @@ const { readonly } = require('../lib/production-preflight-readonly');
 const TARGET = 'production-read-only';
 function quote(name) { return `\`${String(name).replace(/`/g, '``')}\``; }
 function countName(names, needle) { return names.filter(name => name === needle).length; }
-function outputPath() { const i = process.argv.indexOf('--output'); return i < 0 ? path.join('artifacts', 'production-migration-preflight.json') : process.argv[i + 1]; }
-function requireTarget(env = process.env) {
-  if (env.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET !== TARGET) throw new Error('Production preflight target is not explicitly authorized as read-only');
+function option(name, fallback) { const i = process.argv.indexOf(name); return i < 0 ? fallback : process.argv[i + 1]; }
+function outputPath() { return option('--output', path.join('artifacts', 'production-migration-preflight.json')); }
+function requireTarget(env = process.env, expectedTarget = TARGET) {
+  if (!['production-read-only', 'disposable-validation'].includes(expectedTarget) || env.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET !== expectedTarget) throw new Error('Production preflight target is not explicitly authorized as read-only');
   if (!env.EDUTRACK_DATABASE_URL || !/^(mysql|mariadb):\/\//.test(env.EDUTRACK_DATABASE_URL)) throw new Error('EDUTRACK_DATABASE_URL must be an explicit MySQL-compatible production connection');
 }
 function entityType(column) { return /(^id$|_id$|^id_)/i.test(column.COLUMN_NAME); }
 
 async function main() {
-  requireTarget();
+  const expectedTarget = option('--target', TARGET);
+  requireTarget(process.env, expectedTarget);
   const raw = await mysql.createConnection({ uri: process.env.EDUTRACK_DATABASE_URL, ssl: { rejectUnauthorized: true }, multipleStatements: false, decimalNumbers: true });
   const db = readonly(raw);
   try {
@@ -45,7 +47,7 @@ async function main() {
     if (orphanCount) blockers.push('Foreign-key orphan relationships detected');
     if (migrationState === 'MIXED_OR_CANONICAL') blockers.push('Migration state requires controlled human review');
     const report = {
-      mode: 'READ_ONLY', target: 'PRODUCTION', timestamp: new Date().toISOString(),
+      mode: 'READ_ONLY', target: expectedTarget === TARGET ? 'PRODUCTION' : 'DISPOSABLE', validationTarget: expectedTarget, timestamp: new Date().toISOString(),
       server: { database: server.database_name, version: server.version },
       schema: { tables: tableNames.length, columns: columns.length, indexes: indexes.length, foreignKeys: foreignKeys.length, bigintIdentifiers: bigintIdentifiers.length, varcharIdentifiers: varcharIdentifiers.length, implicitReferences: implicitReferences.length, pgsidColumns },
       data: { users: tableCounts.users || 0, schools: tableCounts.schools || 0, students: tableCounts.students || 0, admissions: countName(tableNames, 'admissions') ? tableCounts.admissions : (tableCounts.pending_admission_applications || 0), attendanceRecords: (tableCounts.student_attendance_records || 0) + (tableCounts.teacher_attendance_records || 0), resultRecords: (tableCounts.scores || 0) + (tableCounts.mock_scores || 0), payments: tableCounts.school_fee_payments || 0 },

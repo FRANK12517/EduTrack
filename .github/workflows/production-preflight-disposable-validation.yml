@@ -1,0 +1,37 @@
+name: Production preflight disposable validation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disposable-read-only-validation:
+    runs-on: ubuntu-latest
+    env:
+      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL }}
+      EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: disposable-validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require disposable target authorization
+        shell: bash
+        run: |
+          test -n "$EDUTRACK_DATABASE_URL"
+          test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'disposable-validation'
+          case "$EDUTRACK_DATABASE_URL" in mysql:*|mariadb:*) ;; *) exit 1;; esac
+      - run: node test/production-preflight-readonly.spec.js
+      - name: Create before read-only signature
+        run: node scripts/read-only-database-signature.js --target disposable-validation --output artifacts/disposable-before-signature.json
+      - name: Run disposable preflight
+        run: node scripts/production-migration-preflight.js --target disposable-validation --output artifacts/disposable-production-preflight-report.json
+      - name: Create after read-only signature
+        run: node scripts/read-only-database-signature.js --target disposable-validation --output artifacts/disposable-after-signature.json
+      - name: Require unchanged database state
+        run: node scripts/compare-preflight-signatures.js artifacts/disposable-before-signature.json artifacts/disposable-after-signature.json artifacts/disposable-preflight-signature.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: disposable-production-preflight-validation
+          path: artifacts/disposable-*.json

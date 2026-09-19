@@ -7,6 +7,12 @@ const relational = require('../db/relational');
 function qi(value) { return `\`${String(value).replace(/`/g, '``')}\``; }
 function canonicalId(prefix, expression) { return `CONCAT('${prefix}_lg_', LOWER(SUBSTRING(SHA2(${expression},256),1,24)))`; }
 
+function isAuthorizedIsolatedMigrationTarget(env = process.env) {
+  if (env.NODE_ENV !== 'test') return false;
+  return env.EDUTRACK_ALLOW_ISOLATED_LEGACY_ACCOUNT_CUTOVER === 'true'
+    || env.EDUTRACK_RELEASE_GATE_TARGET === 'isolated-release-gate';
+}
+
 async function tableExists(db, table) {
   const [rows] = await db.query('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1', [table]);
   return rows.length === 1;
@@ -63,7 +69,7 @@ async function prepare() {
   try {
     const type = await userIdType(db);
     if (type !== 'bigint') return { needed: false };
-    if (process.env.NODE_ENV !== 'test' || process.env.EDUTRACK_ALLOW_ISOLATED_LEGACY_ACCOUNT_CUTOVER !== 'true') {
+    if (!isAuthorizedIsolatedMigrationTarget()) {
       throw new Error('Legacy account cutover is restricted to the explicitly authorized isolated test environment');
     }
     const foreignKeys = await legacyInboundForeignKeys(db);
@@ -142,4 +148,4 @@ async function materialize(foreignKeys) {
   } finally { /* relational.migrate owns the shared pool lifecycle */ }
 }
 
-module.exports = { prepare, materialize };
+module.exports = { prepare, materialize, isAuthorizedIsolatedMigrationTarget };

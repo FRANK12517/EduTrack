@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { assertReadOnly } = require('../lib/production-preflight-readonly');
+const { requireTarget } = require('../scripts/production-migration-preflight');
+for (const sql of ['SELECT 1', ' show tables', 'DESCRIBE users', 'EXPLAIN SELECT * FROM users']) assert.doesNotThrow(() => assertReadOnly(sql));
+for (const sql of ['INSERT INTO users VALUES (1)', ' update users set active=0', 'DELETE FROM users', 'REPLACE INTO users VALUES (1)', 'CREATE TABLE x (id INT)', 'ALTER TABLE users ADD x INT', 'DROP TABLE users', 'TRUNCATE users', 'RENAME TABLE users TO x', 'GRANT ALL ON *.* TO x', 'REVOKE ALL ON *.* FROM x', 'CALL x()', 'LOAD DATA INFILE \'x\'', 'LOCK TABLES users READ', 'UNLOCK TABLES', 'SET FOREIGN_KEY_CHECKS=0', 'SELECT 1 INTO OUTFILE \'x\'', 'SELECT 1 INTO DUMPFILE \'x\'', 'SELECT 1 FOR UPDATE', 'SELECT 1; DELETE FROM users', '/* comment */ DELETE FROM users', 'sElEcT 1 -- comment', 'WITH x AS (SELECT 1) UPDATE users SET active=0']) assert.throws(() => assertReadOnly(sql));
+const url = 'mysql://user:secret@example.test/db';
+assert.doesNotThrow(() => requireTarget({ EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'production-read-only', EDUTRACK_DATABASE_URL: url }, 'production-read-only'));
+assert.doesNotThrow(() => requireTarget({ EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'disposable-validation', EDUTRACK_DATABASE_URL: url }, 'disposable-validation'));
+for (const [env, expected] of [[{ EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'disposable-validation', EDUTRACK_DATABASE_URL: url }, 'production-read-only'], [{ EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'production-read-only', EDUTRACK_DATABASE_URL: url }, 'disposable-validation'], [{ NODE_ENV: 'test', EDUTRACK_DATABASE_URL: url }, 'disposable-validation'], [{ EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'unknown', EDUTRACK_DATABASE_URL: url }, 'disposable-validation'], [{ EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'disposable-validation' }, 'disposable-validation']]) assert.throws(() => requireTarget(env, expected));
+console.log('Production preflight read-only SQL guard passed.');

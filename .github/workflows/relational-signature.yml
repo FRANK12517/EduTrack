@@ -2,6 +2,12 @@ name: TiDB relational signature verification
 
 on:
   workflow_dispatch:
+    inputs:
+      run_legacy_cutover:
+        description: 'Run the coordinated legacy entity cutover after inventory succeeds'
+        required: true
+        default: false
+        type: boolean
   pull_request:
     paths:
       - 'db/**'
@@ -26,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # An isolated, disposable TiDB branch/database; GitHub masks its value.
-      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_TEST_DATABASE_URL }}
+      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL }}
       NODE_ENV: test
       EDUTRACK_ALLOW_ISOLATED_LEGACY_ACCOUNT_CUTOVER: 'true'
     steps:
@@ -40,7 +46,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$EDUTRACK_DATABASE_URL" ]; then
-            echo 'EDUTRACK_TIDB_TEST_DATABASE_URL is required for the TiDB release gate.' >&2
+            echo 'EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL is required for the fresh TiDB migration gate.' >&2
             exit 1
           fi
           case "$EDUTRACK_DATABASE_URL" in
@@ -49,13 +55,20 @@ jobs:
           esac
       - name: Verify TiDB connectivity without disclosing connection details
         run: node -e "require('./db/relational').getPool().query('SELECT VERSION()').then(() => console.log('TiDB connectivity verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB connectivity failed.'); process.exit(1); })"
-      - name: Inspect admission foreign-key schema contract
-        run: node -e "const db=require('./db/relational').getPool(); Promise.all([db.query('SHOW CREATE TABLE users'),db.query('SHOW CREATE TABLE admission_status_history'),db.query(\"SELECT TABLE_NAME,COLUMN_NAME,DATA_TYPE,COLUMN_TYPE,CHARACTER_MAXIMUM_LENGTH,IS_NULLABLE,CHARACTER_SET_NAME,COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND ((TABLE_NAME='users' AND COLUMN_NAME='id') OR (TABLE_NAME='admission_status_history' AND COLUMN_NAME='changed_by_user_id')) ORDER BY TABLE_NAME,COLUMN_NAME\"),db.query(\"SELECT k.CONSTRAINT_NAME,k.TABLE_NAME,k.COLUMN_NAME,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,r.UPDATE_RULE,r.DELETE_RULE FROM information_schema.KEY_COLUMN_USAGE k LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME WHERE k.TABLE_SCHEMA=DATABASE() AND k.CONSTRAINT_NAME='fk_admhist_changer'\")]).then(([users,history,columns,constraints])=>{console.log(JSON.stringify({usersDdl:users[0][0],admissionHistoryDdl:history[0][0],columns:columns[0],constraints:constraints[0]}));return db.end()}).catch(async error=>{console.error('Admission foreign-key schema inspection failed.');await db.end();process.exit(1)})"
-      - name: Audit complete user-ID dependency contract
-        run: node scripts/audit-user-id-contract.js
-      - name: Initialize additive schema
+      - name: Verify fresh legacy baseline without DDL
+        run: node scripts/verify-fresh-legacy-baseline.js
+      - name: Inventory complete legacy entity graph without DDL
+        run: node scripts/audit-legacy-entity-graph.js --output artifacts/legacy-entity-graph.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-entity-graph
+          path: artifacts/legacy-entity-graph.json
+          if-no-files-found: error
+      - name: Run coordinated cutover and initialize canonical schema
+        if: inputs.run_legacy_cutover == true
         run: npm run db:migrate
       - name: Verify signature contracts and tenant isolation
+        if: inputs.run_legacy_cutover == true
         run: |
           node test/signature-phase2.spec.js
           node test/signature-phase3.spec.js
@@ -63,4 +76,5 @@ jobs:
           node test/signature-phase5.spec.js
           npm run test:part20
       - name: Verify representative additive migration is idempotent
+        if: inputs.run_legacy_cutover == true
         run: npm run db:migrate

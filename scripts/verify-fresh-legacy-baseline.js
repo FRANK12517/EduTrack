@@ -14,8 +14,8 @@ async function main() {
         AND TABLE_NAME='admission_status_history' AND COLUMN_NAME='changed_by_user_id'
         AND REFERENCED_TABLE_NAME='users' AND REFERENCED_COLUMN_NAME='id' LIMIT 1`);
     const [users] = await db.query('SELECT COUNT(*) AS count FROM users');
-    const [artifacts] = await db.query(`SELECT TABLE_NAME FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_NAME IN ('legacy_account_identity_map','legacy_school_identity_map') OR TABLE_NAME LIKE 'legacy\\_%\\_archive' ESCAPE '\\')`);
+    const [allTables] = await db.query('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()');
+    const artifacts = allTables.filter(row => ['legacy_account_identity_map', 'legacy_school_identity_map'].includes(row.TABLE_NAME) || /^legacy_.*_archive$/.test(row.TABLE_NAME));
     const valid = types.users === 'bigint' && types.schools === 'bigint' && foreignKeys.length === 1 && Number(users[0].count) === 2 && artifacts.length === 0;
     console.log(JSON.stringify({ freshLegacyBaseline: valid, usersIdType: types.users || null, schoolsIdType: types.schools || null, admissionHistoryUserForeignKey: foreignKeys.length === 1, legacyUserCount: Number(users[0].count), cutoverArtifacts: artifacts.length }));
     if (!valid) process.exitCode = 1;

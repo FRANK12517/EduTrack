@@ -7,5 +7,8 @@ assert.equal(category({ code: 'ETIMEDOUT' }), 'NETWORK');
 assert.equal(category({ code: 'ER_ACCESS_DENIED_ERROR' }), 'AUTHENTICATION');
 assert.equal(category({ code: 'ER_BAD_DB_ERROR' }), 'DATABASE');
 assert.equal(category({ code: 'HANDSHAKE_SSL_ERROR' }), 'TLS');
+assert.equal(category({ code: 'PROTOCOL_CONNECTION_LOST' }), 'NETWORK');
+assert.equal(category({ code: 'ER_UNKNOWN_TLS_OPTION' }), 'UNCLASSIFIED_ER_UNKNOWN_TLS_OPTION');
+assert.equal(category({ code: 'unsafe value with host.example' }), 'UNKNOWN');
 assert.equal(category({ code: 'unrecognized' }), 'UNKNOWN');
 console.log('TiDB connectivity diagnostic sanitization passed.');

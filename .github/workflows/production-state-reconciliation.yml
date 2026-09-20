@@ -1,0 +1,29 @@
+name: Production state reconciliation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    env:
+      EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: ${{ secrets.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET }}
+      TIDB_HOST: ${{ secrets.TIDB_HOST }}
+      TIDB_PORT: ${{ secrets.TIDB_PORT }}
+      TIDB_USER: ${{ secrets.TIDB_USER }}
+      TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+      TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+      TIDB_CA_CERT: ${{ secrets.TIDB_CA_CERT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Require authorized read-only target
+        shell: bash
+        run: |
+          test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'production-read-only'
+          test -n "$TIDB_HOST" && test -n "$TIDB_PORT" && test -n "$TIDB_USER" && test -n "$TIDB_PASSWORD" && test -n "$TIDB_DATABASE" && test -n "$TIDB_CA_CERT"
+      - run: node scripts/production-state-reconciliation.js
+      - uses: actions/upload-artifact@v4
+        with: { name: production-state-reconciliation, path: artifacts/production-state-reconciliation.json }

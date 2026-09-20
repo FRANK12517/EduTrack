@@ -1,0 +1,18 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { EXPECTED_TABLES, FORBIDDEN_ENV, config, classify } = require('../scripts/validate-pre-recovery-baseline');
+const authorized = { EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL: 'mysql://hidden:hidden@example.test/edutrack_dev' };
+assert.equal(config(authorized).multipleStatements, false);
+assert.equal(config(authorized).ssl.rejectUnauthorized, true);
+for (const key of FORBIDDEN_ENV) assert.throws(() => config({ ...authorized, [key]: 'forbidden' }), key);
+const exact = { tableCount: 25, foreignKeyCount: 40, bigintIdentifierCount: 64, varcharIdentifierCount: 7, implicitReferenceCount: 7, pgsidColumnCount: 0, usersIdType: 'bigint', schoolsIdType: 'bigint', requiredAdmissionHistoryForeignKey: true, archiveArtifactCount: 0, canonicalIdentityArtifactCount: 0, tableRowCounts: Object.fromEntries(EXPECTED_TABLES.map((table) => [table, table === 'schools' ? 1 : table === 'users' ? 2 : 0])) };
+assert.equal(classify(exact), 'EXACT_CLEAN_LEGACY_BASELINE_MATCH');
+assert.equal(classify({ ...exact, foreignKeyCount: 39 }), 'NOT_CLEAN_LEGACY_BASELINE');
+assert.equal(classify({ ...exact, tableRowCounts: { ...exact.tableRowCounts, students: 1 } }), 'NOT_CLEAN_LEGACY_BASELINE');
+assert.equal(classify({ ...exact, archiveArtifactCount: 1 }), 'NOT_CLEAN_LEGACY_BASELINE');
+const workflow = fs.readFileSync('.github/workflows/validate-pre-recovery-baseline.yml', 'utf8');
+assert.match(workflow, /workflow_dispatch/); assert.doesNotMatch(workflow, /pull_request|push:/);
+assert.match(workflow, /secrets\.EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL/);
+assert.doesNotMatch(workflow, /secrets\.(?:TIDB_|EDUTRACK_DATABASE_URL|DATABASE_URL|EDUTRACK_TIDB_(?:RECOVERY_REHEARSAL|RELEASE_GATE|FRESH_TEST|TEST)_DATABASE_URL)/);
+console.log('Pre-recovery baseline validator guards passed.');

@@ -7,7 +7,11 @@ const mysql = require('mysql2/promise');
 const { getTiDbConnectionOptions, hasExplicitTiDbConfiguration } = require('../lib/tidb-config');
 const subscriptionPolicy = require('../app/subscription-policy');
 
-const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL || '';
+// The recovery-rehearsal URL is intentionally accepted only in its dedicated
+// execution mode.  Normal application and production paths retain their
+// existing configuration sources and can never select the rehearsal target.
+const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || process.env.DATABASE_URL
+  || (process.env.NODE_ENV === 'recovery-rehearsal' ? process.env.EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL : '') || '';
 const SCHEMA_VERSION = 25;
 let pool;
 let initialized;

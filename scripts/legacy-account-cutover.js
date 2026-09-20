@@ -13,6 +13,18 @@ function isAuthorizedIsolatedMigrationTarget(env = process.env) {
     || env.EDUTRACK_RELEASE_GATE_TARGET === 'isolated-release-gate';
 }
 
+function isAuthorizedRecoveryRehearsalTarget(env = process.env) {
+  if (env.NODE_ENV !== 'recovery-rehearsal') return false;
+  if (env.EDUTRACK_RECOVERY_REHEARSAL_CONFIRMATION !== 'RECOVER_ISOLATED_REHEARSAL_ONLY') return false;
+  if (!env.EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL) return false;
+  return ![
+    'EDUTRACK_DATABASE_URL', 'DATABASE_URL', 'TIDB_HOST', 'TIDB_PORT', 'TIDB_USER',
+    'TIDB_PASSWORD', 'TIDB_DATABASE', 'TIDB_CA_CERT',
+    'EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL', 'EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL',
+    'EDUTRACK_TIDB_TEST_DATABASE_URL'
+  ].some((key) => env[key]);
+}
+
 async function tableExists(db, table) {
   const [rows] = await db.query('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1', [table]);
   return rows.length === 1;
@@ -104,48 +116,54 @@ async function prepare() {
 
 async function materialize(foreignKeys) {
   const db = relational.getPool();
+  const conn = await db.getConnection();
   try {
-    if (!(await tableExists(db, 'legacy_users_archive'))) return { needed: false };
-    await db.query(`INSERT INTO tenants (id,name,tenant_type,active,created_at,updated_at)
+    if (!isAuthorizedIsolatedMigrationTarget() && !isAuthorizedRecoveryRehearsalTarget()) {
+      throw new Error('Canonical identity materialization is restricted to an explicitly authorized isolated target');
+    }
+    if (!(await tableExists(conn, 'legacy_users_archive'))) return { needed: false };
+    await conn.beginTransaction();
+    await conn.query(`INSERT INTO tenants (id,name,tenant_type,active,created_at,updated_at)
       SELECT m.canonical_tenant_id,s.name,'SCHOOL',TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
       FROM legacy_school_identity_map m JOIN legacy_schools_archive s ON CAST(s.id AS CHAR)=m.legacy_school_id_text
       ON DUPLICATE KEY UPDATE name=VALUES(name),updated_at=VALUES(updated_at)`);
-    await db.query(`INSERT INTO schools (id,tenant_id,name,active,created_at,updated_at)
+    await conn.query(`INSERT INTO schools (id,tenant_id,name,active,created_at,updated_at)
       SELECT m.canonical_school_id,m.canonical_tenant_id,s.name,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
       FROM legacy_school_identity_map m JOIN legacy_schools_archive s ON CAST(s.id AS CHAR)=m.legacy_school_id_text
       ON DUPLICATE KEY UPDATE tenant_id=VALUES(tenant_id),name=VALUES(name),active=VALUES(active),updated_at=VALUES(updated_at)`);
-    await db.query(`INSERT INTO users (id,email,staff_id,status,active,development_fixture,hierarchy,scope_json,created_at,updated_at)
+    await conn.query(`INSERT INTO users (id,email,staff_id,status,active,development_fixture,hierarchy,scope_json,created_at,updated_at)
       SELECT m.canonical_user_id,NULLIF(TRIM(u.email),''),u.staff_id,'RESET_REQUIRED',TRUE,FALSE,
         CASE u.role WHEN 'SUPER_ADMIN' THEN 'ROOT' ELSE 'SCHOOL' END,
         CASE u.role WHEN 'SUPER_ADMIN' THEN JSON_ARRAY('ROOT') ELSE JSON_ARRAY('SCHOOL') END,
         COALESCE(u.created_at,CURRENT_TIMESTAMP),CURRENT_TIMESTAMP
       FROM legacy_account_identity_map m JOIN legacy_users_archive u ON CAST(u.id AS CHAR)=m.legacy_user_id_text
       ON DUPLICATE KEY UPDATE email=VALUES(email),staff_id=VALUES(staff_id),status='RESET_REQUIRED',active=TRUE,updated_at=VALUES(updated_at)`);
-    await db.query(`INSERT INTO credentials (id,user_id,password_hash,access_code_hash,status,created_at,updated_at)
+    await conn.query(`INSERT INTO credentials (id,user_id,password_hash,access_code_hash,status,created_at,updated_at)
       SELECT ${canonicalId('cred', 'm.legacy_user_id_text')},m.canonical_user_id,'RESET_REQUIRED',NULL,'RESET_REQUIRED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
       FROM legacy_account_identity_map m
       ON DUPLICATE KEY UPDATE password_hash='RESET_REQUIRED',access_code_hash=NULL,status='RESET_REQUIRED',updated_at=VALUES(updated_at)`);
-    await db.query(`INSERT INTO user_roles (user_id,role_id,assigned_at)
+    await conn.query(`INSERT INTO user_roles (user_id,role_id,assigned_at)
       SELECT m.canonical_user_id,CONCAT('role_',LOWER(u.role)),CURRENT_TIMESTAMP
       FROM legacy_account_identity_map m JOIN legacy_users_archive u ON CAST(u.id AS CHAR)=m.legacy_user_id_text
       ON DUPLICATE KEY UPDATE role_id=VALUES(role_id),assigned_at=VALUES(assigned_at)`);
-    await db.query(`INSERT INTO tenant_memberships (user_id,tenant_id,scope_json,active,created_at)
+    await conn.query(`INSERT INTO tenant_memberships (user_id,tenant_id,scope_json,active,created_at)
       SELECT m.canonical_user_id,s.canonical_tenant_id,JSON_OBJECT('schoolId',s.canonical_school_id),TRUE,CURRENT_TIMESTAMP
       FROM legacy_account_identity_map m JOIN legacy_school_identity_map s ON s.legacy_school_id_text=m.legacy_school_id_text
       ON DUPLICATE KEY UPDATE scope_json=VALUES(scope_json),active=TRUE`);
-    await db.query(`INSERT INTO staff (id,user_id,staff_identifier,full_name,email,staff_type,status,tenant_id,school_id,created_at,updated_at)
+    await conn.query(`INSERT INTO staff (id,user_id,staff_identifier,full_name,email,staff_type,status,tenant_id,school_id,created_at,updated_at)
       SELECT ${canonicalId('stf', 'm.legacy_user_id_text')},m.canonical_user_id,u.staff_id,u.full_name,NULLIF(TRIM(u.email),''),u.role,'RESET_REQUIRED',s.canonical_tenant_id,s.canonical_school_id,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
       FROM legacy_account_identity_map m
       JOIN legacy_users_archive u ON CAST(u.id AS CHAR)=m.legacy_user_id_text
       JOIN legacy_school_identity_map s ON s.legacy_school_id_text=m.legacy_school_id_text
       ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),full_name=VALUES(full_name),email=VALUES(email),status='RESET_REQUIRED',updated_at=VALUES(updated_at)`);
-    await db.query("UPDATE legacy_account_identity_map SET migration_status='MIGRATED',migrated_at=CURRENT_TIMESTAMP");
-    await db.query("UPDATE legacy_school_identity_map SET migration_status='MIGRATED',migrated_at=CURRENT_TIMESTAMP");
-    await db.query(`INSERT INTO audit_events (id,event_type,actor_user_id,occurred_at,metadata_json) VALUES
+    await conn.query("UPDATE legacy_account_identity_map SET migration_status='MIGRATED',migrated_at=CURRENT_TIMESTAMP");
+    await conn.query("UPDATE legacy_school_identity_map SET migration_status='MIGRATED',migrated_at=CURRENT_TIMESTAMP");
+    await conn.query(`INSERT INTO audit_events (id,event_type,actor_user_id,occurred_at,metadata_json) VALUES
       ('audit_legacy_account_cutover','LEGACY_ACCOUNT_CUTOVER',NULL,CURRENT_TIMESTAMP,JSON_OBJECT('credentialTransition','RESET_REQUIRED','legacyPasswordsCopied',false))
       ON DUPLICATE KEY UPDATE occurred_at=VALUES(occurred_at),metadata_json=VALUES(metadata_json)`);
+    await conn.commit();
     return { needed: true };
-  } finally { /* relational.migrate owns the shared pool lifecycle */ }
+  } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
 
-module.exports = { prepare, materialize, isAuthorizedIsolatedMigrationTarget };
+module.exports = { prepare, materialize, isAuthorizedIsolatedMigrationTarget, isAuthorizedRecoveryRehearsalTarget };

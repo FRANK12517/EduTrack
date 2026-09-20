@@ -1,0 +1,32 @@
+name: Validate preserved pre-recovery baseline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate-preserved-baseline:
+    runs-on: ubuntu-latest
+    env:
+      EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Require only the dedicated preserved-target credential
+        shell: bash
+        run: |
+          test -n "${EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL}"
+          test -z "${EDUTRACK_DATABASE_URL}" && test -z "${DATABASE_URL}" && test -z "${TIDB_HOST}"
+          test -z "${EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL}" && test -z "${EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL}"
+          test -z "${EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL}" && test -z "${EDUTRACK_TIDB_TEST_DATABASE_URL}"
+      - name: Verify read-only authorization guards
+        run: node test/pre-recovery-baseline-validator.spec.js
+      - name: Validate the preserved legacy baseline with read-only SQL
+        run: node scripts/validate-pre-recovery-baseline.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pre-recovery-baseline-validation
+          path: artifacts/pre-recovery-baseline-validation.json
+          if-no-files-found: warn

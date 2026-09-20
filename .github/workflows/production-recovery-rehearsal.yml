@@ -1,0 +1,56 @@
+name: Production recovery rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RECOVER_ISOLATED_REHEARSAL_ONLY to authorize the isolated rehearsal
+        required: true
+        type: string
+
+jobs:
+  recovery-rehearsal:
+    # This protected environment is the independent authorization boundary for
+    # the isolated TiDB branch and its environment-scoped credential.
+    environment: recovery-rehearsal
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: recovery-rehearsal
+      EDUTRACK_RECOVERY_REHEARSAL_CONFIRMATION: ${{ inputs.confirmation }}
+      EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Require the protected isolated target and exact confirmation
+        shell: bash
+        run: |
+          test "${EDUTRACK_RECOVERY_REHEARSAL_CONFIRMATION}" = 'RECOVER_ISOLATED_REHEARSAL_ONLY'
+          test -n "${EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL}"
+          test -z "${EDUTRACK_DATABASE_URL}" && test -z "${DATABASE_URL}"
+          test -z "${TIDB_HOST}" && test -z "${TIDB_PASSWORD}"
+          test -z "${EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL}" && test -z "${EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL}"
+      - name: Run authorization regression tests
+        run: node test/recovery-rehearsal-authorization.spec.js
+      - name: Resume canonical recovery on the approved rehearsal target
+        run: node scripts/rehearse-production-recovery.js
+      - name: Run non-production regression tests
+        run: |
+          npm run check
+          npm run test:part20
+          npm run test:admission-workflow
+      - name: Run School login smoke test when an isolated fixture is configured
+        shell: bash
+        run: |
+          if [ -n "${EDUTRACK_TEST_SCHOOL_ACCESS_CODE}" ] && [ -n "${EDUTRACK_TEST_SCHOOL_STAFF_ID}" ]; then
+            npm run test:school-login-thin
+          else
+            echo 'School login smoke test not run: no isolated fixture credentials are configured.'
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovery-rehearsal-report
+          path: artifacts/recovery-rehearsal-report.json
+          if-no-files-found: warn

@@ -22,12 +22,12 @@ assert.match(server, /administrativeScope\.matches\(user, input\.administrativeL
 assert.match(server, /ADMINISTRATIVE_LEVEL_MISMATCH/, 'server audits scope mismatch');
 assert.match(server, /administrativeScope\.contextForUser\(user\)/, 'session exposes administrative level separately from role');
 assert.match(authClient, /admin-dashboard-separation\.js/, 'existing auth bridge loads dashboard separation');
-assert.match(dashboard, /RETIRED_LEVELS=\['DISTRICT','REGIONAL','NATIONAL'\]/, 'legacy officer dashboards are explicitly retired');
+assert.match(dashboard, /ADMIN_LEVELS=\['DISTRICT','REGIONAL','NATIONAL'\]/, 'Part 4 activates all three canonical administrative levels');
 assert.match(dashboard, /function retireLegacyNodes\(\)/, 'legacy dashboard DOM is removed');
 assert.doesNotMatch(dashboard, /DISTRICT:\[/, 'District menu registry is removed');
 assert.doesNotMatch(dashboard, /REGIONAL:\[/, 'Regional menu registry is removed');
 assert.doesNotMatch(dashboard, /NATIONAL:\[/, 'National menu registry is removed');
-assert.match(dashboard, /dashboard unavailable/, 'retired logins fail gracefully');
+assert.match(dashboard, /Please sign in to EduTrack/, 'unauthenticated administrative routes return to login');
 for (const loginLevel of ['NATIONAL','REGIONAL','DISTRICT','SCHOOL','PARENT','STUDENT']) assert.match(html, new RegExp(`data-level=["']${loginLevel}["']`), `${loginLevel} login card remains present`);
 assert.match(html, /Subscribe \/ Register School|Subscribe|Register School/i);
 assert.match(html, /Renew Subscription/i);

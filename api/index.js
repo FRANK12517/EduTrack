@@ -24,7 +24,9 @@ module.exports = function edutrackApi(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ envVarUsed: source, database: dbName }));
   }
-  if (route === '/api/login' || route === '/api/school-login' || route === '/api/config' || route === '/api/students') {
+  // The current School client uses the existing canonical cookie session.
+  // Keep legacy bearer login/config/student routes available to their clients.
+  if (route === '/api/login' || route === '/api/config' || route === '/api/students') {
     return legacyHandler(req, res);
   }
   return handler(req, res).catch(() => {

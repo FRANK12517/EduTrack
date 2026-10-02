@@ -18,6 +18,10 @@
     "production:preflight": "node scripts/production-preflight.js",
     "production:release-gate": "node scripts/production-release-gate.js",
     "production:release-gate:json": "node scripts/production-release-gate.js --json",
+    "test:macro-hierarchy": "node test/macro-hierarchy-part1.spec.js && node test/macro-hierarchy-sync-ui.spec.js && node test/macro-hierarchy-http.spec.js",
+    "test:upper-dashboards:browser": "node test/upper-dashboards-runner.js",
+    "test:district-dashboard": "node test/district-dashboard.spec.js",
+    "test:district-dashboard:browser": "node test/district-dashboard-runner.js",
     "test:school-login-thin": "node test/school-login-thin-boot.browser.spec.js",
     "test:part39-adapter": "node test/part39-deployment-adapter.spec.js",
     "test:part39-staging-deployment.browser": "node test/part39-staging-deployment.browser.spec.js",
@@ -93,7 +97,10 @@
     "test:part31": "node test/part31-production-persistence.spec.js",
     "test:part34": "node test/part34-production-deployment.spec.js",
     "test:part34:browser": "node test/part34-production-deployment.browser.spec.js",
-    "test:part29:browser": "node test/part29-visible-mock-workflow-browser.spec.js"
+    "test:part29:browser": "node test/part29-visible-mock-workflow-browser.spec.js",
+    "test:school-routes:browser": "node test/school-routes-runner.js",
+    "test:hierarchical-login": "node test/hierarchical-login.spec.js && npm run test:macro-hierarchy",
+    "build": "node scripts/build-public.js"
   },
   "devDependencies": {
     "playwright": "^1.62.1"

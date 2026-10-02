@@ -3,6 +3,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query, getPool } = require('../lib/db');
+const { levelForRole } = require('../app/auth/administrative-scope');
 
 function readBody(req) {
   if (req.body && typeof req.body === 'object') return Promise.resolve(req.body);
@@ -37,6 +38,13 @@ function requireAuth(req, res) {
 }
 
 function assertSchool(auth, schoolCode) {
+  // Legacy bearer routes are School-only; macro officers must use the
+  // canonical permission/scope/consent-protected administrative read layer.
+  if (levelForRole(auth.role) !== 'SCHOOL') {
+    const error = new Error('Administrative access requires the canonical scoped API');
+    error.status = 403;
+    throw error;
+  }
   if (!schoolCode || String(auth.schoolCode) !== String(schoolCode)) {
     const error = new Error('Forbidden school scope');
     error.status = 403;

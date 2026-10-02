@@ -37,7 +37,7 @@ async function run() {
   let browser;
   try {
     await waitForServer(server);
-    browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+    browser = await chromium.launch({ executablePath: process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium'), headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     const consoleErrors = [];
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
@@ -73,6 +73,13 @@ async function run() {
       }
     }
 
+    await page.locator('.login-level-btn[data-level="SCHOOL"]').tap();
+    await page.locator('#v43-school-access-code').waitFor({state:'visible'});
+    await page.locator('.login-level-btn[data-level="REGIONAL"]').tap();
+    await page.locator('#v43-access-code').waitFor({state:'visible'});assert.equal(await page.locator('#v43-district').count(),0);
+    await page.locator('.login-level-btn[data-level="SCHOOL"]').tap();
+    await page.locator('#v43-school-access-code').waitFor({state:'visible'});
+    assert.equal(await page.locator('#district-password').count(),0);
     const registration = page.locator('#sub-btn');
     await assertVisibleEnabled(registration, 'new registration action');
     await registration.tap();
@@ -81,8 +88,9 @@ async function run() {
     assert.equal(await registrationEntry.isVisible(), true, 'registration entry workflow should open');
     await registrationEntry.locator('[onclick*="subNewRegOpen"]').first().tap();
     await page.waitForTimeout(100);
-    assert.equal(await page.locator('#subv2-newchoice-overlay').isVisible(), true, 'new registration workflow should open');
-    await page.evaluate(() => { document.querySelectorAll('#subv2-entry-overlay, #subv2-newchoice-overlay').forEach((node) => { node.style.display = 'none'; }); });
+    assert.equal(await page.locator('#sub-modal-overlay').isVisible(), true, 'canonical four-step registration workflow should open');
+    assert.equal(await page.locator('#sub-step-1').isVisible(), true, 'registration starts at its first step');
+    await page.evaluate(() => { document.querySelectorAll('#subv2-entry-overlay, #subv2-newchoice-overlay').forEach((node) => { node.style.display = 'none'; }); document.getElementById('sub-modal-overlay').classList.remove('open'); });
 
     await page.evaluate(() => {
       if (typeof window.subShowLock === 'function') window.subShowLock(true);
@@ -96,7 +104,7 @@ async function run() {
     assert.equal(await page.locator('#sub-modal-overlay').isVisible(), true, 'renewal workflow should open');
     await page.evaluate(() => {
       const modal = document.getElementById('sub-modal-overlay');
-      if (modal) modal.classList.remove('open');
+      if (modal) { modal.classList.remove('open'); modal.style.removeProperty('display'); }
       const lock = document.getElementById('sub-lock-screen');
       if (lock) lock.style.display = 'none';
       const login = document.getElementById('login-screen');

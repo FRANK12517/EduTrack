@@ -54,7 +54,7 @@ jobs:
             *) echo 'The TiDB test connection must use a MySQL-compatible URL.' >&2; exit 1 ;;
           esac
       - name: Verify TiDB connectivity without disclosing connection details
-        run: node -e "require('./db/relational').getPool().query('SELECT VERSION()').then(() => console.log('TiDB connectivity verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB connectivity failed.'); process.exit(1); })"
+        run: node -e "require('./lib/tidb-connectivity-diagnostic').verify(require('./db/relational').getPool())"
       - name: Verify fresh legacy baseline without DDL
         run: node scripts/verify-fresh-legacy-baseline.js
       - name: Inventory complete legacy entity graph without DDL

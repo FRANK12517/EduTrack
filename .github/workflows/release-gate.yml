@@ -44,3 +44,7 @@ jobs:
         run: node scripts/migrate-db.js
       - name: Run release checks
         run: npm run check
+      - name: Verify hierarchical login, consent boundaries and public build
+        run: |
+          npm run test:hierarchical-login
+          node test/public-build.spec.js

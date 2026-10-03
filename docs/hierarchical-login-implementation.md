@@ -58,3 +58,15 @@ The HTTP relational fixture executes actual application SQL through disposable S
 Do not treat local test success as production approval. The existing isolated-TiDB and production release gates still apply. No production database was reset, truncated or migrated during implementation. Production deployment and live verification must be reported only from actual evidence. Historical database geographic names must resolve unambiguously to the extracted mapping; unsupported or ambiguous values require administrative reconciliation, not authentication exceptions.
 
 Changing the public output directory intentionally excludes backend/archive files; deployment preview checks must confirm any platform-specific asset configuration. Database migration 29 must precede running the new session code. For rollback, restore the prior application deployment and revoke new selected-scope sessions; retaining the nullable column is safe. Do not remove hierarchy IDs, consent history or existing records.
+
+## GitHub delivery checkpoint — 2026-10-03
+
+PR: https://github.com/FRANK12517/EduTrack/pull/27 (draft). Implementation commits 03cbe18 and c5f5bce were pushed; main 2f03697c37eb84f8dd197898d1b5194d325491db was incorporated without conflict.
+
+Release gate run 37023583833 passed on Node 22.23.3. Its logs confirm the explicitly authorized isolated target, TLS connectivity, and canonical migration version 29 with legacyAccountCutover=false. This is actual isolated TiDB migration evidence, distinct from local SQLite tests. Production data was not migrated.
+
+The separate TiDB signature gate, run 37023584278, failed before application checks with AUTHENTICATION. Its existing EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL secret must be repaired for the intended isolated target. No substitute database or bypass was used.
+
+Vercel reported the PR preview deployment ready. Requests to the preview root, geography asset and login-options API redirected to Vercel sign-in protection. Live preview functionality and production behavior therefore remain unverified. No merge or production deployment is claimed.
+
+The final clean npm test run passed through every configured stage (artifacts/hierarchical-login-regression-complete.log). The shared-renderer static security assertion now checks the exported allowlist and server enforcement. An earlier Super Administrator browser timeout passed on an isolated rerun and on the final full-suite run. Earlier failed logs remain local evidence.

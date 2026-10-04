@@ -84,7 +84,7 @@
     "test:part23:browser": "node test/part23-legacy-academic-browser.spec.js",
     "test:part24": "node test/part24-legacy-academic-integration.spec.js",
     "test:part24:browser": "node test/part24-legacy-academic-browser.spec.js",
-    "test": "npm run check && npm run test:part57 && npm run test:part58 && npm run test:part59 && npm run test:part60 && npm run test:part61 && npm run test:part62 && npm run test:part63 && npm run test:part64 && npm run test:part65 && npm run test:protected && npm run test:security && npm run test:final && npm run test:ai && npm run test:qr-attendance && npm run test:admission-workflow && npm run test:login-eye && npm run test:super-admin-auth && npm run test:db-pool",
+    "test": "node test/component-dependency-graph.spec.js && npm run check && npm run test:part57 && npm run test:part58 && npm run test:part59 && npm run test:part60 && npm run test:part61 && npm run test:part62 && npm run test:part63 && npm run test:part64 && npm run test:part65 && npm run test:protected && npm run test:security && npm run test:final && npm run test:ai && npm run test:qr-attendance && npm run test:admission-workflow && npm run test:login-eye && npm run test:super-admin-auth && npm run test:db-pool",
     "test:part25": "node test/part25-legacy-academic-completion.spec.js",
     "test:part25:browser": "node test/part25-legacy-academic-browser.spec.js",
     "test:part26": "node test/part26-legacy-academic-final.spec.js",

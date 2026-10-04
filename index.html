@@ -137030,7 +137030,7 @@ window.SRG_ANNUAL = (function(){
     if (!registry) return null;
     var reg = registry.getRegistry();
     var found = registry.discover();
-    var forward = {}, reverse = {}, kinds = {}, types = {};
+    var forward = Object.create(null), reverse = Object.create(null), kinds = Object.create(null), types = Object.create(null);
 
     Object.keys(found).forEach(function(key){
       var f = found[key];

@@ -46,5 +46,6 @@ jobs:
         run: npm run check
       - name: Verify hierarchical login, consent boundaries and public build
         run: |
+          node test/component-dependency-graph.spec.js
           npm run test:hierarchical-login
           node test/public-build.spec.js

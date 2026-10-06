@@ -45,8 +45,20 @@ async function main() {
       orphanCount += Number(row.count);
     }
     const pgsidColumns = columns.filter(row => /pgsid|permanent.*student|student.*identifier|admission.*number/i.test(row.COLUMN_NAME)).length;
+    const hasColumn = (table,column) => columns.some(row => row.TABLE_NAME === table && row.COLUMN_NAME === column);
+    const hierarchy = { unresolvedSchools:null, nationalRoots:null, syncAuthorityPresent:hasColumn('schools','district_sync_enabled') };
+    if (hasColumn('schools','district_id') && hasColumn('districts','region_id') && tableNames.includes('regions')) {
+      const [[row]] = await db.query('SELECT COUNT(*) AS count FROM schools s LEFT JOIN districts d ON d.id=s.district_id LEFT JOIN regions r ON r.id=d.region_id WHERE d.id IS NULL OR r.id IS NULL');
+      hierarchy.unresolvedSchools = Number(row.count);
+    }
+    if (['tenant_type','parent_id','active'].every(column => hasColumn('tenants',column))) {
+      const [[row]] = await db.query("SELECT COUNT(*) AS count FROM tenants WHERE tenant_type='NATIONAL' AND parent_id IS NULL AND active=TRUE");
+      hierarchy.nationalRoots = Number(row.count);
+    }
     const migrationState = tableNames.includes('legacy_users_archive') ? 'CANONICAL_OR_ARCHIVED' : tableNames.includes('schema_migrations') ? 'MIXED_OR_CANONICAL' : 'LEGACY_UNMIGRATED';
     const blockers = [];
+    if (hierarchy.unresolvedSchools) blockers.push('Schools require canonical District/Region reconciliation before hierarchy rollout');
+    if (hierarchy.nationalRoots > 1) blockers.push('Multiple active National roots require explicit reconciliation');
     if (orphanCount) blockers.push('Foreign-key orphan relationships detected');
     if (migrationState === 'MIXED_OR_CANONICAL') blockers.push('Migration state requires controlled human review');
     const report = {
@@ -55,7 +67,7 @@ async function main() {
       schema: { tables: tableNames.length, columns: columns.length, indexes: indexes.length, foreignKeys: foreignKeys.length, bigintIdentifiers: bigintIdentifiers.length, varcharIdentifiers: varcharIdentifiers.length, implicitReferences: implicitReferences.length, pgsidColumns },
       data: { users: tableCounts.users || 0, schools: tableCounts.schools || 0, students: tableCounts.students || 0, admissions: countName(tableNames, 'admissions') ? tableCounts.admissions : (tableCounts.pending_admission_applications || 0), attendanceRecords: (tableCounts.student_attendance_records || 0) + (tableCounts.teacher_attendance_records || 0), resultRecords: (tableCounts.scores || 0) + (tableCounts.mock_scores || 0), payments: tableCounts.school_fee_payments || 0 },
       accountGraph: { credentials: tableCounts.credentials || 0, roles: tableCounts.user_roles || 0, memberships: tableCounts.tenant_memberships || 0 },
-      integrity: { orphans: orphanCount, collisions: 0 }, migrationState, compatibility: blockers.length ? 'FAIL' : 'PASS', blockers
+      hierarchy, integrity: { orphans: orphanCount, collisions: 0 }, migrationState, compatibility: blockers.length ? 'FAIL' : 'PASS', blockers
     };
     const target = outputPath(); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, JSON.stringify(report, null, 2), { mode: 0o600 });
     console.log(`EDUTRACK PRODUCTION MIGRATION PREFLIGHT\nMode: READ ONLY\nTLS: PASS\nSchema inventory: PASS\nForeign-key integrity: ${orphanCount ? 'FAIL' : 'PASS'}\nOverall: ${report.compatibility === 'PASS' ? 'SAFE FOR CONTROLLED MIGRATION' : 'BLOCKED'}`);

@@ -8,7 +8,9 @@ const { spawn } = require('node:child_process');
 const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..');
-const DB_FILE = path.join(ROOT, 'data', 'edutrack.json');
+const TEST_DIR = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'edutrack-release-test-'));
+const DB_FILE = path.join(TEST_DIR, 'edutrack.json');
+process.env.EDUTRACK_DATA_FILE = DB_FILE;
 const BACKUP_FILE = `${DB_FILE}.super-admin-browser-backup`;
 const PORT = 3104;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -42,7 +44,7 @@ async function run() {
   let browser;
   try {
     await waitForServer(server);
-    browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true });
+    browser = await chromium.launch({ executablePath: process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium'), headless: true });
     const context1 = await browser.newContext({ viewport: { width: 390, height: 844 } });
     context1.setDefaultTimeout(10000);
     const page1 = await context1.newPage();

@@ -97,7 +97,8 @@ All Rights Reserved.
 
 
 <html lang="en">
-<head><script src="/online-admission.js" defer></script><script src="/communication-hub.js" defer></script><script src="/chat-module.js" defer></script><script src="control-panel.js" defer></script><script src="/analytics-narrative.js" defer></script>
+<head>
+<script src="ghana-hierarchy.js"></script><script src="/online-admission.js" defer></script><script src="/communication-hub.js" defer></script><script src="/chat-module.js" defer></script><script src="control-panel.js" defer></script><script src="/analytics-narrative.js" defer></script>
 <script src="/quiz-module.js"></script><script src="/admissions-review.js" defer></script><script src="/transport-management.js" defer></script><script src="/hostel-management.js" defer></script><script src="/qr-attendance.js" defer></script>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/><link rel="stylesheet" href="/edutrack-design-system.css" />
@@ -24921,24 +24922,7 @@ function updateAcknowledgementFooter() {
 //  LOGIN SCREEN LOGIC
 // ═══════════════════════════════════════════════════════════════
 
-const GES_DISTRICTS = {
-  'Greater Accra Region': ['Accra Metro','Tema Metro','Ga East','Ga West','Ga South','Adentan','Ledzokuku','Kpone Katamanso','Ningo-Prampram','Shai-Osudoku','Ada East','Ada West','Dangme West'],
-  'Ashanti Region': ['Kumasi Metro','Oforikrom','Asokwa','Kwadaso','Subin','Nhyiaeso','Bantama','Asokore Mampong','Ejisu','Juaben','Bosomtwe','Kwabre East','Afigya Kwabre South','Atwima Nwabiagya','Atwima Kwanwoma','Ahafo Ano South West','Ahafo Ano South East','Ahafo Ano North','Amansie Central','Amansie West','Amansie South'],
-  'Central Region': ['Cape Coast Metro','Komenda-Edina-Eguafo-Abrem','Mfantseman','Ajumako-Enyan-Esiam','Assin North','Assin South','Assin Central','Twifu Atti-Morkwa','Ekumfi','Abura-Asebu-Kwamankese','Gomoa East','Gomoa West','Gomoa Central','Effutu','Awutu Senya East','Awutu Senya West','Upper Denkyira East','Upper Denkyira West'],
-  'Western Region': ['Sekondi-Takoradi Metro','Shama','Wassa Amenfi Central','Wassa Amenfi East','Wassa Amenfi West','Wassa East','Ellembelle','Nzema East','Jomoro','Prestea Huni-Valley','Tarkwa-Nsuaem','Ahanta West'],
-  'Eastern Region': ['New Juaben South','New Juaben North','Birim Central','Birim North','Birim South','Fanteakwa North','Fanteakwa South','Kwaebibirem','West Akim','Denkyembour','Asuogyaman','Lower Manya Krobo','Upper Manya Krobo','Yilo Krobo','Akwapim South','Akwapim North','Atiwa West','Atiwa East','Akyemansa','Asene Manso Akroso'],
-  'Northern Region': ['Tamale Metro','Sagnarigu','Tolon','Kumbungu','Savelugu','Nanton','Mion','Zabzugu','Tatale Sanguli','Chereponi','East Mamprusi','West Mamprusi','Mamprugu Moagduri'],
-  'Upper East Region': ['Bolgatanga Municipal','Bolgatanga East','Bongo','Nabdam','Kassena-Nankana Municipal','Kassena-Nankana West','Talensi','Builsa North','Builsa South','Bawku Municipal','Bawku West','Binduri','Garu','Tempane','Pusiga'],
-  'Upper West Region': ['Wa Municipal','Wa East','Wa West','Nadowli-Kaleo','Daffiama-Bussie-Issa','Nandom','Lawra','Jirapa','Lambussie-Karni','Sissala East','Sissala West'],
-  'Volta Region': ['Ho Municipal','Ho West','South Tongu','North Tongu','Keta Municipal','Ketu South','Ketu North','Akatsi South','Akatsi North','Adaklu','Afadzato South','Hohoe','Biakoye','Jasikan','Kadjebi','Krachi East','Krachi West','Nkwanta South','Nkwanta North'],
-  'Brong-Ahafo Region': ['Sunyani Municipal','Sunyani West','Berekum East','Berekum West','Dormaa Central','Dormaa East','Dormaa West','Techiman Municipal','Techiman North','Tano North','Tano South','Asutifi North','Asutifi South','Jaman North','Jaman South','Kintampo North','Kintampo South','Nkoranza North','Nkoranza South','Pru East','Pru West'],
-  'Western North Region': ['Sefwi Wiawso','Sefwi Akontombra','Sefwi Bibiani-Anhwiaso-Bekwai','Juaboso','Bia East','Bia West','Bodi'],
-  'Oti Region': ['Jasikan','Biakoye','Krachi East','Krachi West','Krachi Nchumuru','Nkwanta North','Nkwanta South'],
-  'Bono East Region': ['Techiman Municipal','Techiman North','Nkoranza North','Nkoranza South','Kintampo North','Kintampo South','Pru East','Pru West','Atebubu-Amantin','Sene East','Sene West'],
-  'Ahafo Region': ['Asunafo North','Asunafo South','Asutifi North','Asutifi South','Tano North','Tano South'],
-  'North East Region': ['Mamprugu Moagduri','East Mamprusi','West Mamprusi','Bunkpurugu Nakpayili','Yunyoo-Nasuan','Chereponi'],
-  'Savannah Region': ['Damongo','Bole','North Gonja','Central Gonja','East Gonja','West Gonja','Sawla-Tuna-Kalba'],
-};
+const GES_DISTRICTS = window.GH_REGIONS_DISTRICTS;
 
 // ═══════════════════════════════════════════════════════════════
 //  V43 LOGIN SYSTEM — UPGRADED 5-LEVEL ARCHITECTURE
@@ -24948,24 +24932,7 @@ const GES_DISTRICTS = {
 //  CENTRALIZED GHANA REGION–DISTRICT DATASET (v69)
 //  Single source of truth used by ALL modules system-wide.
 // ═══════════════════════════════════════════════════════════════
-const GH_REGIONS_DISTRICTS = {
-  "Ahafo Region": ["Asunafo North","Asunafo South","Asutifi North","Asutifi South","Tano North","Tano South"],
-  "Ashanti Region": ["Kumasi Metro","Oforikrom","Kwadaso","Suame","Tafo","Manhyia North","Manhyia South","Asokwa","Bosomtwe","Ejisu","Juaben","Kwabre East","Afigya Kwabre North","Ahafo Ano North","Ahafo Ano South East","Amansie Central","Amansie South","Amansie West","Asante Akim Central","Asante Akim North","Asante Akim South","Bekwai","Bosome Freho","Ejura Sekyedumase","Mampong","Obuasi Municipal","Obuasi East","Offinso Municipal","Offinso North","Sekyere Afram Plains","Sekyere Central","Sekyere East","Sekyere Kumawu","Sekyere South"],
-  "Bono Region": ["Sunyani Municipal","Sunyani West","Berekum East","Berekum West","Dormaa Central","Dormaa East","Dormaa West","Jaman North","Jaman South","Tain","Wenchi Municipal"],
-  "Bono East Region": ["Atebubu Amantin","Kintampo North","Kintampo South","Nkoranza North","Nkoranza South","Pru East","Pru West","Sene East","Sene West","Techiman Municipal","Techiman North"],
-  "Central Region": ["Cape Coast Metro","Abura Asebu Kwamankese","Agona East","Agona West","Ajumako Enyan Essiam","Asikuma Odoben Brakwa","Assin Central","Assin North","Assin South","Awutu Senya East","Awutu Senya West","Effutu","Ekumfi","Gomoa Central","Gomoa East","Gomoa West","Komenda Edina Eguafo Abirem","Mfantsiman","Twifo Atti Morkwa","Twifo Hemang Lower Denkyira","Upper Denkyira East","Upper Denkyira West"],
-  "Eastern Region": ["New Juaben South","New Juaben North","Birim Central","Birim North","Birim South","Denkyembour","East Akim","Fanteakwa North","Fanteakwa South","Kwaebibirem","Kwahu Afram Plains North","Kwahu Afram Plains South","Kwahu East","Kwahu South","Kwahu West","Lower Manya Krobo","Upper Manya Krobo","Upper West Akim","West Akim","Yilo Krobo","Atiwa East","Atiwa West","Asuogyaman","Akuapim North","Akuapim South","Nsawam Adoagyiri"],
-  "Greater Accra Region": ["Accra Metro","Tema Metro","Ga East","Ga West","Ga South","Ga North","Ga Central","Ledzokuku","Krowor","Adentan","Ashaiman","Shai Osudoku","Ningo Prampram","Ada East","Ada West","La Nkwantanang Madina","La Dade Kotopon","Ayawaso Central","Ayawaso East","Ayawaso North","Ayawaso West","Okaikwei North","Ablekuma Central","Ablekuma North","Ablekuma West","Korle Klottey","Kpone Katamanso"],
-  "North East Region": ["Bunkpurugu Nakpayili","Chereponi","East Mamprusi","Mamprugu Moagduri","Nalerigu Gambaga","West Mamprusi"],
-  "Northern Region": ["Tamale Metro","Sagnarigu","Nanton","Savelugu","Tolon","Kumbungu","Nanumba North","Nanumba South","Gushegu","Karaga","Mion","Zabzugu","Tatale Sanguli","Yendi","Bimbilla","Wulensi"],
-  "Oti Region": ["Jasikan","Kadjebi","Krachi East","Krachi Nchumuru","Krachi West","Nkwanta North","Nkwanta South","Biakoye"],
-  "Savannah Region": ["Bole","Central Gonja","East Gonja","North East Gonja","North Gonja","Sawla Tuna Kalba","West Gonja"],
-  "Upper East Region": ["Bolgatanga Municipal","Bawku Municipal","Bawku West","Binduri","Bongo","Builsa North","Builsa South","Garu","Kassena Nankana East","Kassena Nankana West","Nabdam","Pusiga","Talensi","Tempane"],
-  "Upper West Region": ["Wa Municipal","Daffiama Bussie Issa","Jirapa","Lambussie Karni","Lawra","Nadowli Kaleo","Nandom","Sissala East","Sissala West","Wa East","Wa West"],
-  "Volta Region": ["Ho Municipal","Ho West","Agotime Ziope","Akatsi North","Akatsi South","Anloga","Central Tongu","Hohoe","Keta","Ketu North","Ketu South","Kpando","North Dayi","North Tongu","South Dayi","South Tongu"],
-  "Western Region": ["Sekondi Takoradi Metro","Ahanta West","Effia Kwesimintsim","Shama","Wassa East","Wassa Amenfi Central","Wassa Amenfi East","Wassa Amenfi West","Wassa Mpohor","Jomoro","Ellembelle","Nzema East","Prestea Huni Valley","Tarkwa Nsuaem"],
-  "Western North Region": ["Bia East","Bia West","Bibiani Anhwiaso Bekwai","Bodi","Juaboso","Sefwi Akontombra","Sefwi Wiawso","Suaman"]
-};
+const GH_REGIONS_DISTRICTS = window.GH_REGIONS_DISTRICTS;
 
 // Ordered list of all 16 regions for dropdown population
 const GH_REGIONS_LIST = Object.keys(GH_REGIONS_DISTRICTS).sort();
@@ -25007,7 +24974,7 @@ function ghCascadeDistricts(regionElOrId, districtElOrId, placeholder, savedVal)
   dSel.disabled = false;
   const target = savedVal || dSel.value;
   dSel.innerHTML = `<option value="">${ph}</option>` +
-    districts.sort().map(d => `<option value="${d}"${d===target?' selected':''}>${d}</option>`).join('');
+    districts.slice().sort().map(d => `<option value="${d}"${d===target?' selected':''}>${d}</option>`).join('');
 }
 
 /**
@@ -25022,6 +24989,7 @@ function ghWireCascade(regionId, districtId, regionPh, districtPh, savedRegion, 
   if (savedRegion) rSel.value = savedRegion;
   ghCascadeDistricts(rSel, dSel, districtPh, savedDistrict);
   rSel.addEventListener('change', function() {
+    dSel.value = '';
     ghCascadeDistricts(rSel, dSel, districtPh);
   });
 }
@@ -33705,31 +33673,9 @@ const ictDB = {
 };
 
 // ── GES REGIONS & DISTRICTS (for jurisdiction engine) ──
-const ICT_GES_REGIONS = [
-  'Greater Accra Region','Ashanti Region','Central Region','Western Region',
-  'Eastern Region','Northern Region','Upper East Region','Upper West Region',
-  'Volta Region','Brong-Ahafo Region','Western North Region','Oti Region',
-  'Bono East Region','Ahafo Region','North East Region','Savannah Region'
-];
+const ICT_GES_REGIONS = window.EDUTRACK_GHANA_HIERARCHY.regions;
 
-const ICT_DISTRICTS_BY_REGION = {
-  'Greater Accra Region':['Accra Metropolitan','Tema Metropolitan','Ga East','Ga West','Ga Central','Ga South','Adenta','Adentan','La Dadekotopon','La Nkwantanang','Ledzokuku','Krowor','Ningo-Prampram','Shai-Osudoku','Ada East','Ada West','Ashaiman','Kpone-Katamanso'],
-  'Ashanti Region':['Kumasi Metropolitan','Obuasi Metropolitan','Asante Akim Central','Asante Akim North','Asante Akim South','Afigya-Kwabre East','Afigya-Kwabre West','Ahafo Ano North East','Ahafo Ano North West','Ahafo Ano South East','Ahafo Ano South West','Amansie Central','Amansie West','Amansie South','Bosome Freho','Bosomtwe','Ejisu','Ejura-Sekyeredumase','Juaben','Kwabre East','Mampong','Offinso North','Offinso South'],
-  'Central Region':['Cape Coast Metropolitan','Komenda-Edina-Eguafo-Abrim','Abura-Asebu-Kwamankese','Agona East','Agona West','Ajumako-Enyan-Essiam','Asikuma-Odoben-Brakwa','Assin Central','Assin North','Assin South','Awutu Senya East','Awutu Senya West','Effutu','Ekumfi','Gomoa Central','Gomoa East','Gomoa West','Hemang-Lower Denkyira','Mfantsiman','Twifo Atti-Morkwa','Twifo Hemang Lower Denkyira','Upper Denkyira East','Upper Denkyira West'],
-  'Western Region':['Sekondi-Takoradi Metropolitan','Ahanta West','Effia-Kwesimintsim','Ellembelle','Jomoro','Mpohor','Nzema East','Prestea-Huni Valley','Shama','Tarkwa-Nsuaem','Wassa Amenfi Central','Wassa Amenfi East','Wassa Amenfi West','Wassa East'],
-  'Eastern Region':['Koforidua','Akuapem North','Akuapem South','Akyemansa','Asene Manso Akroso','Atiwa East','Atiwa West','Ayensuano','Birim Central','Birim North','Birim South','Denkyembuor','Fanteakwa North','Fanteakwa South','Kwaebibirem','Kwahu Afram Plains North','Kwahu Afram Plains South','Kwahu East','Kwahu South','Kwahu West','Lower Manya Krobo','New Juaben North','New Juaben South','Nsawam-Adoagyiri','Suhum','Upper Manya Krobo','Upper West Akyem','West Akyem','Yilo Krobo'],
-  'Northern Region':['Tamale Metropolitan','Gushegu','Karaga','Kpandai','Kumbungu','Mion','Nanton','Nanumba North','Nanumba South','Saboba','Sagnarigu','Savelugu','Tatale-Sanguli','Tolon','West Mamprusi','Yendi','Zabzugu'],
-  'Upper East Region':['Bolgatanga Municipal','Bawku Municipal','Bawku West','Binduri','Bongo','Builsa North','Builsa South','Garu','Kassena-Nankana East','Kassena-Nankana West','Nabdam','Pusiga','Talensi','Tempane'],
-  'Upper West Region':['Wa Municipal','Daffiama-Bussie-Issa','Jirapa','Lambussie-Karni','Lawra','Nadowli-Kaleo','Nandom','Sissala East','Sissala West','Wa East','Wa West'],
-  'Volta Region':['Ho Municipal','Agotime-Ziope','Akatsi North','Akatsi South','Biakoye','Central Tongu','Ho West','Hohoe','Kadjebi','Keta Municipal','Ketu North','Ketu South','Kpando','North Dayi','North Tongu','South Dayi','South Tongu'],
-  'Brong-Ahafo Region':['Sunyani Municipal','Brong Ahafo Region districts'],
-  'Western North Region':['Sefwi Wiawso','Aowin','Bia East','Bia West','Bodi','Juaboso','Sefwi Akontombra','Suaman'],
-  'Oti Region':['Dambai','Buem','Jasikan','Kadjebi','Krachi East','Krachi Nchumuru','Krachi West','Nkwanta North','Nkwanta South'],
-  'Bono East Region':['Techiman Municipal','Atebubu-Amantin','Kintampo North','Kintampo South','Nkoranza North','Nkoranza South','Pru East','Pru West','Sene East','Sene West','Techiman North'],
-  'Ahafo Region':['Asunafo North','Asunafo South','Asutifi North','Asutifi South','Tano North','Tano South'],
-  'North East Region':['Nalerigu-Gambaga','Bunkpurugu-Nyankpala','Chereponi','East Mamprusi','Mamprugu Moaduri','West Mamprusi','Yunyoo-Nabari'],
-  'Savannah Region':['Damongo','Bole','Central Gonja','East Gonja','North East Gonja','North Gonja','Sawla-Tuna-Kalba','West Gonja']
-};
+const ICT_DISTRICTS_BY_REGION = window.GH_REGIONS_DISTRICTS;
 
 // ── ROLE DEFINITIONS PER LEVEL ──
 const ICT_ROLES_BY_LEVEL = {
@@ -51117,24 +51063,7 @@ function v67GetArr(k) { try { return JSON.parse(localStorage.getItem(k)||'[]'); 
 // ─────────────────────────────────────────────────────────────────
 // V67 GHANA REGIONS & DISTRICTS (complete set)
 // ─────────────────────────────────────────────────────────────────
-const GH_REGIONS_DISTRICTS = {
-  'Ahafo': ['Asunafo North','Asunafo South','Asutifi North','Asutifi South','Tano North','Tano South'],
-  'Ashanti': ['Kumasi Metropolitan','Afigya-Kwabre East','Afigya-Kwabre West','Ahafo Ano North East','Ahafo Ano North West','Ahafo Ano South East','Ahafo Ano South West','Akrofuom','Amansie Central','Amansie South','Amansie West','Asante Akyem Central','Asante Akyem North','Asante Akyem South','Asokore Mampong Municipal','Asokwa','Atwima Kwanwoma','Atwima Mponua','Atwima Nwabiagya North','Atwima Nwabiagya South','Bekwai','Bosome Freho','Bosomtwe','Ejisu','Ejura Sekyedumase','Juaben','Kwabre East','Kumasi Metropolitan','Kumbungu','Mampong','Obuasi East','Obuasi Municipal','Offinso North','Offinso South','Sekyere Afram Plains','Sekyere Kumawu'],
-  'Bono': ['Sunyani Municipal','Banda','Berekum East','Berekum West','Dormaa Central','Dormaa East','Dormaa West','Jaman North','Jaman South','Sunyani West','Tain','Wenchi'],
-  'Bono East': ['Techiman Municipal','Atebubu-Amantin','Kintampo North','Kintampo South','Nkoranza North','Nkoranza South','Pru East','Pru West','Sene East','Sene West','Techiman North'],
-  'Central': ['Cape Coast Metropolitan','Abura/Asebu/Kwamankese','Agona East','Agona West','Ajumako/Enyan/Essiam','Asikuma/Odoben/Brakwa','Assin Central','Assin North','Assin South','Awutu Senya East','Awutu Senya West','Breman Asikuma','Effutu','Ekumfi','Gomoa Central','Gomoa East','Gomoa West','Hemang Lower Denkyira','Komenda/Edina/Eguafo/Abirem','Mfantseman','Upper Denkyira East','Upper Denkyira West'],
-  'Eastern': ['Koforidua','Akuapem North','Akuapem South','Akyemansa','Asene Manso Akroso','Atiwa East','Atiwa West','Ayensuano','Birim Central','Birim North','Birim South','Denkyembuor','Fanteakwa North','Fanteakwa South','Kwaebibirem','Kwahu Afram Plains North','Kwahu Afram Plains South','Kwahu East','Kwahu South','Kwahu West','Lower Manya Krobo','New Juaben North','New Juaben South','Nsawam-Adoagyiri','Suhum','Upper Manya Krobo','Upper West Akyem','West Akyem','Yilo Krobo'],
-  'Greater Accra': ['Accra Metropolitan','Ablekuma Central','Ablekuma North','Ablekuma West','Adenta Municipal','Ashaiman Municipal','Ayawaso Central','Ayawaso East','Ayawaso North','Ayawaso West','Ga Central','Ga East','Ga North','Ga South','Ga West','Korle-Klottey','Kpone Katamanso','Krowor','La Dade-Kotopon','La Nkwantanang-Madina','Ledzokuku','Ningo-Prampram','Okaikwei North','Shai-Osudoku','Tema Metropolitan','Tema West','Weija-Gbawe'],
-  'North East': ['Nalerigu-Gambaga','Bunkpurugu-Nyankpala','Chereponi','East Mamprusi','Mamprugu Moaduri','West Mamprusi','Yunyoo-Nabari'],
-  'Northern': ['Tamale Metropolitan','Gushegu','Karaga','Kpandai','Kumbungu','Mion','Nanton','Nanumba North','Nanumba South','Saboba','Sagnarigu','Savelugu','Tatale-Sanguli','Tolon','West Mamprusi','Yendi','Zabzugu'],
-  'Oti': ['Dambai','Buem','Jasikan','Kadjebi','Krachi East','Krachi Nchumuru','Krachi West','Nkwanta North','Nkwanta South'],
-  'Savannah': ['Damongo','Bole','Central Gonja','East Gonja','North East Gonja','North Gonja','Sawla-Tuna-Kalba','West Gonja'],
-  'Upper East': ['Bolgatanga Municipal','Bawku Municipal','Bawku West','Binduri','Bongo','Builsa North','Builsa South','Garu','Kassena-Nankana East','Kassena-Nankana West','Nabdam','Pusiga','Talensi','Tempane'],
-  'Upper West': ['Wa Municipal','Daffiama-Bussie-Issa','Jirapa','Lambussie-Karni','Lawra','Nadowli-Kaleo','Nandom','Sissala East','Sissala West','Wa East','Wa West'],
-  'Volta': ['Ho Municipal','Agotime-Ziope','Akatsi North','Akatsi South','Biakoye','Central Tongu','Ho West','Hohoe','Kadjebi','Keta Municipal','Ketu North','Ketu South','Kpando','North Dayi','North Tongu','South Dayi','South Tongu'],
-  'Western': ['Sekondi-Takoradi Metropolitan','Ahanta West','Amenfi Central','Amenfi East','Amenfi West','Effia-Kwesimintsim','Ellembele','Jomoro','Mpohor','Nzema East','Prestea-Huni Valley','Shama','Tarkwa-Nsuaem','Wassa Amenfi East','Wassa East'],
-  'Western North': ['Sefwi Wiawso','Aowin','Bia East','Bia West','Bodi','Juaboso','Sefwi Akontombra','Suaman'],
-};
+const GH_REGIONS_DISTRICTS = Object.fromEntries(window.EDUTRACK_GHANA_HIERARCHY.regions.map(region => [region.replace(/ Region$/, ""), window.GH_REGIONS_DISTRICTS[region]]));
 
 // ─────────────────────────────────────────────────────────────────
 // PART 1 — SUPER ADMIN PRICE CONTROL MODULE
@@ -51779,7 +51708,7 @@ function v67InjectNotificationBell() {
 
   // Insert before user chip if possible
   const userChip = topbar.querySelector('.pms-user-chip') || topbar.querySelector('[id*="user-header"]');
-  if (userChip) topbar.insertBefore(bellWrap, userChip);
+  if (userChip) userChip.parentNode.insertBefore(bellWrap, userChip);
   else topbar.appendChild(bellWrap);
 
   // Popup
@@ -79636,7 +79565,7 @@ var seedData = {};
   }
   function isHeadteacher() {
     var s = getSession();
-    return s.level === 'SCHOOL' && s.role === 'Headteacher';
+    return s.level === 'SCHOOL' && s.role.toUpperCase().replace(/\s+/g, '') === 'HEADTEACHER';
   }
   function isAuthorizedViewer() {
     // Any logged-in school-level staff may VIEW status; only Headteacher may act.
@@ -79645,8 +79574,31 @@ var seedData = {};
   }
 
   /* ── SETTINGS (default OFF for every school, per spec §4) ───────────── */
+  var verifiedSyncStatus = null;
+  var syncConsentBusy = false;
+  var authorityGeneration = 0;
+  async function syncAuthority(enabled) {
+    var generation = authorityGeneration;
+    var response = await fetch('/api/school-district-sync', {
+      method: typeof enabled === 'boolean' ? 'POST' : 'GET',
+      credentials: 'same-origin', cache: 'no-store',
+      headers: {'Content-Type':'application/json'},
+      body: typeof enabled === 'boolean' ? JSON.stringify({enabled:enabled}) : undefined
+    });
+    var result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Unable to verify synchronization status');
+    if (generation !== authorityGeneration) throw new Error('School session changed; reload synchronization status');
+    verifiedSyncStatus = result;
+    return result;
+  }
+  async function refreshSyncAuthority() {
+    authorityGeneration++;
+    verifiedSyncStatus = null;
+    try { await syncAuthority(); } catch (_) { /* Missing authority is OFF. */ }
+    renderAll();
+  }
   function getSettings() {
-    return readJSON(KEYS.settings, {
+    var settings = readJSON(KEYS.settings, {
       enabled: false,
       circuit: '',
       emisCode: '',
@@ -79654,6 +79606,9 @@ var seedData = {};
       lastSyncDate: '',
       lastSyncTime: ''
     });
+    settings.enabled = !!(verifiedSyncStatus && verifiedSyncStatus.enabled);
+    if (verifiedSyncStatus) settings.schoolId = verifiedSyncStatus.schoolId;
+    return settings;
   }
   function saveSettings(s) { writeJSON(KEYS.settings, s); }
 
@@ -79759,7 +79714,8 @@ var seedData = {};
     if (!pill) return;
 
     if (toggleBtn) toggleBtn.checked = !!settings.enabled;
-    if (settings.enabled) { pill.style.background = '#d1fae5'; pill.style.color = '#065f46';
+    if (!verifiedSyncStatus) { pill.style.background = '#fef3c7'; pill.style.color = '#92400e'; pill.textContent = 'Status not verified'; }
+    else if (settings.enabled) { pill.style.background = '#d1fae5'; pill.style.color = '#065f46';
       pill.innerHTML = '🟢 ON';
     } else {
       pill.style.background = '#e5e7eb'; pill.style.color = '#555';
@@ -79868,7 +79824,7 @@ var seedData = {};
 
   function openToggleConfirm(requestedState) {
     if (!isHeadteacher()) { var deniedToggle = document.getElementById('ems-sync-toggle-btn'); var deniedSettings = getSettings(); if (deniedToggle) deniedToggle.checked = !!deniedSettings.enabled; toastSafe('⚠️ Only the Headteacher may change synchronization status.', 'error'); return; }
-    if (!isIdentityComplete()) {
+    if (requestedState !== false && !getSettings().enabled && !isIdentityComplete()) {
       toastSafe('⚠️ Complete School Identity (Region, District, School Name, School Number) in Setup before enabling synchronization.', 'error');
       return;
     }
@@ -79900,17 +79856,28 @@ var seedData = {};
     if (overlay) overlay.classList.remove('open');
   }
 
-  function confirmToggle() {
+  async function confirmToggle() {
     if (!isHeadteacher() || pendingToggleTarget === null) { closeToggleConfirm(); return; }
+    if (syncConsentBusy) return;
     var settings = getSettings();
     var wasEnabled = settings.enabled;
-    settings.enabled = pendingToggleTarget;
+    syncConsentBusy = true;
+    try {
+      var confirmed = await syncAuthority(pendingToggleTarget);
+      settings.enabled = confirmed.enabled;
+      settings.schoolId = confirmed.schoolId;
+    } catch (error) {
+      verifiedSyncStatus = null;
+      renderStatusPill();
+      toastSafe('Unable to confirm synchronization status: ' + error.message, 'error');
+      return;
+    } finally { syncConsentBusy = false; }
     if (settings.enabled) settings.headteacherName = getSession().name || settings.headteacherName;
     saveSettings(settings);
 
     appendAudit({
       id: genId(),
-      type: wasEnabled ? 'DISABLED' : 'ENABLED',
+      type: settings.enabled ? 'ENABLED' : 'DISABLED',
       date: todayStr(), time: timeStr(),
       school: schoolIdentity().school, circuit: schoolIdentity().circuit,
       district: schoolIdentity().district, region: schoolIdentity().region,
@@ -79922,7 +79889,7 @@ var seedData = {};
 
     closeToggleConfirm();
     renderAll();
-    toastSafe(settings.enabled ? '✅ Data synchronized successfully' : 'Synchronization disabled.', 'success');
+    toastSafe(settings.enabled ? 'Synchronization enabled. Approved records can now be synchronized.' : 'Synchronization disabled.', 'success');
   }
 
   /* ── APPROVE & SELECT RECORDS MODAL ───────────────────────────────────── */
@@ -79962,8 +79929,9 @@ var seedData = {};
   }
 
   /* ── INITIATE SYNCHRONIZATION (manual click only — never automatic) ──── */
-  function runSync() {
+  async function runSync() {
     if (!isHeadteacher()) { toastSafe('⚠️ Only the Headteacher may initiate synchronization.', 'error'); return; }
+    try { await syncAuthority(); } catch (error) { verifiedSyncStatus = null; toastSafe('Cannot verify synchronization: ' + error.message, 'error'); return; }
     var settings = getSettings();
     if (!settings.enabled) { toastSafe('⚠️ Synchronization is disabled. Enable it first.', 'error'); return; }
     if (!isIdentityComplete()) { toastSafe('⚠️ Complete School Identity before synchronizing.', 'error'); return; }
@@ -80121,14 +80089,15 @@ var seedData = {};
     var page = document.getElementById('page-setup');
     if (!page || !window.MutationObserver) return;
     var mo = new MutationObserver(function() {
-      if (isSetupVisible()) renderAll();
+      if (isSetupVisible()) refreshSyncAuthority();
     });
     mo.observe(page, { attributes: true, attributeFilter: ['class'] });
   }
 
   function boot() {
-    if (isSetupVisible()) renderAll();
+    if (isSetupVisible()) refreshSyncAuthority();
     watchSetupVisibility();
+    window.addEventListener('edutrack:school-session', refreshSyncAuthority);
     window.addEventListener('storage', function(e) {
       if (e && (e.key === KEYS.settings || e.key === 'ems_config')) renderAll();
     });
@@ -80157,6 +80126,8 @@ var seedData = {};
     exportHistoryCSV: exportHistoryCSV,
     saveIdentityExtras: saveIdentityExtras,
     isHeadteacher: isHeadteacher,
+    isEnabled: function() { return getSettings().enabled; },
+    isVerified: function() { return verifiedSyncStatus !== null; },
     renderAll: renderAll
   };
 
@@ -80763,7 +80734,7 @@ var seedData = {};
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-  function isSDS() { return !!read(KEYS.sdsEnabled, false); }
+  function isSDS() { return !!(window.EMS_SYNC && window.EMS_SYNC.isEnabled && window.EMS_SYNC.isEnabled()); }
   function getSettings() { return read(KEYS.sdsSettings, {complianceThreshold:80, offlineThreshold:48}); }
   function getSyncAudit() { var l = read(SYNC_AUDIT_KEY, []); return Array.isArray(l)?l:[]; }
   function getSyncHistory() { var l = read(SYNC_HISTORY_KEY, []); return Array.isArray(l)?l:[]; }
@@ -80865,7 +80836,7 @@ var seedData = {};
       var enabled = isSDS();
       var lbl = document.getElementById('p2b-sds-status-label');
       var btn = document.getElementById('p2b-sds-toggle-btn');
-      if(lbl){ lbl.textContent = enabled ? '● ON' : '● OFF'; lbl.style.color = enabled ? '#059669' : '#dc2626'; }
+      if(lbl){ lbl.textContent = !window.EMS_SYNC || !window.EMS_SYNC.isVerified() ? 'Status not verified' : enabled ? '● ON' : '● OFF'; lbl.style.color = enabled ? '#059669' : '#dc2626'; }
       if(btn){ btn.textContent = enabled ? 'Disable' : 'Enable'; }
     }
 
@@ -80932,14 +80903,8 @@ var seedData = {};
       if(overlay) overlay.style.display = 'none';
     }
     function confirmSDS() {
-      var enabled = isSDS();
-      write(KEYS.sdsEnabled, !enabled);
       closeSDSConfirm();
-      renderSDSToggle();
-      // Generate alert if enabling
-      if(!enabled) {
-        addAlert('info', 'School District Data Synchronization enabled by administrator. Full sync framework (Parts 1, 2A, 2B) is now active.');
-      }
+      if (window.EMS_SYNC) window.EMS_SYNC.openToggleConfirm(!isSDS());
     }
 
     /* Watch setup page visibility */
@@ -82315,13 +82280,13 @@ var seedData = {};
     try {
       if (window.EMS_SYNC && typeof window.EMS_SYNC.runSync === 'function') {
         var originalRunSync = window.EMS_SYNC.runSync;
-        window.EMS_SYNC.runSync = function() {
+        window.EMS_SYNC.runSync = async function() {
           /* Pre-flight security audit */
           appendSecAudit('SYNC_INITIATED', 'School-level sync triggered via EMS_SYNC.runSync()');
           /* Call original */
-          var result = originalRunSync.apply(this, arguments);
+          var result = await originalRunSync.apply(this, arguments);
           /* Post-sync security audit */
-          appendSecAudit('SYNC_COMPLETED_VIA_ORIGINAL', 'EMS_SYNC.runSync() completed; security layer audit recorded');
+          appendSecAudit('SYNC_ATTEMPT_FINISHED', 'EMS_SYNC.runSync() returned; consult synchronization history for transmission outcome');
           return result;
         };
       }
@@ -88952,15 +88917,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function injectStudentLoginCard(){
     var grid = document.querySelector('.login-level-grid');
-    if (!grid || byId('sd-login-btn')) return;
+    if (!grid) return;
     if (!byId('student-portal-style')) document.head.insertAdjacentHTML('beforeend', SD_STYLE);
-    var btn = document.createElement('button');
+    var btn = byId('sd-login-btn') || document.createElement('button');
     btn.id = 'sd-login-btn'; btn.className = 'login-level-btn'; btn.type = 'button';
     btn.setAttribute('data-level','STUDENT'); btn.setAttribute('aria-pressed','false');
     btn.style.gridColumn = '2'; btn.style.gridRow = '2';
     btn.innerHTML = '<span class="icon">🎒</span>STUDENT';
     btn.onclick = function(e){ e.preventDefault(); openStudentModal(); };
-    grid.appendChild(btn);
+    if (!btn.parentNode) grid.appendChild(btn);
 
     if (!byId('student-modal-overlay')){
       var ov = document.createElement('div');
@@ -113973,8 +113938,8 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
   };
 
   /* ── GENERIC HELPERS (mirrors the established read/write/esc/uid conventions) ── */
-  function read(k, fb){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):fb; }catch(e){ return fb; } }
-  function write(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
+  function read(k, fb){ if(window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active())return window.EDUTRACK_DISTRICT_SPORTS.read(k,fb); try{ var v=localStorage.getItem(k); return v?JSON.parse(v):fb; }catch(e){ return fb; } }
+  function write(k, v){ if(window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active())return window.EDUTRACK_DISTRICT_SPORTS.write(k,v); try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function uid(p){ return (p||'DSC')+'-'+Date.now().toString(36).toUpperCase()+Math.random().toString(36).slice(2,6).toUpperCase(); }
   function nowIso(){ return new Date().toISOString(); }
@@ -113986,7 +113951,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
   function num(id){ var el = document.getElementById(id); var n = el ? Number(el.value) : 0; return isNaN(n)?0:n; }
 
   /* ── SESSION (mirrors the established getSession() pattern) ── */
-  function getSession(){
+  function getSession(){ if(window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active())return window.EDUTRACK_DISTRICT_SPORTS.session();
     return {
       district: localStorage.getItem('ems_login_district') || localStorage.getItem('v43_login_district') || '',
       region:   localStorage.getItem('ems_login_region')   || localStorage.getItem('v43_login_region')   || '',
@@ -114016,7 +113981,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
     if (dfe && typeof dfe.getData === 'function') { try { return dfe.getData(key) || []; } catch(e){} }
     return localScoped(rawArr(key));
   }
-  function dscAllSchools(){
+  function dscAllSchools(){ if(window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active())return window.EDUTRACK_DISTRICT_SPORTS.schools();
     var a = scopedData('sub_v60_schools');
     var b = scopedData('ems_hier_schools_v92');
     var combined = (a||[]).concat(b||[]);
@@ -114030,7 +113995,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
   }
   function schoolNames(){
     var names = dscAllSchools().map(function(s){ return s.name || s.schoolName || ''; }).filter(Boolean);
-    if (!names.length) names = SEED_SCHOOL_FALLBACK.slice();
+    if (!names.length && !(window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active())) names = SEED_SCHOOL_FALLBACK.slice();
     return names.sort();
   }
   var SEED_SCHOOL_FALLBACK = ['Central Presby Primary','Zongo JHS','Ridge Model School','St. Joseph\u2019s Basic School','Ayigya Islamic School','Kaneshie Cluster of Schools','Tema New Town Basic'];
@@ -114231,7 +114196,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
   function kpi(icon, color, v, label){
     return '<div class="stat-card '+color+'"><div class="stat-icon">'+icon+'</div><div class="stat-value">'+v+'</div><div class="stat-label">'+label+'</div></div>';
   }
-  function selectField(id,label,opts,withAll){
+  function selectField(id,label,opts,withAll){ if(label==="School" && window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active()){return '<div class="form-group"><label>School</label><select id="'+id+'">'+(withAll!==false?'<option value="">All Schools</option>':'')+window.EDUTRACK_DISTRICT_SPORTS.schools().map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' ('+esc(s.id)+')</option>'}).join('')+'</select></div>';}
     return '<div class="form-group"><label>'+esc(label)+'</label><select id="'+id+'">'
       + (withAll!==false ? '<option value="">'+esc(withAll===true?'All':('All '+label))+'</option>' : '')
       + opts.map(function(o){ return '<option value="'+esc(o)+'">'+esc(o)+'</option>'; }).join('')
@@ -114252,7 +114217,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
   /* ═══════════════════ BUILD / TABS ═══════════════════ */
   function build(){
     installStyles();
-    ensureSeedData();
+    if(!(window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active())) ensureSeedData();
     var s = getSession();
     return '<div class="dsc-wrap">'
       + '<div class="page-title"><span>⚽</span>District Sports Coordinator'
@@ -114402,14 +114367,14 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         + '</tbody></table></div>' : '<p style="color:var(--muted)">No sports calendar events yet.</p>')
       + '</div>';
   }
-  function addCalendar(){
+  async function addCalendar(){
     var name = val('dsc-cal-name');
     if (!name) { toastMsg('Enter an event name.','error'); return; }
     var list = read(KEYS.calendar, []);
     list.push({ id: uid('EVT'), district: district(), eventName: name, sport: val('dsc-cal-sport')||'Football',
       level: val('dsc-cal-level')||'District Level', venue: val('dsc-cal-venue'), eventDate: val('dsc-cal-date')||todayStr(),
       status: val('dsc-cal-status')||'Upcoming', notes: val('dsc-cal-notes') });
-    write(KEYS.calendar, list);
+    if (!(await write(KEYS.calendar, list))) return;
     addAudit('EVENT_ADDED', name);
     pushNotification('Sports Calendar Event Added', name+' added to the district sports calendar', 'info');
     toastMsg('Calendar event saved.','success');
@@ -114444,7 +114409,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         + '</tbody></table></div>' : '<p style="color:var(--muted)">No school competition records yet.</p>')
       + '</div>';
   }
-  function addCompetition(){
+  async function addCompetition(){
     var name = val('dsc-cmp-name'), school = val('dsc-cmp-school');
     if (!name || !school) { toastMsg('Enter a competition name and select a school.','error'); return; }
     var list = read(KEYS.competitions, []);
@@ -114452,7 +114417,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
       school: school, level: val('dsc-cmp-level')||'District Level', venue: val('dsc-cmp-venue'),
       competitionDate: val('dsc-cmp-date')||todayStr(), status: val('dsc-cmp-status')||'Scheduled',
       result: val('dsc-cmp-result')||'Pending' });
-    write(KEYS.competitions, list);
+    if (!(await write(KEYS.competitions, list))) return;
     addAudit('COMPETITION_ADDED', name+' — '+school);
     pushNotification('School Competition Recorded', name+' recorded for '+school, 'info');
     toastMsg('Competition saved.','success');
@@ -114486,7 +114451,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         + '</tbody></table></div>' : '<p style="color:var(--muted)">No athlete records yet.</p>')
       + '</div>';
   }
-  function addAthlete(){
+  async function addAthlete(){
     var name = val('dsc-ath-name'), school = val('dsc-ath-school');
     if (!name || !school) { toastMsg('Enter student name and select a school.','error'); return; }
     var list = read(KEYS.athletes, []);
@@ -114494,7 +114459,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
       gender: val('dsc-ath-gender')||'Male', className: val('dsc-ath-class'),
       sport: val('dsc-ath-sport')||'Football', event: val('dsc-ath-event'),
       status: val('dsc-ath-status')||'Active', dateRegistered: todayStr() });
-    write(KEYS.athletes, list);
+    if (!(await write(KEYS.athletes, list))) return;
     addAudit('ATHLETE_REGISTERED', name+' — '+school);
     pushNotification('Athlete Registered', name+' registered in the athlete database for '+school, 'info');
     toastMsg('Athlete record saved.','success');
@@ -114527,14 +114492,14 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         + '</tbody></table></div>' : '<p style="color:var(--muted)">No coach records yet.</p>')
       + '</div>';
   }
-  function addCoach(){
+  async function addCoach(){
     var name = val('dsc-cch-name'), school = val('dsc-cch-school');
     if (!name || !school) { toastMsg('Enter coach name and select a school.','error'); return; }
     var list = read(KEYS.coaches, []);
     list.push({ id: uid('CCH'), district: district(), coachName: name, school: school,
       sport: val('dsc-cch-sport')||'Football', contactPhone: val('dsc-cch-contact'),
       qualification: val('dsc-cch-qual')||'Volunteer Coach', status: val('dsc-cch-status')||'Active', dateRegistered: todayStr() });
-    write(KEYS.coaches, list);
+    if (!(await write(KEYS.coaches, list))) return;
     addAudit('COACH_REGISTERED', name+' — '+school);
     pushNotification('Coach Registered', name+' registered for '+school, 'info');
     toastMsg('Coach record saved.','success');
@@ -114565,13 +114530,13 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         + '</tbody></table></div>' : '<p style="color:var(--muted)">No equipment inventory records yet.</p>')
       + '</div>';
   }
-  function addEquipment(){
+  async function addEquipment(){
     var school = val('dsc-eqp-school');
     if (!school) { toastMsg('Select a school.','error'); return; }
     var list = read(KEYS.equipment, []);
     list.push({ id: uid('EQP'), district: district(), school: school, equipmentType: val('dsc-eqp-type')||'Other',
       quantity: num('dsc-eqp-qty'), condition: val('dsc-eqp-cond')||'Good', status: val('dsc-eqp-status')||'Available', dateRecorded: todayStr() });
-    write(KEYS.equipment, list);
+    if (!(await write(KEYS.equipment, list))) return;
     addAudit('EQUIPMENT_RECORDED', school+' — '+(val('dsc-eqp-type')||'Other'));
     toastMsg('Equipment record saved.','success');
     refreshContent();
@@ -114603,7 +114568,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
         + '</tbody></table></div>' : '<p style="color:var(--muted)">No tournament records yet.</p>')
       + '</div>';
   }
-  function addTournament(){
+  async function addTournament(){
     var name = val('dsc-trn-name');
     if (!name) { toastMsg('Enter a tournament name.','error'); return; }
     var list = read(KEYS.tournaments, []);
@@ -114611,7 +114576,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
       level: val('dsc-trn-level')||'Inter-School', startDate: val('dsc-trn-start')||todayStr(),
       endDate: val('dsc-trn-end')||todayStr(), schoolsCount: num('dsc-trn-schools'),
       champion: val('dsc-trn-champion')||'—', status: val('dsc-trn-status')||'Upcoming' });
-    write(KEYS.tournaments, list);
+    if (!(await write(KEYS.tournaments, list))) return;
     addAudit('TOURNAMENT_ADDED', name);
     pushNotification('Tournament Added', name+' added to Tournament Management', 'info');
     toastMsg('Tournament saved.','success');
@@ -114703,7 +114668,7 @@ try { v220VerifySampleSignatureSystemIntact(); } catch(e) {}
     var school = val('dsc-rep-school'), dataset = val('dsc-rep-dataset')||'Athlete Database';
     var from = val('dsc-rep-from'), to = val('dsc-rep-to');
     function inRange(dt){ if (!dt) return true; if (from && dt<from) return false; if (to && dt>to) return false; return true; }
-    function bySchool(list){ return school ? list.filter(function(r){ return r.school===school; }) : list; }
+    function bySchool(list){ return school ? list.filter(function(r){ return window.EDUTRACK_DISTRICT_SPORTS && window.EDUTRACK_DISTRICT_SPORTS.active() ? r.schoolId===school : r.school===school; }) : list; }
     var headers, rows;
     if (dataset==='Sports Calendar') {
       var a = listFor(KEYS.calendar).filter(function(r){return inRange(r.eventDate);});
@@ -137065,7 +137030,7 @@ window.SRG_ANNUAL = (function(){
     if (!registry) return null;
     var reg = registry.getRegistry();
     var found = registry.discover();
-    var forward = {}, reverse = {}, kinds = {}, types = {};
+    var forward = Object.create(null), reverse = Object.create(null), kinds = Object.create(null), types = Object.create(null);
 
     Object.keys(found).forEach(function(key){
       var f = found[key];
@@ -149237,7 +149202,7 @@ function schoolLogin(ev){
     return result;
   }catch(e){release();throw e;}
 }
-window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, refreshLifecycle:refreshLifecycle, generateSchoolAccessCode:strictGenerate, genericFailure:GENERIC_FAIL, selectSchoolLevel:selectSchoolLevel, schoolLogin:schoolLogin };
+window.EDUTRACK_ENHANCEMENT_PART1 = { _installed:true, fieldInput:fieldInput, refreshLifecycle:refreshLifecycle, generateSchoolAccessCode:strictGenerate, genericFailure:GENERIC_FAIL, selectSchoolLevel:selectSchoolLevel, schoolLogin:schoolLogin };
 })();
 </script>
 <style id="edutrack-enhancement-part1-style">

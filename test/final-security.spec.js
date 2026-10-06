@@ -20,8 +20,11 @@ for (const forbidden of ['sk_live_', 'pk_live_', 'AKIA', 'BEGIN PRIVATE KEY', 'P
 }
 for (const requiredIgnore of ['.env', '.env.*', '*.log', '*.backup', 'data/uploads/']) assert.ok(gitignore.includes(requiredIgnore), `missing ignore rule: ${requiredIgnore}`);
 
-const publicAllowlist = [...server.matchAll(/SAFE_PUBLIC_FILES[^\n]+/g)].map(match => match[0]).join('\n');
+const publicAllowlist = require('../app/login-shell').PUBLIC_FILES;
+assert.match(server, /SAFE_PUBLIC_FILES = new Set\(PUBLIC_FILES\)/);
+assert.match(server, /!SAFE_PUBLIC_FILES\.has\(relative\)/);
 assert.ok(publicAllowlist.includes('index.html') && publicAllowlist.includes('privileged-auth.js'));
+assert.ok(!publicAllowlist.includes('server.js') && !publicAllowlist.includes('db/schema.sql'));
 assert.equal(packageJson.scripts['test:security'], 'node test/security.spec.js');
 assert.equal(packageJson.scripts['test:protected'], 'node test/protected-features.spec.js');
 assert.equal(packageJson.scripts['test:final'], 'node test/final-security.spec.js');

@@ -649,10 +649,42 @@ function decoratePopulationDashboard(dashboard = {}, schoolType) {
   return { ...raw, summary: { ...source, subscriptionPopulation, currentActivePopulation, newAdmissionsAfterSubscription: number(source.newAdmissionsAfterSubscription, source.newlyAdmittedPopulation, source.newly_admitted_population), withdrawalsTransfersStoppages: number(source.withdrawalsTransfersStoppages), examinationPopulation: number(source.examinationPopulation, source.examination_population), reportCardPopulation, netAdditionalStudents: netDifference, carryForwardStudents, nextSubscriptionAmountGhs: pricing.amountGhs, pricePerStudentGhs: pricing.pricePerStudentGhs, reportCardDifference, reportCardStatus: reportCardDifference === 0 ? 'matched' : 'discrepancy', notificationState, notificationMessage, negativeDifference: Math.min(netDifference, 0) }, classes, totals, notification: { state: notificationState, message: notificationMessage, blocking: false, subscriptionPopulation, newActiveStudents: carryForwardStudents, currentActiveStudents: currentActivePopulation, carryForwardStudents, nextSubscriptionAmountGhs: pricing.amountGhs, pricePerStudentGhs: pricing.pricePerStudentGhs }, reportCardCheck: { expected: currentActivePopulation, received: reportCardPopulation, difference: reportCardDifference, status: reportCardDifference === 0 ? 'matched' : 'discrepancy' } };
 }
 
+// Only allowlisted categories reach runtime logs; never log connection values
+// or arbitrary exception messages while diagnosing a failed deployment.
+const PRODUCTION_CONFIGURATION_FAILURES = new Map([
+  ['Production requires EDUTRACK_DATABASE_URL; JSON compatibility storage is not a production persistence target.', 'DATABASE_CONFIGURATION_MISSING'],
+  ['Development access must be disabled in production.', 'DEVELOPMENT_ACCESS_ENABLED'],
+  ['Production requires exact HTTPS EDUTRACK_ALLOWED_ORIGINS without wildcards.', 'ALLOWED_ORIGINS_INVALID'],
+  ['Production requires Paystack server secrets for payment operations.', 'PAYMENT_CONFIGURATION_MISSING'],
+  ['EDUTRACK_STORAGE_MODE must be local or s3', 'STORAGE_MODE_INVALID'],
+  ['Production requires EDUTRACK_STORAGE_MODE=s3 for durable private file storage.', 'STORAGE_MODE_NOT_DURABLE'],
+  ['EDUTRACK_STORAGE_BUCKET is required when EDUTRACK_STORAGE_MODE=s3.', 'STORAGE_BUCKET_MISSING'],
+]);
 async function handler(req, res) {
   if (process.env.NODE_ENV === 'production') {
     try { assertProductionConfiguration(); }
-    catch { return json(res, 503, { error: 'Service unavailable' }); }
+    catch (error) {
+      console.error('[EDUTRACK_CONFIGURATION]', PRODUCTION_CONFIGURATION_FAILURES.get(error?.message) || 'CONFIGURATION_INVALID');
+      return json(res, 503, { error: 'Service unavailable' });
+    }
+  }
+  // These public endpoints need neither the compatibility JSON store nor
+  // hydrated user/session records. Keep configuration and origin checks intact
+  // without requiring writes to a serverless deployment's read-only filesystem.
+  const publicRuntimePath = req.url.split('?')[0];
+  if (req.method === 'GET' && ['/api/auth/login-options', '/api/health'].includes(publicRuntimePath)) {
+    if (Buffer.byteLength(String(req.url || '')) > MAX_URL_BYTES) return json(res, 414, { error: 'Request URI too long' });
+    if (!applyCors(req, res)) return json(res, 403, { error: 'Origin not allowed' });
+    res.setHeader('X-Request-ID', correlationId(req));
+    if (publicRuntimePath === '/api/auth/login-options') return json(res, 200, { roles: administrativeScope.CORE_ROLES });
+    try {
+      if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' });
+      if (relational.isConfigured()) await relational.ensureInitialized();
+      return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' });
+    } catch {
+      console.error('[EDUTRACK_HEALTH]', 'DATABASE_UNAVAILABLE');
+      return json(res, 503, { ok: false, error: 'Service unavailable' });
+    }
   }
   const db = loadDb();
   if (provisionTestSchoolFixture(db)) saveDb(db);
@@ -678,8 +710,6 @@ async function handler(req, res) {
 
   if (req.method === 'GET' && req.url.startsWith('/api/quizzes/')) { const id=decodeURIComponent(req.url.split('?')[0].split('/').pop()); const auth=await authorize(req,res,db,{roles:['STUDENT']}); if(!auth)return; try { const quiz=await relational.getStudentQuiz(id,auth.user.id); if(!quiz)return json(res,404,{error:'Quiz not found'}); return json(res,200,quiz); } catch(e){return domainErrorResponse(res,e);} }
   if (req.method === 'POST' && req.url === '/api/quizzes/submit') { if(!requireSameOrigin(req,res))return; let input; try{input=await body(req);requireFields(input,['quizId','answers']);}catch(e){return domainErrorResponse(res,e);} const auth=await authorize(req,res,db,{roles:['STUDENT']}); if(!auth)return; try { const result=await relational.submitStudentQuiz(input,auth.user.id); await auditDomainMutation(auth,'QUIZ_SUBMITTED',req,{quizId:input.quizId,attemptId:result.attempt&&result.attempt.id}); return json(res,200,result); } catch(e){return domainErrorResponse(res,e);} }
-  if (req.method === 'GET' && req.url === '/api/auth/login-options') return json(res, 200, { roles: administrativeScope.CORE_ROLES });
-  if (req.method === 'GET' && req.url === '/api/health') { try { if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' }); if (relational.isConfigured()) await relational.ensureInitialized(); return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' }); } catch { return json(res, 503, { ok: false, error: 'Service unavailable' }); } }
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/subscriptions/private-entitlements') { const query=new URL(req.url,'http://edutrack.local').searchParams; const schoolId=validateText(query.get('schoolId'),{required:true,max:80,pattern:/^[A-Za-z0-9._-]+$/}); const feature=query.get('feature')||null; if(!schoolId)return json(res,400,{error:'schoolId is required'}); const auth=await authorize(req,res,db,{permission:'reporting.read',scope:{schoolId}}); if(!auth)return; try { const context=await authoritativeSchoolContext(auth,schoolId,db); if(!context)return json(res,404,{error:'School not found'}); const schoolType=subscriptionPolicy.normalizeSchoolType(context.school.ownership_type||context.school.ownershipType); let subscriptions=[]; if(relational.isConfigured()) subscriptions=await relational.domainRows("SELECT school_type,term_start_date,term_end_date,starts_at,expires_at,status FROM subscriptions WHERE school_id=? AND school_type='private'",[schoolId]); else subscriptions=(db.subscriptions||[]).filter(row=>String(row.schoolId||row.school_id)===String(schoolId)); const features=feature?[feature]:subscriptionEntitlements.PRIVATE_SCHOOL_FEATURES; const entitlements=Object.fromEntries(features.map(name=>[name,subscriptionEntitlements.privateFeatureEntitlement({schoolType,subscriptions,feature:name})])); return json(res,200,{schoolId,schoolType,entitlements}); } catch(error){return domainErrorResponse(res,error);} }
   if (req.method === 'POST' && /^\/api\/fees\/[A-Za-z0-9_-]+\/publish$/.test(req.url.split('?')[0])) {
     if (!requireSameOrigin(req, res)) return;

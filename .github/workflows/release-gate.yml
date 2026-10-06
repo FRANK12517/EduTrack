@@ -44,6 +44,8 @@ jobs:
         run: node scripts/migrate-db.js
       - name: Run release checks
         run: npm run check
+      - name: Verify public API guards on an immutable function filesystem
+        run: npm run test:part48-preview-runtime
       - name: Verify hierarchical login, consent boundaries and public build
         run: |
           node test/component-dependency-graph.spec.js

@@ -53,9 +53,15 @@ async function run() {
     assert.equal(await page.locator('#edutrack-promotional-collection').count(), 0, 'Discover EduTrack carousel should be removed');
     assert.equal(await page.locator('[aria-label*="Previous promotional"], [aria-label*="Next promotional"], .epc-control, .epc-dot').count(), 0, 'manual carousel controls should be removed');
     assert.equal(await promo.evaluate((node) => getComputedStyle(node).pointerEvents), 'auto');
-    assert.match(await promoMessage.textContent(), /Join a growing community of schools/);
-    await page.waitForTimeout(12100);
-    assert.match(await promoMessage.textContent(), /Move your school management forward/);
+    // Startup work may already span a rotation on a busy browser. Observe both
+    // messages in sequence rather than assuming the timer starts after goto.
+    for (const message of ['Join a growing community of schools', 'Move your school management forward']) {
+      await page.waitForFunction(expected => {
+        const node = document.getElementById('edutrack-promotional-social-proof-message');
+        return node && node.textContent.includes(expected);
+      }, message, { timeout: 30000 });
+      assert.ok((await promoMessage.textContent()).includes(message));
+    }
 
     const levels = ['NATIONAL', 'REGIONAL', 'DISTRICT', 'SCHOOL', 'PARENT', 'STUDENT'];
     for (const level of levels) {

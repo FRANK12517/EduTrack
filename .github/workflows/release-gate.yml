@@ -23,6 +23,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install Chromium for attendance responsive regression
+        run: npx playwright install --with-deps chromium
       - name: Require explicitly authorized isolated release-gate target
         shell: bash
         run: |
@@ -44,3 +46,5 @@ jobs:
         run: node scripts/migrate-db.js
       - name: Run release checks
         run: npm run check
+      - name: Protect the Attendance Register mobile layout
+        run: npm run test:attendance-mobile:browser

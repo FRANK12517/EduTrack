@@ -52967,6 +52967,27 @@ window.v70GetActivePrices          = v70GetActivePrices;
 }
 .v84-attend-table td.left { text-align:left }
 .v84-attend-table tr:hover td { background:#f0f7ff }
+.v84-mobile-records { display:none }
+.v84-mobile-record { min-width:0;overflow-wrap:anywhere;background:#fff;border:1px solid #dbe5ec;border-radius:12px;padding:.9rem;margin:.65rem 0;box-shadow:0 2px 10px rgba(27,55,76,.06) }
+.v84-mobile-record h3 { margin:0 0 .65rem;color:var(--navy);font-size:1rem;overflow-wrap:anywhere }
+.v84-mobile-field { min-width:0;padding:.55rem 0;border-top:1px solid #e6edf1 }
+.v84-mobile-field-label { display:block;margin-bottom:.28rem;color:#40586b;font-size:.72rem;font-weight:800;letter-spacing:.035em;text-transform:uppercase }
+.v84-mobile-value { min-width:0;overflow-wrap:anywhere;color:#17324d;line-height:1.45 }
+.v84-mobile-days { display:grid;grid-template-columns:minmax(0,1fr);gap:.45rem }
+.v84-mobile-day { display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-width:0;padding:.4rem .5rem;background:#f5f8fa;border-radius:8px }
+.v84-mobile-day-name { min-width:0;overflow-wrap:anywhere;font-size:.78rem;font-weight:700 }
+.v84-mobile-day .v84-status-badge { flex:0 0 auto;min-width:44px;min-height:44px }
+.v84-mobile-actions .btn { min-height:44px;min-width:44px }
+.v84-mobile-record .v84-status-badge:focus-visible,.v84-mobile-actions .btn:focus-visible,
+#v84-detail-modal input:focus-visible,#v84-detail-modal select:focus-visible,
+#v84-detail-modal textarea:focus-visible,#v84-detail-modal button:focus-visible { outline:3px solid #0b7285;outline-offset:2px }
+#v84-detail-modal input,#v84-detail-modal select,#v84-detail-modal textarea { min-height:44px;max-width:100% }
+@media(max-width:600px), (max-height:500px) and (max-width:900px) {
+  #v84-enhanced-register .attend-table-wrap { display:none }
+  #v84-enhanced-register .v84-mobile-records { display:block;min-width:0 }
+  #v84-enhanced-register .v84-summary-strip { grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem }
+  #v84-enhanced-register .v84-summary-tile { min-width:0;padding:.6rem }
+}
 .v84-attend-table .today-col {
   background:#e8f6f8 !important;
   border-left:2px solid var(--teal) !important;
@@ -53041,11 +53062,11 @@ window.v70GetActivePrices          = v70GetActivePrices;
         <div class="v84-section-title">📅 Daily Attendance Record</div>
         <div class="v84-form-grid">
           <div class="v84-form-group">
-            <label>Attendance Date <span class="v84-req">*</span></label>
+            <label for="v84-att-date">Attendance Date <span class="v84-req">*</span></label>
             <input type="date" id="v84-att-date" oninput="v84CheckDuplicate()"/>
           </div>
           <div class="v84-form-group">
-            <label>Attendance Status <span class="v84-req">*</span></label>
+            <label for="v84-att-status">Attendance Status <span class="v84-req">*</span></label>
             <select id="v84-att-status">
               <option value="">— Select Status —</option>
               <option value="P">✅ Present</option>
@@ -53061,23 +53082,23 @@ window.v70GetActivePrices          = v70GetActivePrices;
             </select>
           </div>
           <div class="v84-form-group">
-            <label>Time In</label>
+            <label for="v84-time-in">Time In</label>
             <input type="time" id="v84-time-in"/>
           </div>
           <div class="v84-form-group">
-            <label>Time Out</label>
+            <label for="v84-time-out">Time Out</label>
             <input type="time" id="v84-time-out"/>
           </div>
           <div class="v84-form-group">
-            <label>Late Arrival (minutes)</label>
+            <label for="v84-late-mins">Late Arrival (minutes)</label>
             <input type="number" id="v84-late-mins" min="0" placeholder="0"/>
           </div>
           <div class="v84-form-group">
-            <label>Early Departure (minutes)</label>
+            <label for="v84-early-mins">Early Departure (minutes)</label>
             <input type="number" id="v84-early-mins" min="0" placeholder="0"/>
           </div>
           <div class="v84-form-group v84-full">
-            <label>Total Hours Worked</label>
+            <label for="v84-hours-worked">Total Hours Worked</label>
             <input type="text" id="v84-hours-worked" placeholder="Auto-calculated or enter manually" readonly style="background:#e8f6f8;color:var(--teal);font-family:var(--mono)"/>
           </div>
         </div>
@@ -53088,15 +53109,15 @@ window.v70GetActivePrices          = v70GetActivePrices;
         <div class="v84-section-title">⚠️ Attendance Exception Data</div>
         <div class="v84-form-grid">
           <div class="v84-form-group v84-full">
-            <label>Reason for Absence</label>
+            <label for="v84-reason-absence">Reason for Absence</label>
             <textarea id="v84-reason-absence" placeholder="State reason for absence..."></textarea>
           </div>
           <div class="v84-form-group v84-full">
-            <label>Reason for Late Arrival</label>
+            <label for="v84-reason-late">Reason for Late Arrival</label>
             <textarea id="v84-reason-late" placeholder="State reason for late arrival..." rows="2"></textarea>
           </div>
           <div class="v84-form-group v84-full">
-            <label>Reason for Early Departure</label>
+            <label for="v84-reason-early">Reason for Early Departure</label>
             <textarea id="v84-reason-early" placeholder="State reason for early departure..." rows="2"></textarea>
           </div>
         </div>
@@ -53998,6 +54019,7 @@ function v84RenderEnhancedRegister() {
   }).join('');
 
   // Table body
+  const mobileRecords = [];
   const tbody = TEACHERS.map((t, ti) => {
     const ext = v84TeachersExt[ti] || {};
     const initials = (t.name||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
@@ -54031,6 +54053,43 @@ function v84RenderEnhancedRegister() {
       return `<td class="${cls}" style="white-space:nowrap">${btnHtml}${timeHtml}</td>`;
     }).join('');
 
+    const mobileDays = weekDays.map(d => {
+      const ds = (typeof dateToStr!=='undefined') ? dateToStr(d) : d.toISOString().split('T')[0];
+      const detail = v84DetailData[v84DetailKey(ti, ds)] || {};
+      const legacy = (typeof getAttend!=='undefined') ? getAttend(ti,ds) : '';
+      const status = detail.status || v84LegacyStatus(legacy);
+      const definition = V84_STATUSES[status];
+      const statusButton = definition
+        ? `<button type="button" class="v84-status-badge ${status}" onclick="v84OpenDetail(${ti},'${ds}')" aria-label="${definition.label} for ${ds}; edit attendance">${definition.short}</button>`
+        : `<button type="button" class="v84-status-badge empty" onclick="v84OpenDetail(${ti},'${ds}')" aria-label="Attendance not marked for ${ds}; edit attendance">—</button>`;
+      return `<div class="v84-mobile-day"><span class="v84-mobile-day-name">${dayNames[d.getDay()]} ${monthNames[d.getMonth()]} ${d.getDate()}</span>${statusButton}</div>`;
+    }).join('');
+    const mobileTimes = weekDays.map(d => {
+      const ds = (typeof dateToStr!=='undefined') ? dateToStr(d) : d.toISOString().split('T')[0];
+      const detail = v84DetailData[v84DetailKey(ti, ds)] || {};
+      const value = [detail.timeIn, detail.timeOut].filter(Boolean).join('–') || '—';
+      return `<div class="v84-mobile-day"><span class="v84-mobile-day-name">${dayNames[d.getDay()]} ${monthNames[d.getMonth()]} ${d.getDate()}</span><span class="v84-mobile-value">${typeof esc==='function'?esc(value):value}</span></div>`;
+    }).join('');
+    const mobileReasons = weekDays.map(d => {
+      const ds = (typeof dateToStr!=='undefined') ? dateToStr(d) : d.toISOString().split('T')[0];
+      const detail = v84DetailData[v84DetailKey(ti, ds)] || {};
+      const reasons = [detail.reasonAbsence, detail.reasonLate, detail.reasonEarly].filter(Boolean).join(' · ');
+      return reasons ? `<div class="v84-mobile-day"><span class="v84-mobile-day-name">${dayNames[d.getDay()]} ${monthNames[d.getMonth()]} ${d.getDate()}</span><span class="v84-mobile-value">${typeof esc==='function'?esc(reasons):reasons}</span></div>` : '';
+    }).filter(Boolean).join('') || '<span class="v84-mobile-value">—</span>';
+    const staffId = t.staffId || '—';
+    const staffName = t.name || '—';
+    const position = [ext.rank || t.designation, ext.teachingStatus].filter(Boolean).join(' · ') || '—';
+    const safe = value => typeof esc==='function' ? esc(value) : String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    mobileRecords.push(`<article class="v84-mobile-record" data-teacher-index="${ti}">
+      <div class="v84-mobile-field"><span class="v84-mobile-field-label">STAFF ID</span><div class="v84-mobile-value">${safe(staffId)}</div></div>
+      <div class="v84-mobile-field"><span class="v84-mobile-field-label">STAFF NAME/MEMBER</span><h3>${safe(staffName)}</h3></div>
+      <div class="v84-mobile-field"><span class="v84-mobile-field-label">POSITION/ROLE</span><div class="v84-mobile-value">${safe(position)}</div></div>
+      <div class="v84-mobile-field"><span class="v84-mobile-field-label">ATTENDANCE STATUS</span><div class="v84-mobile-days">${mobileDays}</div></div>
+      <div class="v84-mobile-field"><span class="v84-mobile-field-label">REPORTING TIME</span><div class="v84-mobile-days">${mobileTimes}</div></div>
+      <div class="v84-mobile-field"><span class="v84-mobile-field-label">REASONS/REMARKS</span><div class="v84-mobile-days">${mobileReasons}</div></div>
+      <div class="v84-mobile-field v84-mobile-actions"><button type="button" class="btn btn-sm btn-ghost" onclick="v84OpenProfileModal(${ti})" aria-label="Edit profile for ${safe(staffName)}">Edit profile</button></div>
+    </article>`);
+
     const pct = weekTotal > 0 ? Math.round(weekP/weekTotal*100) : 0;
     const pctCls = pct>=80?'high':pct>=50?'medium':'low';
 
@@ -54057,7 +54116,7 @@ function v84RenderEnhancedRegister() {
     </tr>`;
   }).join('');
 
-  container.innerHTML = summaryHtml + `
+  container.innerHTML = summaryHtml + `<div class="v84-mobile-records" aria-label="Weekly teacher attendance records">${mobileRecords.join('')}</div>
     <div class="attend-table-wrap">
       <table class="v84-attend-table">
         <thead>

@@ -23,6 +23,7 @@
     "test:district-dashboard": "node test/district-dashboard.spec.js",
     "test:district-dashboard:browser": "node test/district-dashboard-runner.js",
     "test:school-login-thin": "node test/school-login-thin-boot.browser.spec.js",
+    "test:school-login-vercel-contract": "npm run build && node test/school-login-vercel-contract.browser.spec.js",
     "test:part39-adapter": "node test/part39-deployment-adapter.spec.js",
     "test:part39-staging-deployment.browser": "node test/part39-staging-deployment.browser.spec.js",
     "test:part39": "node test/part39-deployment-repair.spec.js && node test/part39-deployment-adapter.spec.js",

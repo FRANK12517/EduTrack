@@ -24948,7 +24948,7 @@ const GES_DISTRICTS = {
 //  CENTRALIZED GHANA REGION–DISTRICT DATASET (v69)
 //  Single source of truth used by ALL modules system-wide.
 // ═══════════════════════════════════════════════════════════════
-const GH_REGIONS_DISTRICTS = {
+window.GH_REGIONS_DISTRICTS = {
   "Ahafo Region": ["Asunafo North","Asunafo South","Asutifi North","Asutifi South","Tano North","Tano South"],
   "Ashanti Region": ["Kumasi Metro","Oforikrom","Kwadaso","Suame","Tafo","Manhyia North","Manhyia South","Asokwa","Bosomtwe","Ejisu","Juaben","Kwabre East","Afigya Kwabre North","Ahafo Ano North","Ahafo Ano South East","Amansie Central","Amansie South","Amansie West","Asante Akim Central","Asante Akim North","Asante Akim South","Bekwai","Bosome Freho","Ejura Sekyedumase","Mampong","Obuasi Municipal","Obuasi East","Offinso Municipal","Offinso North","Sekyere Afram Plains","Sekyere Central","Sekyere East","Sekyere Kumawu","Sekyere South"],
   "Bono Region": ["Sunyani Municipal","Sunyani West","Berekum East","Berekum West","Dormaa Central","Dormaa East","Dormaa West","Jaman North","Jaman South","Tain","Wenchi Municipal"],
@@ -51918,7 +51918,7 @@ window.v67RenderPriceControlModule = v67RenderPriceControlModule;
 window.v67RenderMonitoringCenter = v67RenderMonitoringCenter;
 window.v67RenderNotificationPanel = v67RenderNotificationPanel;
 window.v67RenderSMSPanel = v67RenderSMSPanel;
-window.GH_REGIONS_DISTRICTS = GH_REGIONS_DISTRICTS;
+window.GH_REGIONS_DISTRICTS = window.GH_REGIONS_DISTRICTS || GH_REGIONS_DISTRICTS;
 
 })(); // end V67 IIFE
 // ── END V67 ──────────────────────────────────────────────────────

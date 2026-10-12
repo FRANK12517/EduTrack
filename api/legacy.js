@@ -82,6 +82,17 @@ function canonicalRole(r) {
   return ROLE_ALIASES[n] || n;
 }
 
+function normalizeRegion(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+region$/, '').replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeDistrict(value) {
+  return String(value || '').trim().toLowerCase()
+    .replace(/\bmetropolitan\b/g, 'metro')
+    .replace(/\bmunicipality\b/g, 'municipal')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 async function schoolLogin(req, res) {
   const input = await readBody(req);
   const { region, district, accessCode, staffId, role } = input;
@@ -100,20 +111,20 @@ async function schoolLogin(req, res) {
      WHERE s.access_code = ?
        AND s.access_code_status = 'ACTIVE'
        AND (s.access_code_expires_at IS NULL OR s.access_code_expires_at > NOW())
-       AND LOWER(s.region) = LOWER(?)
-       AND LOWER(s.district) = LOWER(?)
        AND u.staff_id = ?
-     LIMIT 1`,
-    [accessCode, region, district, staffId]
+     ORDER BY s.id`,
+    [accessCode, staffId]
   );
 
   // Deliberately generic — never reveals which of the five fields was wrong,
   // and never reveals whether the row was missing vs. the role not matching.
-  if (!rows.length || canonicalRole(rows[0].role) !== canonicalRole(role)) {
+  const user = rows.find(row => normalizeRegion(row.region) === normalizeRegion(region)
+    && normalizeDistrict(row.district) === normalizeDistrict(district)
+    && canonicalRole(row.role) === canonicalRole(role));
+  if (!user) {
     return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
   }
 
-  const user = rows[0];
   const token = jwt.sign(
     { userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role, administrativeLevel: 'SCHOOL',
       assignedClass: user.assigned_class, assignedForm: user.assigned_form },

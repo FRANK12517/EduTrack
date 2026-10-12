@@ -893,7 +893,7 @@ async function handler(req, res) {
     clearLimit(ipKey); clearLimit(accountKey); user.failedLoginCount = 0; user.lockedUntil = null;
     const rawToken = randomToken(); const now = new Date();
     const session = { id: id('ses'), tokenHash: tokenHash(rawToken), userId: user.id, createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString() };
-    db.sessions.push(session);
+    if (relational.isConfigured()) await relational.createSession(session); else db.sessions.push(session);
     const loginAudit = { id: id('audit'), userId: user.id, action: 'SUPER_ADMIN_LOGIN_SUCCESS', at: now.toISOString(), ip: clientIp(req), severity: 'high' };
     if (relational.isConfigured()) await relational.appendAudit(loginAudit); else { db.audit.push(loginAudit); saveDb(db); }
     return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });

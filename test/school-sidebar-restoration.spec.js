@@ -7,7 +7,7 @@ const sidebar = fs.readFileSync(path.join(root, 'school-sidebar.js'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const modules = ['transport-management.js', 'hostel-management.js', 'qr-attendance.js']
   .map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
-const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const { PUBLIC_FILES } = require('../app/login-shell');
 const auth = fs.readFileSync(path.join(root, 'privileged-auth.js'), 'utf8');
 
 const labels = [
@@ -101,8 +101,8 @@ assert.match(sidebar, /Student Admission & Transfer Management/);
 assert.match(sidebar, /EDUTRACK_SCHOOL_GUIDE&&window\.EDUTRACK_SCHOOL_GUIDE\.open/);
 assert.match(sidebar, /data-private-school-feature/);
 assert.match(sidebar, /ASSISTANTHEAD/);
-assert.match(server, /school-sidebar\.js/);
-assert.match(server, /school-user-guide\.js/, 'School guide must be served as a public School module');
+assert.ok(PUBLIC_FILES.includes('school-sidebar.js'), 'Canonical public registry serves the School sidebar');
+assert.ok(PUBLIC_FILES.includes('school-user-guide.js'), 'School guide must be served as a public School module');
 assert.match(auth, /school-sidebar\.js\?v=20260908-school-sidebar-restoration-v2/);
 assert.match(auth, /script\.dataset\.edutrackSchoolSidebar/);
 assert.match(auth, /function restoreSchoolSession\(\)/);

@@ -72,22 +72,37 @@
     return routeGroups[target.replace(/^page:/, '')] || 'SCHOOL_SYSTEM';
   }
   function activateMatchingLegacyScripts(target) {
+    if(target==='page:dashboard')return Promise.resolve();
     var key = target.replace(/^page:/, '');
+    var owner=target.indexOf('api:')===0?target.slice(4).split('.')[0]:target.indexOf('section:')===0?'EMS_SLD':target.indexOf('workflow:')===0?'EMS_GNSIS_LIFE':null;
     var nodes = Array.prototype.slice.call(document.querySelectorAll('script[data-edutrack-lazy="true"]'));
-    var matching = nodes.filter(function (node) { return node.textContent.indexOf('page-' + key) >= 0 || node.textContent.indexOf("'" + key + "'") >= 0; });
+    if(/^page:ges-/.test(target)) { var shared=nodes.filter(function(n){return /window\.GES_RESULT_SUITE\s*=/.test(n.textContent)}); nodes=shared.concat(nodes.filter(function(n){return shared.indexOf(n)<0})); }
+    var matching = nodes.filter(function (node) { return (/^page:ges-/.test(target)&&/window\.GES_RESULT_SUITE(?:\s*=|\b)|GES_RESULT_SUITE_WIRED/.test(node.textContent)) || (owner ? new RegExp('(?:window\\.|var |const |let )'+owner+'\\s*=').test(node.textContent) : node.textContent.indexOf('page-' + key) >= 0); });
     return matching.reduce(function (chain, node) { return chain.then(function () {
+      if(!node.parentNode||!node.hasAttribute('data-edutrack-lazy'))return;
       var script = document.createElement('script');
       Array.prototype.forEach.call(node.attributes, function (attribute) { if (attribute.name !== 'type' && attribute.name !== 'data-edutrack-lazy') script.setAttribute(attribute.name, attribute.value); });
       script.text = node.textContent; node.parentNode.replaceChild(script, node);
     }); }, Promise.resolve());
   }
-  function runAction(action, node) { if (!action) return; Function(action).call(node); }
+  function waitForTarget(target) {
+    if(target.indexOf('page:')!==0)return Promise.resolve();
+    var id='page-'+target.slice(5);
+    if(document.getElementById(id))return Promise.resolve();
+    return new Promise(function(resolve,reject){
+      var observer=new MutationObserver(check),timer=setTimeout(function(){observer.disconnect();reject(new Error('School component did not initialize: '+target));},4000);
+      function check(){if(document.getElementById(id)){clearTimeout(timer);observer.disconnect();resolve();}}
+      observer.observe(document.body,{childList:true,subtree:true});check();
+    });
+  }
+  function runAction(action, node) { if (!action) return; var handler=node.getAttribute('onclick'); try { node.setAttribute('onclick',action); if(typeof node.onclick!=='function')throw Error('School action unavailable'); node.onclick.call(node); } finally { node.setAttribute('onclick',handler); } }
   function route(node) {
     if (!node || node.dataset.routing === 'true') return false;
     node.dataset.routing = 'true';
     var target = node.dataset.schoolTarget || '';
     var group = groupFor(target);
-    activate(group).then(function () { return activateMatchingLegacyScripts(target); }).then(function () { runAction(node.dataset.schoolAction, node); }).catch(function () {
+    activate(group).then(function () { return activateMatchingLegacyScripts(target); }).then(function(){return waitForTarget(target)}).then(function () { runAction(node.dataset.schoolAction, node); }).catch(function (cause) {
+      node.dataset.routeError=String(cause.message||cause);
       var error = document.getElementById('v43LoginError'); if (error) { error.textContent = 'This School module could not be opened.'; error.style.display = 'block'; }
     }).finally(function () { delete node.dataset.routing; });
     return false;
@@ -97,7 +112,7 @@
     if (!Object.prototype.hasOwnProperty.call(registry, name)) return Promise.reject(new Error('Unknown School module group'));
     if (activatedGroups.has(name)) return Promise.resolve();
     if (activatingGroups.has(name)) return activatingGroups.get(name);
-    var job = (name === 'SCHOOL_GENERAL' ? activateSchoolGeneral(context) : Promise.resolve()).then(function () {
+    var job = (name === 'SCHOOL_GENERAL' ? activateSchoolGeneral(context) : Promise.all(registry[name].map(function(src,index){return loadScript(src,name+'-'+index)}))).then(function () {
       activatedGroups.add(name); activatingGroups.delete(name);
     }, function (error) { activatingGroups.delete(name); throw error; });
     activatingGroups.set(name, job);

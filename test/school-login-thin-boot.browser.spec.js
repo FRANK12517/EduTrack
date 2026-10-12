@@ -14,7 +14,7 @@ const port = 32000 + Math.floor(Math.random() * 2000);
 const baseUrl = `http://127.0.0.1:${port}`;
 const dataFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'edutrack-school-login-')), 'fixture.json');
 const fixture = {
-  region: 'WESTERN', district: 'SECONDI TAKORADI METROPOLITAN', role: 'HEADTEACHER',
+  region: 'Western Region', district: 'Sekondi Takoradi Metro', role: 'HEADTEACHER',
   accessCode: process.env.EDUTRACK_TEST_SCHOOL_ACCESS_CODE,
   staffId: process.env.EDUTRACK_TEST_SCHOOL_STAFF_ID
 };
@@ -55,7 +55,7 @@ async function directLogin() {
 async function browserLogin(browser, viewport) {
   const page = await browser.newPage({ viewport });
   const requests = [], pageErrors = [];
-  page.on('pageerror', error => pageErrors.push(error.message));
+  page.on('pageerror', error => pageErrors.push(error.stack || error.message));
   page.on('request', request => {
     if (!request.url().endsWith('/api/school-login')) return;
     const body = JSON.parse(request.postData() || '{}');
@@ -105,6 +105,35 @@ async function browserLogin(browser, viewport) {
   assert.ok(storedCookies.some(cookie => cookie.name === 'edutrack_session' && cookie.httpOnly), 'browser must store the HttpOnly authentication cookie');
   assert.equal(state.pageCanReadSessionCookie, false, 'HttpOnly authentication cookie must not be visible to page JavaScript');
   assert.deepEqual(pageErrors, [], `uncaught page errors at ${viewport.width}x${viewport.height}: ${pageErrors.join('; ')}`);
+  if(process.env.EDUTRACK_SCHOOL_ROUTE_AUDIT==='1') {
+    const audit=await page.evaluate(async()=>{
+      const out=[];
+      for(const parent of document.querySelectorAll('#sg-school-level .nav-group-header')){parent.click();parent.click();}
+      const leaves=Array.from(document.querySelectorAll('#sg-school-level .school-nav-item'));
+      for(const leaf of leaves){
+        const target=leaf.dataset.schoolTarget;if(target==='session:logout')continue;
+        const before=document.querySelector('.page:not(.hidden)')?.id;
+        try{leaf.click();const until=Date.now()+5000;while(leaf.dataset.routing==='true'&&Date.now()<until)await new Promise(r=>setTimeout(r,50));
+          let available=true;
+          if(target.startsWith('page:')){const panel=document.getElementById('page-'+target.slice(5));available=!!panel&&getComputedStyle(panel).display!=='none';}
+          if(target.startsWith('api:'))available=typeof target.slice(4).split('.').reduce((v,k)=>v&&v[k],window)==='function';
+          if(target.startsWith('fms:'))available=typeof window.fmsShowPage==='function';
+          if(target.startsWith('workflow:'))available=typeof window.EMS_GNSIS_LIFE?.open==='function';
+          if(target.startsWith('section:'))available=typeof window.EMS_SLD?.openSection==='function';
+          out.push({label:leaf.dataset.schoolNav,target,available,panel:target.startsWith('page:')?document.getElementById('page-'+target.slice(5))?.getAttribute('class'):undefined,role:localStorage.getItem('v43_login_role'),routing:leaf.dataset.routing,routeError:leaf.dataset.routeError,error:document.getElementById('v43LoginError')?.textContent,before,after:document.querySelector('.page:not(.hidden)')?.id});
+        }catch(error){out.push({label:leaf.dataset.schoolNav,target,available:false,error:error.message});}
+      }return out;
+    });
+    fs.mkdirSync(path.join(repo,'artifacts'),{recursive:true});fs.writeFileSync(path.join(repo,'artifacts','part5-school-live-routes-'+viewport.width+'.json'),JSON.stringify(audit,null,2));
+    assert.deepEqual(audit.filter(x=>!x.available),[],'Every real School sidebar component must be available');
+    page.once('dialog',dialog=>dialog.accept());
+    const logoutResponse=page.waitForResponse(response=>response.url().endsWith('/api/auth/logout'));
+    await page.locator('[data-school-logout]').evaluate(node=>node.click());
+    assert.equal((await logoutResponse).status(),200,'School logout must invalidate the server session');
+    await page.locator('#login-screen').waitFor({state:'visible'});
+    assert.equal((await page.context().request.get(baseUrl+'/api/auth/session')).status(),401);
+    console.log('PASS live School routes '+viewport.width+'px: '+audit.length+' entries, parent toggles and server logout');
+  }
   await page.close();
   return { viewport: `${viewport.width}x${viewport.height}`, schoolFormMs: loginAt - readyAt, dashboardReadyMs: Date.now() - loginAt, inertScripts: state.inertScripts };
 }
@@ -119,7 +148,7 @@ async function browserLogin(browser, viewport) {
     assert.ok(seeded.schools.some(row => row.id === 'test-school-western-sekondi'));
     assert.ok(seeded.staff.some(row => row.staffId === fixture.staffId));
     await directLogin();
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, executablePath: process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium') });
     try {
       const results = [];
       for (const viewport of viewports) results.push(await browserLogin(browser, viewport));

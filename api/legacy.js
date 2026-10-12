@@ -3,6 +3,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query, getPool } = require('../lib/db');
+const { levelForRole } = require('../app/auth/administrative-scope');
 
 function readBody(req) {
   if (req.body && typeof req.body === 'object') return Promise.resolve(req.body);
@@ -37,6 +38,13 @@ function requireAuth(req, res) {
 }
 
 function assertSchool(auth, schoolCode) {
+  // Legacy bearer routes are School-only; macro officers must use the
+  // canonical permission/scope/consent-protected administrative read layer.
+  if (levelForRole(auth.role) !== 'SCHOOL') {
+    const error = new Error('Administrative access requires the canonical scoped API');
+    error.status = 403;
+    throw error;
+  }
   if (!schoolCode || String(auth.schoolCode) !== String(schoolCode)) {
     const error = new Error('Forbidden school scope');
     error.status = 403;
@@ -82,17 +90,6 @@ function canonicalRole(r) {
   return ROLE_ALIASES[n] || n;
 }
 
-function normalizeRegion(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+region$/, '').replace(/[^a-z0-9]/g, '');
-}
-
-function normalizeDistrict(value) {
-  return String(value || '').trim().toLowerCase()
-    .replace(/\bmetropolitan\b/g, 'metro')
-    .replace(/\bmunicipality\b/g, 'municipal')
-    .replace(/[^a-z0-9]/g, '');
-}
-
 async function schoolLogin(req, res) {
   const input = await readBody(req);
   const { region, district, accessCode, staffId, role } = input;
@@ -111,20 +108,20 @@ async function schoolLogin(req, res) {
      WHERE s.access_code = ?
        AND s.access_code_status = 'ACTIVE'
        AND (s.access_code_expires_at IS NULL OR s.access_code_expires_at > NOW())
+       AND LOWER(s.region) = LOWER(?)
+       AND LOWER(s.district) = LOWER(?)
        AND u.staff_id = ?
-     ORDER BY s.id`,
-    [accessCode, staffId]
+     LIMIT 1`,
+    [accessCode, region, district, staffId]
   );
 
   // Deliberately generic — never reveals which of the five fields was wrong,
   // and never reveals whether the row was missing vs. the role not matching.
-  const user = rows.find(row => normalizeRegion(row.region) === normalizeRegion(region)
-    && normalizeDistrict(row.district) === normalizeDistrict(district)
-    && canonicalRole(row.role) === canonicalRole(role));
-  if (!user) {
+  if (!rows.length || canonicalRole(rows[0].role) !== canonicalRole(role)) {
     return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
   }
 
+  const user = rows[0];
   const token = jwt.sign(
     { userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role, administrativeLevel: 'SCHOOL',
       assignedClass: user.assigned_class, assignedForm: user.assigned_form },

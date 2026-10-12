@@ -8,7 +8,9 @@ const { spawn, spawnSync } = require('node:child_process');
 const policy = require('../app/subscription-policy');
 
 const ROOT = path.resolve(__dirname, '..');
-const DB_FILE = path.join(ROOT, 'data', 'edutrack.json');
+const TEST_DIR = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'edutrack-subscription-test-'));
+const DB_FILE = path.join(TEST_DIR, 'edutrack.json');
+process.env.EDUTRACK_DATA_FILE = DB_FILE;
 const BACKUP_FILE = `${DB_FILE}.part57-complete-backup`;
 const PORT = 3117;
 const BASE = `http://127.0.0.1:${PORT}`;

@@ -67,7 +67,7 @@ async function assertTogglePreservesValue(page, id) {
   });
   try {
     await waitForServer();
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, executablePath: process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium') });
     try {
       for (const viewport of [{ width: 1280, height: 900 }, { width: 414, height: 896 }]) {
         const page = await browser.newPage({ viewport, hasTouch: viewport.width < 600, isMobile: viewport.width < 600 });

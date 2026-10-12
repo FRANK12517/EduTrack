@@ -7,6 +7,9 @@ const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'u
 const indexSource = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 function authz(role, permissions = ['ai.use'], memberships = []) {
+  if (!memberships.length && role === 'DISTRICT_ADMIN') memberships = [{tenantId:'d-tenant',scope:{districtIds:['district-1']}}];
+  if (!memberships.length && role === 'REGIONAL_ADMIN') memberships = [{tenantId:'r-tenant',scope:{regionIds:['region-1']}}];
+  if (!memberships.length && role === 'NATIONAL_ADMIN') memberships = [{tenantId:'national',tenantType:'NATIONAL',scope:{}}];
   return { user: { id: `${role.toLowerCase()}-1`, active: true, status: 'ACTIVE' }, roles: [role], permissions, memberships };
 }
 

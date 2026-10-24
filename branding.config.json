@@ -1,0 +1,19 @@
+{
+  "appName": "EduTrack",
+  "logo": {
+    "src": "/assets/edutrack-app-icon.png",
+    "alt": "EduTrack",
+    "fit": "contain"
+  },
+  "favicon": [
+    "/assets/favicon-16.png",
+    "/assets/favicon-32.png"
+  ],
+  "appleTouchIcon": "/assets/apple-touch-icon.png",
+  "manifest": "/manifest.webmanifest",
+  "pwaIcons": [
+    "/assets/pwa-192.png",
+    "/assets/pwa-512.png"
+  ],
+  "sourceSha256": "A44B1821A0A6115A23F0D5862DD4C714F7DA8B477B0AC6A1ED373D97C7AFB51D"
+}

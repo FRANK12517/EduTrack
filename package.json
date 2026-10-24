@@ -7,6 +7,7 @@
   },
   "description": "EduTrack static application with secure server-side authentication",
   "scripts": {
+    "test:branding": "node test/branding-regression.spec.js",
     "start": "node server.js",
     "provision": "node server.js --provision",
     "provision:dev": "node server.js --provision-dev",

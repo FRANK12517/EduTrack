@@ -11,9 +11,11 @@ assert.match(auth, /timeoutMs:\s*5000/, 'developer probe must not leave ordinary
 assert.match(auth, /AbortController/, 'authentication probe must be cancellable');
 assert.match(auth, /error\.name === 'AbortError'/, 'a timed-out optional developer probe must fall back to ordinary login');
 
-assert.match(dashboards, /RETIRED_LEVELS/, 'retired upper-level dashboard guard must be installed');
-assert.match(dashboards, /return showUnavailable\(current\)/, 'upper-level logins must fail gracefully');
-assert.doesNotMatch(dashboards, /Officer Workspace/, 'obsolete upper-level dashboard navigation is removed');
+assert.match(dashboards, /ADMIN_LEVELS=\['DISTRICT','REGIONAL','NATIONAL'\]/, 'three shared administrative destinations must be supported');
+assert.match(dashboards, /function openDistrict\(level\)/, 'all administrative roles must enter the level dashboard');
+assert.ok(dashboards.includes("api('/api/control-panel/'+level.toLowerCase()+'?view=context')"), 'dashboard context must come from the server');
+assert.match(dashboards, /configureGroups\(level\)/, 'navigation must be based on the shared level shell and resolved permissions');
+assert.doesNotMatch(dashboards, /Officer Workspace/, 'obsolete officer workspaces must stay removed');
 assert.match(html, /emsRouteAfterLogin\('SCHOOL'/, 'school login must route through the shared dashboard dispatcher');
 assert.match(html, /showPageById\('dashboard'\)/, 'school routing must open the general dashboard');
 

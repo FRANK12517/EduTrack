@@ -6,7 +6,7 @@
   var activatingGroups = new Map();
   var registry = {
     CORE_LOGIN: [],
-    SCHOOL_GENERAL: ['/school-sidebar.js?v=20260911-school-general', '/school-user-guide.js?v=20260914-school-guide-foundation'],
+    SCHOOL_GENERAL: ['/school-sidebar.js?v=20260911-school-general', '/school-user-guide.js?v=20260914-school-guide-foundation', '/school-route-history.js?v=20261104-school-routes'],
     SCHOOL_ADMIN: [], SCHOOL_ACADEMICS: [], SCHOOL_ATTENDANCE: [], SCHOOL_RESULTS: [],
     SCHOOL_ADMISSIONS: ['/online-admission.js', '/admissions-review.js'], SCHOOL_FINANCE: [],
     SCHOOL_STAFF: [], SCHOOL_STUDENTS: [], SCHOOL_TRANSPORT: ['/transport-management.js'],
@@ -47,6 +47,7 @@
     var startedAt = performance.now();
     await loadScript(registry.SCHOOL_GENERAL[0], 'school-general-sidebar');
     await loadScript(registry.SCHOOL_GENERAL[1], 'school-general-guide');
+    await loadScript(registry.SCHOOL_GENERAL[2], 'school-route-history');
     var sidebar = window.EDUTRACK_SCHOOL_SIDEBAR;
     if (!sidebar || typeof sidebar.refresh !== 'function') throw new Error('School sidebar unavailable');
     var dashboard = document.getElementById('page-dashboard');
@@ -72,37 +73,60 @@
     return routeGroups[target.replace(/^page:/, '')] || 'SCHOOL_SYSTEM';
   }
   function activateMatchingLegacyScripts(target) {
+    if(target==='page:dashboard')return Promise.resolve();
     var key = target.replace(/^page:/, '');
+    var owner=target.indexOf('api:')===0?target.slice(4).split('.')[0]:target.indexOf('section:')===0?'EMS_SLD':target.indexOf('workflow:')===0?'EMS_GNSIS_LIFE':null;
     var nodes = Array.prototype.slice.call(document.querySelectorAll('script[data-edutrack-lazy="true"]'));
-    var matching = nodes.filter(function (node) { return node.textContent.indexOf('page-' + key) >= 0 || node.textContent.indexOf("'" + key + "'") >= 0; });
+    if(/^page:ges-/.test(target)) { var shared=nodes.filter(function(n){return /window\.GES_RESULT_SUITE\s*=/.test(n.textContent)}); nodes=shared.concat(nodes.filter(function(n){return shared.indexOf(n)<0})); }
+    var matching = nodes.filter(function (node) { return (/^page:ges-/.test(target)&&/window\.GES_RESULT_SUITE(?:\s*=|\b)|GES_RESULT_SUITE_WIRED/.test(node.textContent)) || (owner ? new RegExp('(?:window\\.|var |const |let )'+owner+'\\s*=').test(node.textContent) : node.textContent.indexOf('page-' + key) >= 0); });
     return matching.reduce(function (chain, node) { return chain.then(function () {
+      if(!node.parentNode||!node.hasAttribute('data-edutrack-lazy'))return;
       var script = document.createElement('script');
       Array.prototype.forEach.call(node.attributes, function (attribute) { if (attribute.name !== 'type' && attribute.name !== 'data-edutrack-lazy') script.setAttribute(attribute.name, attribute.value); });
       script.text = node.textContent; node.parentNode.replaceChild(script, node);
     }); }, Promise.resolve());
   }
-  function runAction(action, node) { if (!action) return; Function(action).call(node); }
-  function route(node) {
-    if (!node || node.dataset.routing === 'true') return false;
-    node.dataset.routing = 'true';
+  function waitForTarget(target) {
+    if(target.indexOf('page:')!==0)return Promise.resolve();
+    var id='page-'+target.slice(5);
+    if(document.getElementById(id))return Promise.resolve();
+    return new Promise(function(resolve,reject){
+      var observer=new MutationObserver(check),timer=setTimeout(function(){observer.disconnect();reject(new Error('School component did not initialize: '+target));},4000);
+      function check(){if(document.getElementById(id)){clearTimeout(timer);observer.disconnect();resolve();}}
+      observer.observe(document.body,{childList:true,subtree:true});check();
+    });
+  }
+  function assertTargetReady(target) {
+    if(target.indexOf('page:')===0){if(!document.getElementById('page-'+target.slice(5)))throw new Error('School component did not initialize: '+target);return}
+    if(target.indexOf('api:')===0){var path=target.slice(4).split('.'),value=window;for(var i=0;i<path.length;i++)value=value&&value[path[i]];if(typeof value!=='function')throw new Error('School module action unavailable: '+target);return}
+    if(target.indexOf('section:')===0&&(!window.EMS_SLD||typeof window.EMS_SLD.openSection!=='function'))throw new Error('School section unavailable: '+target);
+    if(target.indexOf('workflow:')===0&&(!window.EMS_GNSIS_LIFE||typeof window.EMS_GNSIS_LIFE.open!=='function'))throw new Error('School workflow unavailable: '+target);
+    if(target.indexOf('fms:')===0&&typeof window.fmsShowPage!=='function')throw new Error('School finance module unavailable: '+target);
+    if(target.indexOf('result:')===0){var name=target.split(':')[2],module=window[name];if(!module||typeof module.render!=='function')throw new Error('School result module unavailable: '+target)}
+    if(target==='guide:school'&&(!window.EDUTRACK_SCHOOL_GUIDE||typeof window.EDUTRACK_SCHOOL_GUIDE.open!=='function'))throw new Error('School guide unavailable');
+  }
+  function runAction(action, node) { if (!action) return; var handler=node.getAttribute('onclick'); try { node.setAttribute('onclick',action); if(typeof node.onclick!=='function')throw Error('School action unavailable'); node.onclick.call(node); } finally { node.setAttribute('onclick',handler); } }
+  function open(node) {
+    if (!node) return Promise.reject(new Error('School module unavailable'));
     var target = node.dataset.schoolTarget || '';
     var group = groupFor(target);
-    activate(group).then(function () { return activateMatchingLegacyScripts(target); }).then(function () { runAction(node.dataset.schoolAction, node); }).catch(function () {
-      var error = document.getElementById('v43LoginError'); if (error) { error.textContent = 'This School module could not be opened.'; error.style.display = 'block'; }
-    }).finally(function () { delete node.dataset.routing; });
-    return false;
+    return activate(group).then(function () { if(window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__!==true)throw new Error('Authenticated School session required');var p=node.dataset.schoolPermission||'UNMAPPED',grants=window._v43SchoolLoginContext&&window._v43SchoolLoginContext.authorization&&window._v43SchoolLoginContext.authorization.permissions||[];if(p==='UNMAPPED'||p!=='PUBLIC'&&grants.indexOf('*')<0&&grants.indexOf(p)<0)throw new Error('School module permission denied');return activateMatchingLegacyScripts(target); }).then(function(){return waitForTarget(target)}).then(function () { assertTargetReady(target); runAction(node.dataset.schoolAction, node); return true; });
   }
-
+  function route(node) {
+    var history = window.EDUTRACK_SCHOOL_ROUTE_HISTORY;
+    if (history && typeof history.route === 'function') return history.route(node);
+    return open(node).catch(function (cause) { node.dataset.routeError=String(cause.message||cause); return false; });
+  }
   function activate(name, context) {
     if (!Object.prototype.hasOwnProperty.call(registry, name)) return Promise.reject(new Error('Unknown School module group'));
     if (activatedGroups.has(name)) return Promise.resolve();
     if (activatingGroups.has(name)) return activatingGroups.get(name);
-    var job = (name === 'SCHOOL_GENERAL' ? activateSchoolGeneral(context) : Promise.resolve()).then(function () {
+    var job = (name === 'SCHOOL_GENERAL' ? activateSchoolGeneral(context) : Promise.all(registry[name].map(function(src,index){return loadScript(src,name+'-'+index)}))).then(function () {
       activatedGroups.add(name); activatingGroups.delete(name);
     }, function (error) { activatingGroups.delete(name); throw error; });
     activatingGroups.set(name, job);
     return job;
   }
 
-  window.EDUTRACK_SCHOOL_MODULES = { activate: activate, route: route, groupFor: groupFor, activated: function (name) { return activatedGroups.has(name); }, registry: registry, routeGroups: routeGroups };
+  window.EDUTRACK_SCHOOL_MODULES = { activate: activate, open: open, route: route, groupFor: groupFor, activated: function (name) { return activatedGroups.has(name); }, registry: registry, routeGroups: routeGroups };
 })();

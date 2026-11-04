@@ -8,6 +8,7 @@ const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const modules = ['transport-management.js', 'hostel-management.js', 'qr-attendance.js']
   .map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const shell = fs.readFileSync(path.join(root, 'app', 'login-shell.js'), 'utf8');
 const auth = fs.readFileSync(path.join(root, 'privileged-auth.js'), 'utf8');
 
 const labels = [
@@ -100,14 +101,17 @@ assert.match(sidebar, /EMS_GNSIS_LIFE&&EMS_GNSIS_LIFE\.open/);
 assert.match(sidebar, /Student Admission & Transfer Management/);
 assert.match(sidebar, /EDUTRACK_SCHOOL_GUIDE&&window\.EDUTRACK_SCHOOL_GUIDE\.open/);
 assert.match(sidebar, /data-private-school-feature/);
-assert.match(sidebar, /ASSISTANTHEAD/);
-assert.match(server, /school-sidebar\.js/);
-assert.match(server, /school-user-guide\.js/, 'School guide must be served as a public School module');
+assert.match(server, /ASSISTANT_HEADTEACHER/);
+assert.match(sidebar, /data-school-permission=/);
+assert.match(shell, /school-sidebar\.js/);
+assert.match(shell, /school-user-guide\.js/, 'School guide must be served as a public School module');
 assert.match(auth, /school-sidebar\.js\?v=20260908-school-sidebar-restoration-v2/);
 assert.match(auth, /script\.dataset\.edutrackSchoolSidebar/);
 assert.match(auth, /function restoreSchoolSession\(\)/);
-assert.match(auth, /level !== 'SCHOOL' \|\| !role \|\| !staffId/);
-assert.match(auth, /emsRouteAfterLogin\('SCHOOL', role, region, district\)/);
+assert.match(auth, /request\('\/auth\/session'\)/, 'School refresh must be resolved by the server session');
+assert.match(auth, /authorization\.loginScope/);
+assert.match(auth, /__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__/);
+assert.match(auth, /emsRouteAfterLogin\('SCHOOL', user\.role, scope\.region/);
 assert.match(auth, /EDUTRACK_SCHOOL_SIDEBAR\.activateScope\(root\)/);
 for (const level of ['DISTRICT', 'REGIONAL', 'NATIONAL']) {
   assert.doesNotMatch(sidebar, new RegExp(`data-admin-level=["']${level}`));
@@ -115,7 +119,7 @@ for (const level of ['DISTRICT', 'REGIONAL', 'NATIONAL']) {
 
 function children(variable) {
   const start = sidebar.indexOf(`var ${variable}=`);
-  const end = sidebar.indexOf(';\n', start);
+  const end = sidebar.indexOf('\n', start);
   assert.ok(start >= 0 && end > start, `missing ${variable} configuration`);
   return Array.from(sidebar.slice(start, end).matchAll(/(?:page|api|item|sld|result)\('([^']+)'/g), item => item[1]);
 }

@@ -3,6 +3,8 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query, getPool } = require('../lib/db');
+const relational = require('../db/relational');
+const authorization = require('../app/auth/authorization');
 
 function readBody(req) {
   if (req.body && typeof req.body === 'object') return Promise.resolve(req.body);
@@ -36,14 +38,30 @@ function requireAuth(req, res) {
   }
 }
 
+function dbRole(role) {
+  const key=canonicalRole(role);
+  return ({headteacher:'HEADTEACHER','assistant headteacher':'ASSISTANT_HEADTEACHER','classroom teacher':'TEACHER'})[key]||null;
+}
+async function schoolAuthorization(claims, schoolCode, permissions) {
+  if(!claims||!claims.userId||!claims.schoolId||!relational.isConfigured())return null;
+  const role=dbRole(claims.role);if(!role)return null;
+  const accounts=await query('SELECT id,role,active,status,assigned_class,assigned_form FROM users WHERE id=? LIMIT 1',[claims.userId]);
+  if(!accounts.length||dbRole(accounts[0].role)!==role||!accounts[0].active||String(accounts[0].status).toUpperCase()!=='ACTIVE')return null;
+  const schools=await query('SELECT id,school_code,active,status FROM schools WHERE id=? LIMIT 1',[claims.schoolId]);
+  if(!schools.length||!schools[0].active||String(schools[0].status||'ACTIVE').toUpperCase()!=='ACTIVE'||String(schools[0].school_code)!==String(schoolCode))return null;
+  const trusted=await relational.resolveAuthorization(claims.userId);
+  if(!trusted||!trusted.user.active||trusted.user.status!=='ACTIVE'||!trusted.roles.includes(role))return null;
+  const authz={...trusted,roles:[role],rolePermissions:{[role]:trusted.rolePermissions[role]||[]}};
+  for(const permission of permissions){const decision=authorization.evaluate(authz,{permission,scope:{schoolId:claims.schoolId}});if(!decision.allowed)return null;}
+  return {userId:claims.userId,schoolId:claims.schoolId,schoolCode:schools[0].school_code,role,assignedClass:accounts[0].assigned_class||'',assignedForm:accounts[0].assigned_form||'',authorization:authz};
+}
 function assertSchool(auth, schoolCode) {
-  if (!schoolCode || String(auth.schoolCode) !== String(schoolCode)) {
+  if (!auth || String(auth.schoolCode) !== String(schoolCode)) {
     const error = new Error('Forbidden school scope');
     error.status = 403;
     throw error;
   }
 }
-
 async function login(req, res) {
   const input = await readBody(req);
   const { schoolCode, staffId, password } = input;
@@ -136,7 +154,7 @@ async function config(req, res, auth) {
     return rows.length ? json(res, 200, rows[0]) : json(res, 404, { error: 'School not found' });
   }
   if (req.method === 'POST') {
-    const cfg = await readBody(req);
+    const cfg = req.__legacyInput || await readBody(req);
     assertSchool(auth, cfg.schoolCode);
     if (!cfg.schoolCode || !cfg.school) return json(res, 400, { error: 'schoolCode and school name are required' });
     await query(`INSERT INTO schools (school_code,name,ges_name,directorate,district,region,head_name,head_phone,academic_year,term,exam_type,category,grading_system,boys_count,girls_count,vacation_date,reopening_date,extra_config) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),ges_name=VALUES(ges_name),directorate=VALUES(directorate),district=VALUES(district),region=VALUES(region),head_name=VALUES(head_name),head_phone=VALUES(head_phone),academic_year=VALUES(academic_year),term=VALUES(term),exam_type=VALUES(exam_type),category=VALUES(category),grading_system=VALUES(grading_system),boys_count=VALUES(boys_count),girls_count=VALUES(girls_count),vacation_date=VALUES(vacation_date),reopening_date=VALUES(reopening_date),extra_config=VALUES(extra_config)`, [cfg.schoolCode,cfg.school,cfg.gesName||'GHANA EDUCATION SERVICE',cfg.directorate||null,cfg.district||null,cfg.region||null,cfg.head||null,cfg.headPhone||null,cfg.year||null,cfg.term||'3rd Term',cfg.examType||'End of Term Exam',cfg.category||'ORGANIZED BY SCHOOL',cfg.gradingSystem||'WAEC',cfg.boys||0,cfg.girls||0,cfg.vacationDate||null,cfg.reopeningDate||null,JSON.stringify(cfg.extra||{})]);
@@ -146,10 +164,11 @@ async function config(req, res, auth) {
 }
 
 async function students(req, res, auth) {
-  const input = req.method === 'GET' ? Object.fromEntries(new URL(req.url, 'http://localhost').searchParams) : await readBody(req);
+  const input = req.__legacyInput || (req.method === 'GET' ? Object.fromEntries(new URL(req.url, 'http://localhost').searchParams) : await readBody(req));
   assertSchool(auth, input.schoolCode);
   const { schoolCode, class: className, form, year, term } = input;
   if (!schoolCode || !className || !form || !year || !term) return json(res, 400, { error: 'schoolCode, class, form, year, term are required' });
+  if (auth.role === 'TEACHER' && (!auth.assignedClass || !auth.assignedForm || String(className) !== String(auth.assignedClass) || String(form) !== String(auth.assignedForm))) return json(res, 403, { error: 'Permission denied for assigned class scope' });
   const schools = await query('SELECT id FROM schools WHERE school_code = ?', [schoolCode]);
   if (!schools.length) return json(res, 404, { error: 'School not found' });
   const schoolId = schools[0].id;
@@ -180,8 +199,13 @@ async function handler(req, res) {
     if (req.url.split('?')[0] === '/api/login') return req.method === 'POST' ? login(req,res) : json(res,405,{error:'Method Not Allowed'});
     if (req.url.split('?')[0] === '/api/school-login') return req.method === 'POST' ? schoolLogin(req,res) : json(res,405,{error:'Method Not Allowed'});
     if (!['/api/config','/api/students'].includes(req.url.split('?')[0])) return false;
-    const auth = requireAuth(req,res); if (!auth) return true;
-    if (req.url.split('?')[0] === '/api/config') await config(req,res,auth); else await students(req,res,auth);
+    const claims = requireAuth(req,res); if (!claims) return true;
+    const route=req.url.split('?')[0];let schoolCode='';let permissions=[];
+    if(route==='/api/config') { schoolCode=req.method==='GET'?new URL(req.url,'http://localhost').searchParams.get('schoolCode'):'';if(req.method==='POST')req.__legacyInput=await readBody(req);schoolCode=schoolCode||String(req.__legacyInput&&req.__legacyInput.schoolCode||'');permissions=['schools.manage']; }
+    else { const input=req.method==='GET'?Object.fromEntries(new URL(req.url,'http://localhost').searchParams):await readBody(req);schoolCode=String(input.schoolCode||'');permissions=['students.manage','scores.manage'];req.__legacyInput=input; }
+    let auth;try{auth=await schoolAuthorization(claims,schoolCode,permissions)}catch(error){json(res,503,{error:'Authorization service unavailable'});return true;}
+    if(!auth){json(res,403,{error:'Permission denied'});return true;}
+    if (route === '/api/config') await config(req,res,auth); else await students(req,res,auth);
     return true;
   } catch (error) { json(res, error.status || 500, { error: error.status ? error.message : 'Internal server error' }); return true; }
 }

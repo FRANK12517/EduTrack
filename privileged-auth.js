@@ -190,37 +190,53 @@
       if (login) { login.style.display = 'flex'; login.classList.remove('fade-out'); }
     });
   }
+  function clearSchoolState() {
+    ['v43_login_level','v43_login_role','v43_login_staffid','ems_login_role','ems_login_region','ems_login_district'].forEach(function (key) { try { localStorage.removeItem(key); } catch (error) {} });
+    window._v43SchoolLoginContext = null;
+    window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__ = false;
+    window.__EDUTRACK_SCHOOL_SESSION_PENDING__ = false;
+    window.dispatchEvent(new CustomEvent('edutrack:school-session-invalid'));
+  }
   function restoreSchoolSession() {
-    var mode = '', level = '', role = '', staffId = '', region = '', district = '';
+    var mode = '', level = '';
     try {
       mode = localStorage.getItem(DEV_MODE_KEY) || '';
       level = String(localStorage.getItem('v43_login_level') || '').toUpperCase();
-      role = localStorage.getItem('v43_login_role') || '';
-      staffId = localStorage.getItem('v43_login_staffid') || '';
-      region = localStorage.getItem('ems_login_region') || '';
-      district = localStorage.getItem('ems_login_district') || '';
     } catch (error) { return; }
-    if (mode === 'developer' || level !== 'SCHOOL' || !role || !staffId) return;
-    var login = el('login-screen');
-    var overlay = el('loginSuccessOverlay');
-    if (overlay) overlay.classList.remove('show');
-    if (login) {
-      login.classList.remove('show', 'fade-out');
-      login.style.display = 'none';
-    }
-    if (typeof window.emsHideUpperLevelDashboard === 'function') window.emsHideUpperLevelDashboard();
-    if (typeof window.emsRouteAfterLogin === 'function') {
-      window.emsRouteAfterLogin('SCHOOL', role, region, district);
-    }
-    window.dispatchEvent(new CustomEvent('edutrack:school-session'));
-    setTimeout(function () {
-      var root = el('sg-school-level');
-      if (window.EDUTRACK_SCHOOL_SIDEBAR) {
-        if (typeof window.EDUTRACK_SCHOOL_SIDEBAR.refresh === 'function') window.EDUTRACK_SCHOOL_SIDEBAR.refresh();
-        else if (root) window.EDUTRACK_SCHOOL_SIDEBAR.activateScope(root);
-      }
-    }, 250);
+    if (mode === 'developer' || level !== 'SCHOOL') return;
+    window.__EDUTRACK_SCHOOL_SESSION_PENDING__ = true;
+    request('/auth/session').then(function (data) {
+      var user = data && data.user || {}, authorization = data && data.authorization || {}, scope = authorization.loginScope || {};
+      var role = String(user.role || '').toUpperCase();
+      if (!data.authenticated || authorization.administrativeLevel !== 'SCHOOL' || scope.level !== 'SCHOOL' || !scope.schoolId || scope.role !== user.role || !user.staffId || !Array.isArray(authorization.permissions) || !/^(HEADTEACHER|ASSISTANT_HEADTEACHER|TEACHER)$/.test(role)) throw new Error('Not an authenticated School session');
+      localStorage.setItem('v43_login_level', 'SCHOOL');
+      localStorage.setItem('v43_login_role', user.role);
+      localStorage.setItem('v43_login_staffid', user.staffId);
+      localStorage.setItem('ems_login_role', 'school');
+      if (scope.region) localStorage.setItem('ems_login_region', scope.region); else localStorage.removeItem('ems_login_region');
+      if (scope.district) localStorage.setItem('ems_login_district', scope.district); else localStorage.removeItem('ems_login_district');
+      window._v43SchoolLoginContext = { authenticated: true, user: user, authorization: authorization, school: { id: scope.schoolId, region: scope.region, district: scope.district } };
+      window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__ = true;
+      var login = el('login-screen');
+      var overlay = el('loginSuccessOverlay');
+      if (overlay) overlay.classList.remove('show');
+      if (login) { login.classList.remove('show', 'fade-out'); login.style.display = 'none'; }
+      if (typeof window.emsHideUpperLevelDashboard === 'function') window.emsHideUpperLevelDashboard();
+      if (typeof window.emsRouteAfterLogin === 'function') window.emsRouteAfterLogin('SCHOOL', user.role, scope.region || '', scope.district || '');
+      window.dispatchEvent(new CustomEvent('edutrack:school-session')); if (window.EDUTRACK_SCHOOL_MODULES && typeof window.EDUTRACK_SCHOOL_MODULES.activate === 'function') window.EDUTRACK_SCHOOL_MODULES.activate('SCHOOL_GENERAL', window._v43SchoolLoginContext).catch(function(){ var login=el('login-screen');if(login)login.style.display='flex'; });
+      setTimeout(function () {
+        var root = el('sg-school-level');
+        if (window.EDUTRACK_SCHOOL_SIDEBAR) {
+          if (typeof window.EDUTRACK_SCHOOL_SIDEBAR.refresh === 'function') window.EDUTRACK_SCHOOL_SIDEBAR.refresh();
+          else if (root) window.EDUTRACK_SCHOOL_SIDEBAR.activateScope(root);
+        }
+      }, 250);
+    }).catch(function () {
+      clearSchoolState();
+      var login = el('login-screen'); if (login) { login.style.display = 'flex'; login.classList.remove('fade-out'); }
+    }).finally(function () { window.__EDUTRACK_SCHOOL_SESSION_PENDING__ = false; });
   }
+  window.EDUTRACK_SCHOOL_AUTH = { clear: clearSchoolState };
   window.EDUTRACK_DEVELOPER_LOGOUT = function () {
     clearDeveloperState();
     return request('/auth/logout', { method: 'POST' }).catch(function () {});

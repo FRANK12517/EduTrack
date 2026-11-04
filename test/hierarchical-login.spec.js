@@ -1,0 +1,36 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const vm = require('node:vm');
+const hierarchy = require('../ghana-hierarchy');
+const source = fs.readFileSync(require.resolve('../ghana-hierarchy'), 'utf8');
+const literal = source.match(/const districtsByRegion = (\{[\s\S]*?\n\});/)[1];
+assert.equal(crypto.createHash('sha256').update(literal.replace(/\r\n/g,'\n')).digest('hex'), '3cff73d7ebc335b5a2febd068b2ec4f329921fabb49a408a93c49a2c1b5ef7c2', 'exact attachment mapping');
+assert.equal(hierarchy.regions.length, 16);
+assert.equal(Object.values(hierarchy.districtsByRegion).flat().length, 237);
+assert.equal(hierarchy.validPair('Central Region','Kumasi Metro'),false);
+assert.equal(hierarchy.hasRegion('__proto__'),false);
+assert.equal(hierarchy.validPair('Central Region','Cape Coast Metro'),true);
+const context = {window:{}, Option: function(text,value){this.text=text;this.value=value;}};
+vm.runInNewContext(source,context);
+const browser = context.window.EDUTRACK_GHANA_HIERARCHY;
+const select = () => ({value:'',options:[],replaceChildren(...options){this.options=options;this.value='';},append(option){this.options.push(option);}});
+const region=select(),district=select();browser.populateRegions(region);
+assert.equal(region.options.length,17);browser.cascade(region,district);assert.equal(district.disabled,true);
+for(const name of hierarchy.regions){district.value='STALE';region.value=name;browser.cascade(region,district);assert.equal(district.value,'');assert.equal(district.disabled,false);assert.deepEqual(district.options.slice(1).map(o=>o.value),hierarchy.districtsFor(name));}
+region.value='';browser.cascade(region,district);assert.equal(district.disabled,true);
+const selection=require('../app/auth/login-hierarchy');
+assert.equal(selection.validSelection({administrativeLevel:'REGIONAL',role:'REGIONAL_ADMIN',region:'Central Region'}),true);
+assert.equal(selection.validSelection({administrativeLevel:'REGIONAL',role:'REGIONAL_ADMIN',region:'Central Region',district:''}),false);
+assert.equal(selection.validSelection({administrativeLevel:'NATIONAL',role:'NATIONAL_ADMIN'}),true);
+assert.equal(selection.validSelection({administrativeLevel:'NATIONAL',role:'REGIONAL_ADMIN'}),false);
+assert.equal(selection.validSelection({administrativeLevel:'NATIONAL',role:'NATIONAL_ADMIN',region:'Central Region'}),false);
+console.log('PASS exact attachment extraction: 16 regions / 237 entries; every cascade, stale reset, disabled state, cross-region rejection, level field matrix');
+(async()=>{
+ let applied=false,fail=true;const queries=[];
+ const conn={query:async(sql)=>{queries.push(sql);if(sql.startsWith('SELECT version'))return [applied?[{version:29}]:[]];if(sql.startsWith('ALTER TABLE')&&fail)throw Error('DDL rejected');if(sql.startsWith('INSERT INTO schema_migrations'))applied=true;return [[]];}};
+ const migrate=require('../db/relational').migrateLoginScope;
+ await assert.rejects(migrate(conn),/DDL rejected/);assert.equal(applied,false);fail=false;await migrate(conn);assert.equal(applied,true);const count=queries.length;await migrate(conn);assert.equal(queries.length,count+1);assert.ok(!queries.some(sql=>/DROP|TRUNCATE|DELETE FROM/i.test(sql)));
+ console.log('PASS migration 29: additive nullable scope, failure propagation, retry and completed-version skip');
+})().catch(error=>{console.error(error);process.exitCode=1;});

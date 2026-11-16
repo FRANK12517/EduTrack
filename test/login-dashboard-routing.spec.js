@@ -15,6 +15,12 @@ assert.match(dashboards, /RETIRED_LEVELS/, 'retired upper-level dashboard guard 
 assert.match(dashboards, /ADMIN_LEVELS.includes\(lv\)\)return openDistrict\(lv\)/, 'Regional and National use the canonical authenticated runtime');
 assert.match(dashboards, /lv==='DISTRICT'\)return openDistrict\(\)/, 'District uses its authenticated canonical dashboard');
 assert.doesNotMatch(dashboards, /Officer Workspace/, 'obsolete upper-level dashboard navigation is removed');
+
+assert.match(dashboards, /ADMIN_LEVELS=\['DISTRICT','REGIONAL','NATIONAL'\]/, 'three shared administrative destinations must be supported');
+assert.match(dashboards, /function openDistrict\(level\)/, 'all administrative roles must enter the level dashboard');
+assert.ok(dashboards.includes("api('/api/control-panel/'+level.toLowerCase()+'?view=context')"), 'dashboard context must come from the server');
+assert.match(dashboards, /configureGroups\(level\)/, 'navigation must be based on the shared level shell and resolved permissions');
+assert.doesNotMatch(dashboards, /Officer Workspace/, 'obsolete officer workspaces must stay removed');
 assert.match(html, /emsRouteAfterLogin\('SCHOOL'/, 'school login must route through the shared dashboard dispatcher');
 assert.match(html, /showPageById\('dashboard'\)/, 'school routing must open the general dashboard');
 

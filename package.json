@@ -102,7 +102,9 @@
     "test:part29:browser": "node test/part29-visible-mock-workflow-browser.spec.js",
     "test:school-routes:browser": "node test/school-routes-runner.js",
     "test:hierarchical-login": "node test/hierarchical-login.spec.js && npm run test:macro-hierarchy",
-    "build": "node scripts/build-public.js"
+    "test:public-build": "node test/public-build.spec.js",
+    "build": "node scripts/build-public.js",
+    "test:branding": "node test/branding-regression.spec.js"
   },
   "devDependencies": {
     "playwright": "^1.62.1"

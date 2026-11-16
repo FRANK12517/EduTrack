@@ -5,12 +5,17 @@ const LEVELS = Object.freeze(['SCHOOL', 'DISTRICT', 'REGIONAL', 'NATIONAL']);
 const CORE_ROLES = Object.freeze(Object.fromEntries(['DISTRICT','REGIONAL','NATIONAL'].flatMap(level => [
   ['DIRECTOR_OF_EDUCATION','Director of Education','DIRECTOR'],
   ['ADMIN','Administrator','ADMINISTRATOR'],
-  [level === 'DISTRICT' ? 'SISO' : 'INSTITUTIONAL_SUPPORT_OFFICER', level === 'DISTRICT' ? 'School Improvement Support Officer (SISO)' : 'Institutional Support Officer','INSTITUTIONAL_SUPPORT'],
+  ['SISO','School Improvement Support Officer (SISO)','INSTITUTIONAL_SUPPORT'],
   ['EXAMINATION_OFFICER','Examination Officer','EXAMINATION'],
   ['SPORTS_OFFICER','Sports Officer','SPORTS']
 ].map(([suffix,label,category]) => [`${level}_${suffix}`, Object.freeze({level,category,label:`${level.charAt(0)+level.slice(1).toLowerCase()} ${label}`})]))));
-function coreRole(role) { return CORE_ROLES[String(role || '').trim().toUpperCase().replace(/[\s-]+/g,'_')] || null; }
-const DIRECT = Object.freeze({ DEVELOPER_ROOT:'NATIONAL', SUPER_ADMIN:'NATIONAL', NATIONAL_ADMIN:'NATIONAL', REGIONAL_ADMIN:'REGIONAL', DISTRICT_ADMIN:'DISTRICT', HEADTEACHER:'SCHOOL', SCHOOL_ACCOUNTANT:'SCHOOL', ACCOUNTANT:'SCHOOL', TEACHER:'SCHOOL', PARENT:'SCHOOL', STUDENT:'SCHOOL' });
+const LEGACY_CORE_ROLE_ALIASES = Object.freeze({REGIONAL_INSTITUTIONAL_SUPPORT_OFFICER:'REGIONAL_SISO',NATIONAL_INSTITUTIONAL_SUPPORT_OFFICER:'NATIONAL_SISO'});
+function canonicalCoreRole(role) { const key=String(role || '').trim().toUpperCase().replace(/[\s-]+/g,'_'); return LEGACY_CORE_ROLE_ALIASES[key] || (CORE_ROLES[key] ? key : null); }
+function coreRole(role) { const key=canonicalCoreRole(role); return key ? CORE_ROLES[key] || null : null; }
+const DIRECT = Object.freeze({ DEVELOPER_ROOT:'NATIONAL', SUPER_ADMIN:'NATIONAL', NATIONAL_ADMIN:'NATIONAL', REGIONAL_ADMIN:'REGIONAL', DISTRICT_ADMIN:'DISTRICT', HEADTEACHER:'SCHOOL', ASSISTANT_HEADTEACHER:'SCHOOL', SCHOOL_ACCOUNTANT:'SCHOOL', ACCOUNTANT:'SCHOOL', TEACHER:'SCHOOL', PARENT:'SCHOOL', STUDENT:'SCHOOL' });
+const SCHOOL_PERMISSION_SOURCE = Object.freeze({ ASSISTANT_HEADTEACHER:'HEADTEACHER' });
+function permissionSourceRole(role) { const key=String(role||'').trim().toUpperCase().replace(/[\s-]+/g,'_'); return SCHOOL_PERMISSION_SOURCE[key] || key; }
+function isHeadteacherEquivalent(role) { return ['HEADTEACHER','ASSISTANT_HEADTEACHER'].includes(String(role||'').trim().toUpperCase().replace(/[\s-]+/g,'_')); }
 
 function normalizeLevel(value) { const level=String(value||'').trim().toUpperCase(); return level === 'REGION' ? 'REGIONAL' : LEVELS.includes(level)?level:null; }
 function levelForRole(role,hierarchy) {
@@ -37,7 +42,7 @@ const DISTRICT_PERMISSIONS = Object.freeze({
 });
 const UPPER_PERMISSIONS = Object.freeze(Object.fromEntries(['REGIONAL','NATIONAL'].flatMap(level=>{
   const p=level.toLowerCase(),common=[p+'.dashboard.view',p+'.hierarchy.read',p+'.schools.read'];
-  const grants={DIRECTOR_OF_EDUCATION:[p+'.attendance.read',p+'.examinations.read',p+'.sports.read',p+'.reports.export'],ADMIN:[p+'.attendance.read',p+'.examinations.read',p+'.sports.read',p+'.reports.export'],INSTITUTIONAL_SUPPORT_OFFICER:[p+'.attendance.read'],EXAMINATION_OFFICER:[p+'.examinations.read',p+'.reports.export'],SPORTS_OFFICER:[p+'.sports.read']};
+  const grants={DIRECTOR_OF_EDUCATION:[p+'.attendance.read',p+'.examinations.read',p+'.sports.read',p+'.reports.export'],ADMIN:[p+'.attendance.read',p+'.examinations.read',p+'.sports.read',p+'.reports.export'],SISO:[p+'.attendance.read'],EXAMINATION_OFFICER:[p+'.examinations.read',p+'.reports.export'],SPORTS_OFFICER:[p+'.sports.read']};
   return Object.entries(grants).map(([role,permissions])=>[level+'_'+role,Object.freeze([...common,...permissions])]);
 })));
-module.exports={LEVELS,CORE_ROLES,DISTRICT_PERMISSIONS,UPPER_PERMISSIONS,coreRole,normalizeLevel,levelForRole,dashboardForLevel,contextForUser,matches};
+module.exports={LEVELS,CORE_ROLES,DISTRICT_PERMISSIONS,UPPER_PERMISSIONS,SCHOOL_PERMISSION_SOURCE,coreRole,canonicalCoreRole,permissionSourceRole,isHeadteacherEquivalent,normalizeLevel,levelForRole,dashboardForLevel,contextForUser,matches};

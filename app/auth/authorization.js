@@ -6,7 +6,7 @@ const administrativeScope = require('./administrative-scope');
 
 const GLOBAL_ROLES = new Set(['DEVELOPER_ROOT', 'SUPER_ADMIN']);
 const SCOPE_KEYS = Object.freeze({ tenantId: 'tenantIds', regionId: 'regionIds', districtId: 'districtIds', schoolId: 'schoolIds', classId: 'classIds' });
-const ROLE_LEVEL = Object.freeze({ NATIONAL_ADMIN: 'national', REGIONAL_ADMIN: 'region', DISTRICT_ADMIN: 'district', HEADTEACHER: 'school', SCHOOL_ACCOUNTANT: 'school', ACCOUNTANT: 'school', TEACHER: 'school', PARENT: 'own', STUDENT: 'own' });
+const ROLE_LEVEL = Object.freeze({ NATIONAL_ADMIN: 'national', REGIONAL_ADMIN: 'region', DISTRICT_ADMIN: 'district', HEADTEACHER: 'school', ASSISTANT_HEADTEACHER: 'school', SCHOOL_ACCOUNTANT: 'school', ACCOUNTANT: 'school', TEACHER: 'school', PARENT: 'own', STUDENT: 'own' });
 
 function requestScope(req) {
   const url = new URL(req.url || '/', 'http://edutrack.local');
@@ -45,6 +45,7 @@ function evaluate(authz, { permission = null, roles = [], scope = {} } = {}) {
   if (!authz || !authz.user || !authz.user.active || !['ACTIVE', 'active', undefined].includes(authz.user.status)) return { allowed: false, status: 403, reason: 'inactive_account' };
   const role = normalizedRole(authz);
   const core = administrativeScope.coreRole(role);
+  const inheritedSchoolPermissions = administrativeScope.permissionSourceRole(role) !== role;
   if (!role || !ROLE_LEVEL[role] && !GLOBAL_ROLES.has(role) && !core) return { allowed: false, status: 403, reason: 'unknown_role' };
   if (core) {
     const assignedLevel = administrativeScope.normalizeLevel(authz.user.hierarchy);
@@ -55,8 +56,10 @@ function evaluate(authz, { permission = null, roles = [], scope = {} } = {}) {
     if (!permission) return { allowed: false, status: 403, reason: 'resource_permission_required' };
   }
   if (authz.user.development_fixture && process.env.NODE_ENV === 'production') return { allowed: false, status: 403, reason: 'development_fixture_disabled' };
-  if (roles.length && !roles.includes(role)) return { allowed: false, status: 403, reason: 'role_denied' };
-  const permissions = core && authz.rolePermissions ? (authz.rolePermissions[role] || []) : (authz.permissions || []);
+  const roleAllowed = roles.length === 0 || roles.includes(role) || administrativeScope.isHeadteacherEquivalent(role) && roles.some(administrativeScope.isHeadteacherEquivalent);
+  if (!roleAllowed) return { allowed: false, status: 403, reason: 'role_denied' };
+  if ((core || inheritedSchoolPermissions) && !Object.prototype.hasOwnProperty.call(authz.rolePermissions || {}, role)) return { allowed: false, status: 403, reason: 'role_permissions_unavailable' };
+  const permissions = core || inheritedSchoolPermissions ? authz.rolePermissions[role] : (authz.permissions || []);
   if (permission && !permissions.includes(permission) && !permissions.includes('*')) return { allowed: false, status: 403, reason: 'permission_denied' };
   const scoped = evaluateScope(authz, scope);
   if (!scoped.allowed) return { allowed: false, status: 403, reason: scoped.reason };
@@ -70,6 +73,7 @@ async function resolve(auth) {
     if (!resolved) return null;
     return { ...auth, authorization: resolved };
   }
+  if (administrativeScope.coreRole(auth.user.role) || ['HEADTEACHER','ASSISTANT_HEADTEACHER','TEACHER'].includes(String(auth.user.role||'').toUpperCase()) || process.env.NODE_ENV === 'production') return null;
   return { ...auth, authorization: { user: auth.user, roles: [auth.user.role], permissions: ['*'], memberships: [] } };
 }
 async function authorize(auth, req, options = {}) {

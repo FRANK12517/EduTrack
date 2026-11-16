@@ -1,0 +1,38 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const root = path.join(__dirname, '..');
+const read = name => fs.readFileSync(path.join(root, name));
+const config = JSON.parse(read('branding.config.json'));
+const manifest = JSON.parse(read('manifest.webmanifest'));
+const html = read('index.html').toString('utf8');
+const shell = read('app/login-shell.js').toString('utf8');
+const server = read('server.js').toString('utf8');
+const source = read('assets/edutrack-app-icon.png');
+assert.ok(source.length > 0, 'canonical icon is not empty');
+assert.equal(source.toString('ascii', 1, 4), 'PNG');
+assert.equal(source.readUInt32BE(16), 1254);
+assert.equal(source.readUInt32BE(20), 1254);
+assert.equal(crypto.createHash('sha256').update(source).digest('hex').toUpperCase(), config.sourceSha256);
+for (const [name, size] of [['favicon-16.png',16],['favicon-32.png',32],['apple-touch-icon.png',180],['pwa-192.png',192],['pwa-512.png',512]]) {
+  const png=read(`assets/${name}`); assert.equal(png.toString('ascii',1,4),'PNG',`${name} is PNG`); assert.equal(png.readUInt32BE(16),size,`${name} width`); assert.equal(png.readUInt32BE(20),size,`${name} height`);
+}
+assert.match(html, /href="\/manifest\.webmanifest"/);
+assert.match(html, /href="\/assets\/favicon-16\.png"/);
+assert.match(html, /href="\/assets\/favicon-32\.png"/);
+assert.match(html, /href="\/assets\/apple-touch-icon\.png"/);
+assert.equal((html.match(/src="\/assets\/edutrack-app-icon\.png"/g)||[]).length,3,'login, developer, and dashboard logos use canonical asset');
+assert.match(html, /object-fit: contain/); assert.match(html, /width: clamp\(160px, 55vw, 220px\)/);
+assert.match(html, /window\.EMS_APP_ICON_LOCKED = '\/assets\/edutrack-app-icon\.png'/);
+assert.doesNotMatch(html, /id="emsAppIconLocked"[^>]*src="data:image/);
+assert.equal(config.logo.src,'/assets/edutrack-app-icon.png');
+assert.equal(config.logo.fit,'contain');
+assert.deepEqual(manifest.icons.map(icon=>icon.src),config.pwaIcons);
+for (const url of [...config.favicon,config.appleTouchIcon,...config.pwaIcons,config.logo.src]) assert.ok(fs.existsSync(path.join(root,url.replace(/^\//,''))),`active asset exists: ${url}`);
+assert.ok(shell.includes("'assets/edutrack-app-icon.png'") && shell.includes("'manifest.webmanifest'"));
+assert.match(server, /application\/manifest\+json/);
+const dist=path.join(root,'dist');
+if (fs.existsSync(dist)) for (const file of ['manifest.webmanifest','assets/edutrack-app-icon.png','assets/favicon-16.png','assets/favicon-32.png','assets/apple-touch-icon.png','assets/pwa-192.png','assets/pwa-512.png']) assert.ok(fs.existsSync(path.join(dist,file)),`production build contains ${file}`);
+console.log('EduTrack branding assets, metadata, responsive behavior, lock, and build paths verified.');

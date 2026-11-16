@@ -9,3 +9,5 @@ data/uploads/
 *.tmp
 node_modules/
 dist/
+.vercel
+.env*

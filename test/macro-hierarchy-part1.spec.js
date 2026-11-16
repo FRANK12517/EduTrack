@@ -9,9 +9,16 @@ const authorization = require('../app/auth/authorization');
 
 async function main() {
   assert.equal(Object.keys(hierarchy.CORE_ROLES).length,15);
+  for (const level of ['DISTRICT','REGIONAL','NATIONAL']) {
+    const roles=Object.entries(hierarchy.CORE_ROLES).filter(([,metadata])=>metadata.level===level);
+    assert.equal(roles.length,5,level+' canonical roles');
+    assert.deepEqual(new Set(roles.map(([,metadata])=>metadata.category)),new Set(['DIRECTOR','ADMINISTRATOR','INSTITUTIONAL_SUPPORT','EXAMINATION','SPORTS']));
+    for (const [role] of roles) assert.equal(hierarchy.contextForUser({role,hierarchy:level}).dashboard,level.toLowerCase()+'-general');
+  }
+  for (const [role,alias] of [['REGIONAL_INSTITUTIONAL_SUPPORT_OFFICER','REGIONAL_SISO'],['NATIONAL_INSTITUTIONAL_SUPPORT_OFFICER','NATIONAL_SISO']]) assert.equal(hierarchy.coreRole(role),hierarchy.coreRole(alias));
   for (const [role,{level}] of Object.entries(hierarchy.CORE_ROLES)) {
     const scope=level==='DISTRICT'?{districtIds:['d1']}:level==='REGIONAL'?{regionIds:['r1']}:{tenantId:'n1'};
-    const auth={user:{active:true,hierarchy:level},roles:[role],permissions:['reporting.read'],memberships:[{tenantId:'n1',tenantType:level==='NATIONAL'?'NATIONAL':'SCHOOL',scope}]};
+    const auth={user:{active:true,hierarchy:level},roles:[role],permissions:['reporting.read'],rolePermissions:{[role]:['reporting.read']},memberships:[{tenantId:'n1',tenantType:level==='NATIONAL'?'NATIONAL':'SCHOOL',scope}]};
     assert.equal(authorization.evaluate(auth,{permission:'reporting.read'}).allowed,true,role);
     assert.equal(authorization.evaluate({...auth,memberships:[]},{permission:'reporting.read'}).allowed,false);
     assert.equal(authorization.evaluate(auth,{permission:'examinations.manage'}).allowed,false);
@@ -19,6 +26,14 @@ async function main() {
     assert.equal(authorization.evaluate({...auth,user:{active:true,hierarchy:'SCHOOL'}},{permission:'reporting.read'}).allowed,false);
     assert.equal(authorization.evaluate({...auth,rolePermissions:{[role]:[]}},{permission:'reporting.read'}).allowed,false,'other roles cannot lend resource permissions');
   }
+  assert.equal(authorization.evaluate({user:{active:true,hierarchy:'DISTRICT'},roles:['DISTRICT_DIRECTOR_OF_EDUCATION'],permissions:['*'],memberships:[{scope:{districtIds:['d1']}}]}, {permission:'district.dashboard.view'}).allowed,false,'core role must fail closed when role permissions are missing');
+  const relational=require('../db/relational'),wasConfigured=relational.isConfigured,originalProduction=process.env.NODE_ENV;
+  relational.isConfigured=()=>false;
+  try {
+    assert.equal(await authorization.resolve({user:{id:'officer',role:'DISTRICT_DIRECTOR_OF_EDUCATION'}}),null,'admin authorization cannot resolve without relational authority');
+    process.env.NODE_ENV='production';
+    assert.equal(await authorization.resolve({user:{id:'teacher',role:'TEACHER'}}),null,'production authorization cannot fall back to wildcard grants');
+  } finally { relational.isConfigured=wasConfigured;if(originalProduction===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=originalProduction; }
   const filename=path.resolve(__dirname,'../db/relational.js');
   const localRequire=createRequire(filename);
   const calls=[]; let actor=true, district=true, auditFailure=false, rolledBack=false, committed=false;

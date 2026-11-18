@@ -691,6 +691,15 @@ const PRODUCTION_CONFIGURATION_FAILURES = new Map([
   ['EDUTRACK_STORAGE_BUCKET is required when EDUTRACK_STORAGE_MODE=s3.', 'STORAGE_BUCKET_MISSING'],
 ]);
 async function handler(req, res) {
+  const publicRuntimePath = req.url.split('?')[0];
+  // Canonical role labels are static public metadata. Keep origin and URL guards,
+  // but do not make the login form depend on database or other runtime services.
+  if (req.method === 'GET' && publicRuntimePath === '/api/auth/login-options') {
+    if (Buffer.byteLength(String(req.url || '')) > MAX_URL_BYTES) return json(res, 414, { error: 'Request URI too long' });
+    if (!applyCors(req, res)) return json(res, 403, { error: 'Origin not allowed' });
+    res.setHeader('X-Request-ID', correlationId(req));
+    return json(res, 200, { roles: administrativeScope.CORE_ROLES });
+  }
   if (process.env.NODE_ENV === 'production') {
     try { assertProductionConfiguration(); }
     catch (error) {
@@ -703,15 +712,15 @@ async function handler(req, res) {
   if (process.env.NODE_ENV !== 'test' && !relational.isConfigured()) {
     return json(res, 503, { error: 'Supabase persistence is not configured' });
   }
-  // These public endpoints need neither the compatibility JSON store nor
+  // The public health endpoint needs neither the compatibility JSON store nor
   // hydrated user/session records. Keep configuration and origin checks intact
   // without requiring writes to a serverless deployment's read-only filesystem.
-  const publicRuntimePath = req.url.split('?')[0];
-  if (req.method === 'GET' && ['/api/auth/login-options', '/api/health'].includes(publicRuntimePath)) {
+
+  if (req.method === 'GET' && publicRuntimePath === '/api/health') {
     if (Buffer.byteLength(String(req.url || '')) > MAX_URL_BYTES) return json(res, 414, { error: 'Request URI too long' });
     if (!applyCors(req, res)) return json(res, 403, { error: 'Origin not allowed' });
     res.setHeader('X-Request-ID', correlationId(req));
-    if (publicRuntimePath === '/api/auth/login-options') return json(res, 200, { roles: administrativeScope.CORE_ROLES });
+
     try {
       if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' });
       if (relational.isConfigured()) await relational.ensureInitialized();

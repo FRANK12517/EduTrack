@@ -8,7 +8,7 @@ const regionName = value => normalize(value).replace(/ REGION$/, '');
 const districtName = value => normalize(value).replace(/METROPOLITAN/g, 'METRO').replace(/SECONDI/g, 'SEKONDI');
 
 function validSelection(input) {
-  const core = administrative.CORE_ROLES[input.role];
+  const core = administrative.coreRole(input.role);
   if (!core || core.level !== input.administrativeLevel) return false;
   if (core.level === 'NATIONAL') return !Object.hasOwn(input, 'region') && !Object.hasOwn(input, 'district');
   if (!hierarchy.hasRegion(input.region)) return false;
@@ -18,11 +18,12 @@ function validSelection(input) {
 // Resolve display choices to persisted IDs through the existing scoped hierarchy.
 // No school operational data or synchronization changes are involved in login.
 async function resolveSelection(user, input, authz) {
-  if (!validSelection(input) || !user || user.role !== input.role || !relational.isConfigured()) return null;
+  if (!validSelection(input) || !user || administrative.canonicalCoreRole(user.role) !== administrative.canonicalCoreRole(input.role) || !relational.isConfigured()) return null;
   authz = authz || await relational.resolveAuthorization(user.id);
-  if (!authz || authz.roles[0] !== input.role || !authz.user.active || authz.user.status !== 'ACTIVE') return null;
-  if (!(authz.rolePermissions[input.role] || []).includes(input.administrativeLevel.toLowerCase() + '.dashboard.view')) return null;
-  const result = { level: input.administrativeLevel, role: input.role };
+  const resolvedRole=authz?.roles?.[0];
+  if (!authz || administrative.canonicalCoreRole(resolvedRole) !== administrative.canonicalCoreRole(input.role) || !authz.user.active || authz.user.status !== 'ACTIVE') return null;
+  if (!(authz.rolePermissions[resolvedRole] || []).includes(input.administrativeLevel.toLowerCase() + '.dashboard.view')) return null;
+  const result = { level: input.administrativeLevel, role: resolvedRole };
   if (result.level === 'NATIONAL') {
     return authz.memberships.some(m => m.tenantType === 'NATIONAL') ? result : null;
   }
@@ -38,6 +39,7 @@ async function resolveSelection(user, input, authz) {
   }
   return result;
 }
+
 
 async function constrainAuthorization(user, authz, selection) {
   if (selection.level === 'SCHOOL') {

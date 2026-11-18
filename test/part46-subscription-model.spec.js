@@ -42,7 +42,7 @@ assert.deepEqual(policy.validateCapacity(1000000, 16), { students: 1000000, staf
 
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
+const schema = require('./schema-source').read();
 assert.match(server, /subscriptionPolicy/);
 assert.match(server, /\/api\/subscriptions\/plans/);
 assert.match(server, /\/api\/subscriptions\/quote/);

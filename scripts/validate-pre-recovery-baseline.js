@@ -2,76 +2,61 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const mysql = require('mysql2/promise');
+const { Client } = require('pg');
+const { poolOptions } = require('../lib/postgres-pool');
 const { readonly } = require('../lib/production-preflight-readonly');
 
-const EXPECTED_TABLES = [
-  'admission_applications', 'admission_documents', 'admission_intakes', 'admission_status_history', 'attendance', 'audit_log',
-  'chat_conversation_participants', 'chat_conversations', 'chat_message_attachments', 'chat_messages', 'comment_library',
-  'communication_campaign_recipients', 'communication_campaigns', 'cross_school_admin_access', 'fees', 'multi_school_audit_log',
-  'payments', 'school_control_panel_settings', 'school_group_members', 'school_groups', 'schools', 'students', 'subject_scores',
-  'term_records', 'users'
-];
+const INITIAL_SCHEMA = path.resolve(__dirname, '../supabase/migrations/20261116000000_initial_schema.sql');
+const EXPECTED_TABLES = [...new Set([...fs.readFileSync(INITIAL_SCHEMA, 'utf8').matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?public\.([a-zA-Z_][\w]*)/gi)].map((match) => match[1]))]
+  .filter((table) => table !== 'schema_migrations').sort();
+const EXPECTED_APPLICATION_FOREIGN_KEYS = 156;
+const EXPECTED_DATABASE_FOREIGN_KEYS = EXPECTED_APPLICATION_FOREIGN_KEYS + 1; // Supabase Auth identity mapping.
+const REQUIRED_MIGRATIONS = ['20261116000000','20261116001000','20261116002000'];
 const FORBIDDEN_ENV = [
-  'EDUTRACK_DATABASE_URL', 'DATABASE_URL', 'EDUTRACK_PRODUCTION_DATABASE_URL', 'TIDB_HOST', 'TIDB_PORT', 'TIDB_USER',
-  'TIDB_PASSWORD', 'TIDB_DATABASE', 'TIDB_CA_CERT', 'EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL',
-  'EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL', 'EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL', 'EDUTRACK_TIDB_TEST_DATABASE_URL'
+  'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'DATABASE_URL',
+  'EDUTRACK_DATABASE_URL', 'EDUTRACK_PRODUCTION_DATABASE_URL', 'TIDB_HOST', 'TIDB_PASSWORD'
 ];
 function config(env = process.env) {
-  if (!env.EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL || FORBIDDEN_ENV.some((key) => env[key])) {
-    throw new Error('Pre-recovery read-only target is not explicitly authorized');
+  if (env.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET !== 'production-read-only' || !env.SUPABASE_DB_URL || FORBIDDEN_ENV.some((key) => env[key])) {
+    throw new Error('Supabase production baseline target is not explicitly authorized for read-only verification');
   }
-  return { uri: env.EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL, ssl: { rejectUnauthorized: true }, multipleStatements: false };
+  const options=poolOptions({...env,EDUTRACK_DB_POOL_SIZE:'1'});if(['localhost','127.0.0.1','::1','[::1]'].includes(new URL(options.connectionString).hostname))throw new Error('Production baseline verification requires a remote PostgreSQL target');
+  return { connectionString:options.connectionString,ssl:options.ssl };
 }
-function q(value) { return `\`${String(value).replace(/`/g, '``')}\``; }
-function numeric(type) { return /^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric)$/i.test(String(type)); }
+function q(value) { return `"${String(value).replace(/"/g, '""')}"`; }
 function classify(report) {
-  const exact = report.tableCount === 25 && report.foreignKeyCount === 40 && report.bigintIdentifierCount === 64
-    && report.varcharIdentifierCount === 7 && report.implicitReferenceCount === 7 && report.pgsidColumnCount === 0
-    && report.usersIdType === 'bigint' && report.schoolsIdType === 'bigint' && report.requiredAdmissionHistoryForeignKey
-    && report.archiveArtifactCount === 0 && report.canonicalIdentityArtifactCount === 0
-    && EXPECTED_TABLES.length === Object.keys(report.tableRowCounts).length
-    && EXPECTED_TABLES.every((table) => report.tableRowCounts[table] === (table === 'schools' ? 1 : table === 'users' ? 2 : 0));
-  return exact ? 'EXACT_CLEAN_LEGACY_BASELINE_MATCH' : 'NOT_CLEAN_LEGACY_BASELINE';
+  const complete=report.tableCount===EXPECTED_TABLES.length+1&&report.applicationTableCount===EXPECTED_TABLES.length
+    &&report.missingApplicationTables.length===0&&report.unexpectedApplicationTables.length===0
+    &&report.requiredMigrations.every(version=>report.appliedMigrations.includes(version))
+    &&report.schemaMigrationCount===REQUIRED_MIGRATIONS.length&&report.rowLevelSecurityTableCount===EXPECTED_TABLES.length
+    &&report.authIdentityMappingPresent&&report.foreignKeyCount===EXPECTED_DATABASE_FOREIGN_KEYS;
+  return complete?'SUPABASE_PRODUCTION_SCHEMA_READY':'SUPABASE_PRODUCTION_SCHEMA_INCOMPLETE';
 }
 function write(report) {
   fs.mkdirSync('artifacts', { recursive: true });
   fs.writeFileSync(path.join('artifacts', 'pre-recovery-baseline-validation.json'), JSON.stringify(report, null, 2), { mode: 0o600 });
 }
 async function inspect(db) {
-  const [tables] = await db.query('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME');
+  const [tables] = await db.query("SELECT table_name AS \"TABLE_NAME\" FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name");
   const names = tables.map((row) => row.TABLE_NAME);
-  const [columns] = await db.query('SELECT TABLE_NAME,COLUMN_NAME,DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE()');
-  const [keys] = await db.query('SELECT TABLE_NAME,COLUMN_NAME,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME,CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE()');
-  const foreign = keys.filter((key) => key.REFERENCED_TABLE_NAME);
-  const foreignColumns = new Set(foreign.map((key) => `${key.TABLE_NAME}.${key.COLUMN_NAME}`));
-  const identifiers = columns.filter((column) => /(^id$|_id$|^id_)/i.test(column.COLUMN_NAME));
-  const rowCounts = {};
-  for (const table of names) {
-    const [[row]] = await db.query(`SELECT COUNT(*) AS count FROM ${q(table)}`);
-    rowCounts[table] = Number(row.count);
-  }
-  const artifacts = names.filter((name) => /^legacy_.*_archive$/.test(name) || ['legacy_account_identity_map', 'legacy_school_identity_map'].includes(name));
+  const [keys] = await db.query("SELECT count(*)::int AS count FROM information_schema.table_constraints WHERE constraint_schema='public' AND constraint_type='FOREIGN KEY'");
+  const [rls] = await db.query("SELECT count(*) FILTER (WHERE c.relrowsecurity)::int AS protected FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname<>'schema_migrations'");
+  const [migrations] = await db.query('SELECT version::text AS version FROM supabase_migrations.schema_migrations ORDER BY version');
+  const [identity] = await db.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='supabase_auth_user_id' AND data_type='uuid') AS present");
+  const missingApplicationTables=EXPECTED_TABLES.filter(table=>!names.includes(table));
+  const unexpectedApplicationTables=names.filter(name=>name!=='schema_migrations'&&!EXPECTED_TABLES.includes(name));
   const report = {
-    mode: 'READ_ONLY', target: 'PRE_RECOVERY', tableCount: names.length, foreignKeyCount: foreign.length,
-    bigintIdentifierCount: identifiers.filter((column) => numeric(column.DATA_TYPE)).length,
-    varcharIdentifierCount: identifiers.filter((column) => /^(varchar|char)$/i.test(String(column.DATA_TYPE))).length,
-    implicitReferenceCount: identifiers.filter((column) => column.COLUMN_NAME !== 'id' && !foreignColumns.has(`${column.TABLE_NAME}.${column.COLUMN_NAME}`)).length,
-    pgsidColumnCount: columns.filter((column) => /pgsid|permanent.*student|student.*identifier|admission.*number/i.test(column.COLUMN_NAME)).length,
-    tableRowCounts: rowCounts,
-    usersIdType: columns.find((column) => column.TABLE_NAME === 'users' && column.COLUMN_NAME === 'id')?.DATA_TYPE || null,
-    schoolsIdType: columns.find((column) => column.TABLE_NAME === 'schools' && column.COLUMN_NAME === 'id')?.DATA_TYPE || null,
-    requiredAdmissionHistoryForeignKey: foreign.some((key) => key.TABLE_NAME === 'admission_status_history' && key.COLUMN_NAME === 'changed_by_user_id' && key.REFERENCED_TABLE_NAME === 'users' && key.REFERENCED_COLUMN_NAME === 'id'),
-    archiveArtifactCount: artifacts.filter((name) => /^legacy_.*_archive$/.test(name)).length,
-    canonicalIdentityArtifactCount: artifacts.filter((name) => ['legacy_account_identity_map', 'legacy_school_identity_map'].includes(name)).length
+    mode:'READ_ONLY',target:'SUPABASE_PRODUCTION',tableCount:names.length,applicationTableCount:names.filter(name=>name!=='schema_migrations').length,
+    missingApplicationTables,unexpectedApplicationTables,foreignKeyCount:Number(keys[0].count),rowLevelSecurityTableCount:Number(rls[0].protected),
+    schemaMigrationCount:migrations.length,requiredMigrations:REQUIRED_MIGRATIONS,appliedMigrations:migrations.map(row=>row.version),authIdentityMappingPresent:Boolean(identity[0].present)
   };
   report.classification = classify(report);
   return report;
 }
 async function main() {
-  const raw = await mysql.createConnection(config()); const db = readonly(raw);
-  try { const report = await inspect(db); write(report); console.log(report.classification); }
+  const client=new Client(config());await client.connect();await client.query('BEGIN READ ONLY');const raw={async query(sql,values){const result=await client.query(sql,values);return[result.rows,result.fields]},async end(){try{await client.query('ROLLBACK')}finally{await client.end()}}};const db=readonly(raw);
+  try { const report = await inspect(db); write(report); console.log(report.classification); if(report.classification!=='SUPABASE_PRODUCTION_SCHEMA_READY')process.exitCode=1; }
   finally { await db.end(); }
 }
-if (require.main === module) main().catch(() => { write({ mode: 'READ_ONLY', target: 'PRE_RECOVERY', classification: 'BASELINE_IDENTITY_NOT_PROVABLE' }); console.log('BASELINE_IDENTITY_NOT_PROVABLE'); process.exitCode = 1; });
-module.exports = { EXPECTED_TABLES, FORBIDDEN_ENV, config, classify, inspect };
+if (require.main === module) main().catch((error) => { write({ mode:'READ_ONLY',target:'SUPABASE_PRODUCTION',classification:'BASELINE_IDENTITY_NOT_PROVABLE',error:error.code||'DATABASE_ERROR' }); console.log('BASELINE_IDENTITY_NOT_PROVABLE'); process.exitCode = 1; });
+module.exports = { EXPECTED_TABLES, EXPECTED_APPLICATION_FOREIGN_KEYS, EXPECTED_DATABASE_FOREIGN_KEYS, REQUIRED_MIGRATIONS, FORBIDDEN_ENV, config, classify, inspect };

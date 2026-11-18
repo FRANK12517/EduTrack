@@ -25,7 +25,7 @@ function request(pathname, options = {}) {
 }
 function cookieFrom(response) { return Array.isArray(response.headers['set-cookie']) ? response.headers['set-cookie'][0].split(';')[0] : ''; }
 function startServer(env) {
-  const child = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, EDUTRACK_DATABASE_URL: '', DATABASE_URL: '', ...env, PORT: String(PORT), NODE_ENV: 'development' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, SUPABASE_DB_URL: '', DATABASE_URL: '', ...env, PORT: String(PORT), NODE_ENV: 'development' }, stdio: ['ignore', 'pipe', 'pipe'] });
   const logs = []; child.stdout.on('data', (chunk) => logs.push(String(chunk))); child.stderr.on('data', (chunk) => logs.push(String(chunk)));
   return { child, logs };
 }
@@ -34,7 +34,7 @@ function waitForServer(timeout = 10000) {
   return new Promise((resolve, reject) => { const poll = () => request('/api/health').then((r) => r.status === 200 ? resolve() : retry()).catch(retry); const retry = () => Date.now() - started > timeout ? reject(new Error('server readiness timeout')) : setTimeout(poll, 100); poll(); });
 }
 async function provision() {
-  const result = spawnSync(process.execPath, ['server.js', '--provision-dev'], { cwd: ROOT, env: { ...process.env, EDUTRACK_DATABASE_URL: '', DATABASE_URL: '', NODE_ENV: 'development', EDUTRACK_ENABLE_DEV_ACCESS: 'true', EDUTRACK_DEV_EMAIL: DEV.email, EDUTRACK_DEV_PASSWORD: DEV.password, EDUTRACK_DEV_ACCESS_CODE: DEV.accessCode }, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, ['server.js', '--provision-dev'], { cwd: ROOT, env: { ...process.env, SUPABASE_DB_URL: '', DATABASE_URL: '', NODE_ENV: 'development', EDUTRACK_ENABLE_DEV_ACCESS: 'true', EDUTRACK_DEV_EMAIL: DEV.email, EDUTRACK_DEV_PASSWORD: DEV.password, EDUTRACK_DEV_ACCESS_CODE: DEV.accessCode }, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   const user = db.users.find((record) => record.email === DEV.email);
@@ -47,7 +47,7 @@ async function main() {
   const original = fs.readFileSync(DB_FILE);
   let server; let browser;
   try {
-    const disabled = spawnSync(process.execPath, ['server.js', '--provision-dev'], { cwd: ROOT, env: { ...process.env, EDUTRACK_DATABASE_URL: '', DATABASE_URL: '', NODE_ENV: 'production' }, encoding: 'utf8' });
+    const disabled = spawnSync(process.execPath, ['server.js', '--provision-dev'], { cwd: ROOT, env: { ...process.env, SUPABASE_DB_URL: '', DATABASE_URL: '', NODE_ENV: 'production' }, encoding: 'utf8' });
     assert.notEqual(disabled.status, 0, 'development provisioning must be unavailable in production');
     await provision();
     server = startServer({ EDUTRACK_ENABLE_DEV_ACCESS: 'true' }); await waitForServer();

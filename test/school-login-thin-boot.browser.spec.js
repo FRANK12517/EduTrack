@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
 const repo = path.join(__dirname, '..');
 const port = 32000 + Math.floor(Math.random() * 2000);
 const baseUrl = `http://127.0.0.1:${port}`;
-const dataFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'edutrack-school-login-')), 'fixture.json');
+const auditDirectory = path.join(os.tmpdir(), `edutrack-school-route-audit-${process.pid}`);
 const fixture = {
   region: 'Western Region', district: 'Sekondi Takoradi Metro', role: 'HEADTEACHER',
   accessCode: process.env.EDUTRACK_TEST_SCHOOL_ACCESS_CODE,
@@ -45,6 +45,14 @@ async function directLogin() {
   assert.equal(body.authenticated, true);
   assert.equal(body.user.role, fixture.role);
   assert.match(response.headers.get('set-cookie') || '', /HttpOnly/i, 'authenticated response must set an HttpOnly cookie');
+  const sessionCookie = (response.headers.get('set-cookie') || '').split(';')[0];
+  const session = await fetch(`${baseUrl}/api/auth/session`, { headers: { cookie: sessionCookie } });
+  const sessionBody = await session.json();
+  assert.equal(session.status, 200, `server-resolved School session: ${JSON.stringify(sessionBody)}`);
+  assert.equal(sessionBody.authorization.loginScope.schoolId, 'test-school-western-sekondi');
+  assert.ok(Array.isArray(sessionBody.authorization.permissions));
+  assert.ok(sessionBody.authorization.permissions.includes('admissions.finalize'), 'Headteacher grants come from the canonical server permission matrix');
+  assert.equal(sessionBody.authorization.permissions.includes('*'), false, 'the test session never receives wildcard grants');
   const rejected = await fetch(`${baseUrl}/api/school-login`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ ...fixture, accessCode: 'wrong-test-code' })
@@ -109,7 +117,10 @@ async function browserLogin(browser, viewport) {
     const audit=await page.evaluate(async()=>{
       const out=[];
       for(const parent of document.querySelectorAll('#sg-school-level .nav-group-header')){parent.click();parent.click();}
-      const leaves=Array.from(document.querySelectorAll('#sg-school-level .school-nav-item'));
+      const allLeaves=Array.from(document.querySelectorAll('#sg-school-level .school-nav-item'));
+      const leaves=allLeaves.filter(leaf=>!leaf.hidden&&!leaf.closest('.school-nav-group[hidden]'));
+      const unregistered=leaves.filter(leaf=>leaf.dataset.schoolTarget!=='session:logout'&&!window.EDUTRACK_SCHOOL_ROUTE_HISTORY.backendFor(leaf.dataset.schoolTarget||''));
+      if(unregistered.length)out.push(...unregistered.map(leaf=>({label:leaf.dataset.schoolNav,target:leaf.dataset.schoolTarget,available:false,error:'visible route lacks a registered backend'})));
       for(const leaf of leaves){
         const target=leaf.dataset.schoolTarget;if(target==='session:logout')continue;
         const before=document.querySelector('.page:not(.hidden)')?.id;
@@ -124,12 +135,17 @@ async function browserLogin(browser, viewport) {
         }catch(error){out.push({label:leaf.dataset.schoolNav,target,available:false,error:error.message});}
       }return out;
     });
-    fs.mkdirSync(path.join(repo,'artifacts'),{recursive:true});fs.writeFileSync(path.join(repo,'artifacts','part5-school-live-routes-'+viewport.width+'.json'),JSON.stringify(audit,null,2));
+    fs.mkdirSync(auditDirectory,{recursive:true});fs.writeFileSync(path.join(auditDirectory,'school-live-routes-'+viewport.width+'.json'),JSON.stringify(audit,null,2));
     assert.deepEqual(audit.filter(x=>!x.available),[],'Every real School sidebar component must be available');
     page.once('dialog',dialog=>dialog.accept());
-    const logoutResponse=page.waitForResponse(response=>response.url().endsWith('/api/auth/logout'));
-    await page.locator('[data-school-logout]').evaluate(node=>node.click());
-    assert.equal((await logoutResponse).status(),200,'School logout must invalidate the server session');
+    let logoutStatus=null;
+    const onLogoutResponse=response=>{if(response.url().endsWith('/api/auth/logout'))logoutStatus=response.status()};
+    page.on('response',onLogoutResponse);
+    const logoutState=await page.evaluate(()=>({authorized:window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__,user:window._v43SchoolLoginContext&&window._v43SchoolLoginContext.user,authorization:window._v43SchoolLoginContext&&window._v43SchoolLoginContext.authorization}));
+    const logoutResult=await page.locator('[data-school-logout]').evaluate(node=>window.EDUTRACK_SCHOOL_ROUTE_HISTORY.route(node));
+    page.off('response',onLogoutResponse);
+    assert.equal(logoutResult,true,`School route controller completes its server-backed logout; context=${JSON.stringify(logoutState)}`);
+    assert.equal(logoutStatus,200,'School logout must invalidate the server session');
     await page.locator('#login-screen').waitFor({state:'visible'});
     assert.equal((await page.context().request.get(baseUrl+'/api/auth/session')).status(),401);
     console.log('PASS live School routes '+viewport.width+'px: '+audit.length+' entries, parent toggles and server logout');
@@ -140,22 +156,21 @@ async function browserLogin(browser, viewport) {
 
 (async () => {
   assert.ok(fixture.accessCode && fixture.staffId, 'EDUTRACK_TEST_SCHOOL_ACCESS_CODE and EDUTRACK_TEST_SCHOOL_STAFF_ID are required');
-  const environment = { ...process.env, PORT: String(port), NODE_ENV: 'test', EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE: 'true', EDUTRACK_TEST_SCHOOL_ACCESS_CODE: fixture.accessCode, EDUTRACK_TEST_SCHOOL_STAFF_ID: fixture.staffId, EDUTRACK_DATA_FILE: dataFile };
+  assert.ok(process.env.SUPABASE_DB_URL && process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY,
+    'School route browser regression requires a local Supabase PostgreSQL/Auth instance');
+  const environment = { ...process.env, PORT: String(port), NODE_ENV: 'test', EDUTRACK_TEST_SCHOOL_ACCESS_CODE: fixture.accessCode, EDUTRACK_TEST_SCHOOL_STAFF_ID: fixture.staffId };
   const server = spawn(process.execPath, ['server.js'], { cwd: repo, env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     await waitForServer(server);
-    const seeded = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-    assert.ok(seeded.schools.some(row => row.id === 'test-school-western-sekondi'));
-    assert.ok(seeded.staff.some(row => row.staffId === fixture.staffId));
     await directLogin();
     const browser = await chromium.launch({ headless: true, executablePath: process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium') });
     try {
       const results = [];
       for (const viewport of viewports) results.push(await browserLogin(browser, viewport));
-      console.log(JSON.stringify({ status: 'PASS', dataFile, directApi: 200, browser: results }));
+      console.log(JSON.stringify({ status: 'PASS', persistence: 'local-supabase-postgresql', directApi: 200, browser: results }));
     } finally { await browser.close(); }
   } finally {
     server.kill();
-    fs.rmSync(path.dirname(dataFile), { recursive: true, force: true });
+    fs.rmSync(auditDirectory, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

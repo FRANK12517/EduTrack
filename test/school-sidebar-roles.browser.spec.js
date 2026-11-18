@@ -4,11 +4,12 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 
 const sidebarPath = path.join(__dirname, '..', 'school-sidebar.js');
+const routeHistoryPath = path.join(__dirname, '..', 'school-route-history.js');
 const roles = [
   { name: 'Headteacher', admin: true },
   { name: 'Assistant Headteacher', admin: true },
   { name: 'Classroom Teacher', admin: false },
-  { name: 'School Proprietor', admin: true }
+  { name: 'School Proprietor', admin: false }
 ];
 
 const routeTargets = [
@@ -28,7 +29,7 @@ function fixture() {
     .sidebar{height:100vh;overflow-y:auto}.sidebar-scroll{height:100%;overflow-y:auto}
     .nav-supergroup-items,.nav-group-items{display:none}.open>.nav-supergroup-items,.open>.nav-group-items{display:block}
     [hidden]{display:none!important}.hidden{display:none}.nav-item.active{background:#def}
-  </style></head><body><nav class="sidebar" id="sidebar"><div id="sidebarPagerBar"><button>Back</button><button>Next</button></div><div id="sidebarScroll">
+  </style></head><body><div id="login-screen" style="display:none"></div><nav class="sidebar" id="sidebar"><div id="sidebarPagerBar"><button>Back</button><button>Next</button></div><div id="sidebarScroll">
     <div class="nav-supergroup" data-admin-level="DISTRICT"></div><div class="nav-supergroup" data-admin-level="REGIONAL"></div><div class="nav-supergroup" data-admin-level="NATIONAL"></div>
   </div></nav><main>${pages}</main><script>
     window.CONFIG={schoolType:'PRIVATE'};window.showPage=function(id,el){window.__lastTarget='page:'+id;document.querySelectorAll('[id^=page-]').forEach(n=>n.classList.add('hidden'));var p=document.getElementById('page-'+id);if(p)p.classList.remove('hidden');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active')};
@@ -45,10 +46,17 @@ function fixture() {
       for (const role of roles) {
         const page = await browser.newPage({ viewport });
         await page.route('http://sidebar.test/', route => route.fulfill({ contentType: 'text/html', body: fixture() }));
+        const roleCode=role.name==='Headteacher'?'HEADTEACHER':role.name==='Assistant Headteacher'?'ASSISTANT_HEADTEACHER':role.name==='Classroom Teacher'?'TEACHER':role.name;
+        const serverPermissions=['Headteacher','Assistant Headteacher'].includes(role.name)?['ai.use','signature.manage','attendance.qr.manage','transport.view','transport.manage','transport.event.record','transport.staff.manage','transport.location.manage','admissions.view','admissions.review','admissions.finalize','communications.view','communications.manage','hostel.view','hostel.manage','hostel.rollcall','schools.manage','staff.manage','students.manage','academics.manage','attendance.manage','classes.manage','examinations.manage','scores.manage','results.manage','promotion.manage','fees.manage','reporting.read','scope.read']:role.name==='Classroom Teacher'?['chat.use','signature.manage','transport.event.record','hostel.rollcall','students.manage','academics.manage','attendance.manage','classes.manage','examinations.manage','scores.manage','results.manage','reporting.read','scope.read','attendance.qr.manage']:[];
+        let authoritativePermissions=serverPermissions,sessionStatus=200;
+        await page.route('**/api/auth/session', route => route.fulfill({status:sessionStatus,contentType:'application/json',body:JSON.stringify({authenticated:sessionStatus===200,user:{id:'fixture-user',role:roleCode,staffId:'STAFF-FIXTURE'},authorization:{administrativeLevel:'SCHOOL',permissions:authoritativePermissions,loginScope:{level:'SCHOOL',role:roleCode,schoolId:'FIXTURE',region:'Fixture Region',district:'Fixture District'}}})}));
+        await page.addInitScript(({role,grants})=>{window.CONFIG={schoolType:'PRIVATE'};window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__=true;window._v43SchoolLoginContext={authenticated:true,user:{role},authorization:{administrativeLevel:'SCHOOL',permissions:grants,loginScope:{level:'SCHOOL',role,schoolId:'FIXTURE'}}};window.EDUTRACK_SCHOOL_MODULES={open:function(node){Function(node.dataset.schoolAction).call(node);return Promise.resolve(true)},route:function(node){return window.EDUTRACK_SCHOOL_ROUTE_HISTORY.route(node)}}},{role:roleCode,grants:serverPermissions});
         await page.goto('http://sidebar.test/');
         await page.evaluate((name) => { localStorage.setItem('v43_login_level','SCHOOL'); localStorage.setItem('v43_login_role',name); }, role.name);
+        await page.evaluate(({grants,role}) => { window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__=true;window._v43SchoolLoginContext={authenticated:true,user:{role:role},authorization:{administrativeLevel:'SCHOOL',permissions:grants,loginScope:{level:'SCHOOL',role:role,schoolId:'FIXTURE'}}};window.EDUTRACK_SCHOOL_MODULES={open:function(node){Function(node.dataset.schoolAction).call(node);return Promise.resolve(true)},route:function(node){return window.EDUTRACK_SCHOOL_ROUTE_HISTORY.route(node)}}; },{grants:serverPermissions,role:roleCode});
         await page.addScriptTag({ path: sidebarPath });
-        await page.evaluate(() => EDUTRACK_SCHOOL_SIDEBAR.refresh());
+        await page.addScriptTag({ path: routeHistoryPath });
+        await page.evaluate(() => { EDUTRACK_SCHOOL_SIDEBAR.refresh();EDUTRACK_SCHOOL_ROUTE_HISTORY.init(); });
         assert.equal(await page.locator('#sg-school-level').count(), 1, 'missing School root must be reconstructed');
         const state = await page.evaluate(() => ({
           visible: Array.from(document.querySelectorAll('#sg-school-level .school-nav-item,#sg-school-level .school-nav-group')).filter(n => getComputedStyle(n).display !== 'none').length,
@@ -59,17 +67,27 @@ function fixture() {
           staffHidden: document.getElementById('school-staff-management').hidden,
           labels: Array.from(document.querySelectorAll('#sg-school-level > .nav-supergroup-items .nav-label')).map(n => n.textContent.trim())
         }));
-        assert.ok(state.visible > 10, `${role.name} must receive a populated menu`);
+        assert.ok(state.visible > 0, `${role.name} must receive only the navigation supported by verified grants`);
         assert.equal(state.upperVisible, 0, `${role.name} must not see upper-level navigation`);
         assert.equal(state.pager, 'none', `${role.name} must not be stranded on an empty paginated page`);
         assert.ok(['auto','scroll'].includes(state.overflow), `${role.name} sidebar must scroll`);
         assert.equal(state.headteacherHidden, !role.admin, `${role.name} RBAC mismatch`);
         assert.equal(state.staffHidden, !role.admin, `${role.name} staff-management RBAC mismatch`);
+        if (role.name === 'School Proprietor') {
+          // Proprietor is not a server-supported School login role and receives
+          // no privileged administration visibility under the verified role set.
+          assert.equal(state.headteacherHidden, true);
+          assert.equal(state.staffHidden, true);
+        }
         assert.deepEqual(state.labels.slice(0, 6), ['Dashboard','Switch Language','Setup / Config','Headteacher','Subject Config','Reports']);
+        assert.equal(await page.locator('[data-school-nav="Switch Language"]').evaluate(n=>!n.hidden),true,'public language switch remains available to authenticated School roles');
         await page.locator('[data-school-nav="Dashboard"]').evaluate(n => n.click());
-        assert.equal(await page.locator('#page-dashboard').evaluate(n => n.classList.contains('hidden')), false);
+        if(role.name==='School Proprietor')assert.equal(await page.locator('#page-dashboard').evaluate(n => n.classList.contains('hidden')),true,'unsupported School roles cannot use the authenticated School route');
+        else {await page.waitForFunction(()=>window.__lastTarget==='page:dashboard');assert.equal(await page.locator('#page-dashboard').evaluate(n => n.classList.contains('hidden')), false);}
+        const studentDatabaseAllowed = await page.locator('[data-school-nav="Student Database"]').evaluate(n => !n.hidden && !n.closest('.school-nav-group[hidden]'));
+        assert.equal(studentDatabaseAllowed,false,'modules without a verified server-backed route stay hidden');
         await page.locator('[data-school-nav="Student Database"]').evaluate(n => n.click());
-        assert.equal(await page.locator('#page-students').evaluate(n => n.classList.contains('hidden')), false);
+        assert.equal(await page.locator('#page-students').evaluate(n => n.classList.contains('hidden')), !studentDatabaseAllowed);
         await page.evaluate(() => EDUTRACK_SCHOOL_SIDEBAR.toggle('ng-cat-shared'));
         assert.equal(await page.locator('#ng-cat-shared').evaluate(n => n.classList.contains('open')), false);
         await page.evaluate(() => EDUTRACK_SCHOOL_SIDEBAR.toggle('ng-cat-shared'));
@@ -83,14 +101,46 @@ function fixture() {
         for (const id of await page.locator('#sg-school-level [onclick*="showPage("]').evaluateAll(nodes => nodes.map(n => (n.getAttribute('onclick').match(/showPage\('([^']+)'/)||[])[1]).filter(Boolean))) {
           assert.equal(await page.locator('#page-'+id).count(), 1, `${role.name}: unresolved route ${id}`);
         }
-        if (role.name === 'Headteacher') {
-          const targets = await page.locator('#sg-school-level .school-nav-item').evaluateAll(nodes => nodes.map(n => n.dataset.schoolTarget));
-          assert.ok(targets.length >= 75, `complete menu expected, received ${targets.length} leaves`);
+        if (role.admin) {
+          const targets = await page.locator('#sg-school-level .school-nav-item').evaluateAll(nodes => nodes.filter(n => !n.hidden && !n.closest('.school-nav-group[hidden]')).map(n => n.dataset.schoolTarget));
+          assert.ok(targets.length >= 5, 'Headteacher sees only explicitly registered server-backed modules');
+          assert.ok(await page.evaluate(targets=>targets.filter(target=>target!=='session:logout').every(target=>EDUTRACK_SCHOOL_ROUTE_HISTORY.backendFor(target)),targets),'every exposed Headteacher module has a registered server backend');
           assert.equal(targets.some(target => !target || /login|gallery|placeholder|comingsoon/i.test(target)), false, 'invalid School navigation target');
           for (let index = 0; index < targets.length; index++) {
-            const result = await page.locator('#sg-school-level .school-nav-item').nth(index).evaluate(node => { window.__lastTarget=''; node.click(); return { expected:node.dataset.schoolTarget, actual:window.__lastTarget }; });
-            assert.equal(result.actual, result.expected, `leaf did not open exact target: ${JSON.stringify(result)}`);
+            const result = await page.evaluate(index => { const nodes=Array.from(document.querySelectorAll('#sg-school-level .school-nav-item')).filter(n=>!n.hidden&&!n.closest('.school-nav-group[hidden]'));const node=nodes[index];window.__lastTarget='';node.click();return {expected:node.dataset.schoolTarget}; },index);
+            const expectedAction = result.expected==='api:EMS_I18N.openSwitcher'?'api:EMS_I18N.openSwitcher':result.expected;
+            await page.waitForFunction(expected => window.__lastTarget===expected,expectedAction,{timeout:5000});
           }
+          await page.locator('[data-school-nav="Dashboard"]').evaluate(n=>n.click());
+          await page.waitForFunction(()=>location.hash==='#/school/dashboard');
+          await page.locator('[data-school-nav="Transport Management"]').evaluate(n=>n.click());
+          await page.waitForFunction(()=>location.hash==='#/school/page-transport-management'&&window.__lastTarget==='page:transport-management');
+          await page.goBack();
+          await page.waitForFunction(()=>location.hash==='#/school/dashboard'&&window.__lastTarget==='page:dashboard');
+          await page.goForward();
+          await page.waitForFunction(()=>location.hash==='#/school/page-transport-management'&&window.__lastTarget==='page:transport-management');
+          await page.reload();
+          await page.addScriptTag({path:sidebarPath});await page.addScriptTag({path:routeHistoryPath});
+          await page.evaluate(()=>{EDUTRACK_SCHOOL_SIDEBAR.refresh();EDUTRACK_SCHOOL_ROUTE_HISTORY.init()});
+          await page.waitForFunction(()=>window.__lastTarget==='page:transport-management');
+          await page.goto('http://sidebar.test/#/school/page-transport-management');
+          await page.addScriptTag({path:sidebarPath});await page.addScriptTag({path:routeHistoryPath});
+          await page.evaluate(()=>{EDUTRACK_SCHOOL_SIDEBAR.refresh();EDUTRACK_SCHOOL_ROUTE_HISTORY.init()});
+          await page.waitForFunction(()=>window.__lastTarget==='page:transport-management');
+          await page.goto('http://sidebar.test/#/school/unknown-module');
+          await page.addScriptTag({path:sidebarPath});await page.addScriptTag({path:routeHistoryPath});
+          await page.evaluate(()=>{EDUTRACK_SCHOOL_SIDEBAR.refresh();EDUTRACK_SCHOOL_ROUTE_HISTORY.init()});
+          await page.waitForFunction(()=>document.getElementById('school-route-state')?.textContent==='School module not found.');
+          authoritativePermissions=[];
+          await page.goto('http://sidebar.test/#/school/page-transport-management');
+          await page.addScriptTag({path:sidebarPath});await page.addScriptTag({path:routeHistoryPath});
+          await page.evaluate(()=>{window.__lastTarget='';EDUTRACK_SCHOOL_SIDEBAR.refresh();EDUTRACK_SCHOOL_ROUTE_HISTORY.init()});
+          await page.waitForFunction(()=>document.getElementById('school-route-state')?.textContent==='Access denied for this School module.');
+          assert.equal(await page.evaluate(()=>window.__lastTarget),'','unauthorized direct navigation never opens protected content');
+          sessionStatus=401;
+          await page.evaluate(async()=>{const node=document.querySelector('[data-school-nav="Transport Management"]');await EDUTRACK_SCHOOL_ROUTE_HISTORY.route(node)});
+          assert.equal(await page.evaluate(()=>window.__EDUTRACK_SCHOOL_SESSION_AUTHORIZED__),false,'expired server session clears the School authorization marker');
+          assert.equal(await page.locator('#login-screen').evaluate(n=>n.style.display),'flex','expired sessions return to login');
         }
         await page.close();
       }

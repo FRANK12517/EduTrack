@@ -8,7 +8,7 @@ const policy = require('../app/subscription-policy');
 const root = path.join(__dirname, '..');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const relational = fs.readFileSync(path.join(root, 'db', 'relational.js'), 'utf8');
-const schema = fs.readFileSync(path.join(root, 'db', 'schema.sql'), 'utf8');
+const schema = require('./schema-source').read();
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
 assert.deepEqual(policy.SCHOOL_TYPE_RATES, { government: 2, private: 5 });

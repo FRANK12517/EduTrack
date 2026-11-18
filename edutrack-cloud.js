@@ -1,9 +1,11 @@
 /* EduTrack cloud migration bridge.
- * JWT is intentionally kept only in this module's memory and is never persisted.
+ * Supabase Auth access and refresh tokens are kept only in this module's
+ * memory and are never persisted.
  */
 (function (window) {
   'use strict';
   var token = null;
+  var refreshToken = null;
   var user = null;
   var CACHE_CONFIG = 'ems_config';
   var CACHE_PREFIX = 'edutrack_cloud_students:';
@@ -15,12 +17,21 @@
   async function request(url, options) {
     var response = await fetch(url, Object.assign({ credentials: 'same-origin', headers: headers() }, options || {}));
     var body = await response.json().catch(function () { return {}; });
+    if (response.status === 401 && token && refreshToken && url !== '/api/auth/refresh') {
+      var refreshed = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: refreshToken }) });
+      var next = await refreshed.json().catch(function () { return {}; });
+      if (refreshed.ok && next.token && next.refreshToken) {
+        token = next.token; refreshToken = next.refreshToken;
+        response = await fetch(url, Object.assign({ credentials: 'same-origin', headers: headers() }, options || {}));
+        body = await response.json().catch(function () { return {}; });
+      }
+    }
     if (!response.ok) { var error = new Error(body.error || 'Cloud request failed'); error.status = response.status; throw error; }
     return body;
   }
   function cacheKey(params) { return CACHE_PREFIX + [params.className, params.form, params.year, params.term].map(String).join('|'); }
-  async function login(credentials) { var result = await request('/api/login', { method: 'POST', body: JSON.stringify(credentials) }); token = result.token; user = result.user || null; return result; }
-  function logout() { token = null; user = null; }
+  async function login(credentials) { var result = await request('/api/login', { method: 'POST', body: JSON.stringify(credentials) }); token = result.token; refreshToken = result.refreshToken || null; user = result.user || null; return result; }
+  async function logout() { try { if (token) await request('/api/logout', { method: 'POST', body: '{}' }); } finally { token = null; refreshToken = null; user = null; } }
   function isAuthenticated() { return Boolean(token); }
   async function loadConfig() {
     var code = schoolCode();

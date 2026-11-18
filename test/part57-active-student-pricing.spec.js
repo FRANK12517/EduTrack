@@ -18,7 +18,7 @@ assert.throws(() => policy.calculateSubscriptionAmount(1.5), /non-negative integ
 
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const relational = fs.readFileSync(path.join(__dirname, '..', 'db', 'relational.js'), 'utf8');
-const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
+const schema = require('./schema-source').read();
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const initStart = server.indexOf("req.url === '/api/payments/paystack/initialize'");
 const initEnd = server.indexOf("req.url === '/api/payments/initialize'", initStart);

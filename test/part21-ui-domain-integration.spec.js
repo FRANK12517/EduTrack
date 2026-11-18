@@ -2,25 +2,25 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { spawn, spawnSync } = require('node:child_process');
-const mysql = require('mysql2/promise');
+const mysql = require('./postgres-test-client');
 const { chromium } = require('playwright');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = 3421;
 const BASE = `http://127.0.0.1:${PORT}`;
-const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || 'mysql://edutrack_test:part19_test_password@127.0.0.1:3306/edutrack_part19_test';
+const DATABASE_URL = process.env.SUPABASE_DB_URL;
 const DEV = { email: 'part21-ui-dev@example.invalid', password: 'Part21-Ui-Password!', accessCode: 'Part21-Ui-Code!' };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function request(pathname, options = {}) { return new Promise((resolve, reject) => { const req = http.request(`${BASE}${pathname}`, { method: options.method || 'GET', headers: options.headers || {} }, (res) => { let raw=''; res.on('data', c => raw += c); res.on('end', () => { let body={}; try { body=raw?JSON.parse(raw):{}; } catch {} resolve({status:res.statusCode, headers:res.headers, body}); }); }); req.on('error', reject); if(options.body) req.write(options.body); req.end(); }); }
 function waitForServer() { const started=Date.now(); return new Promise((resolve,reject)=>{ const poll=()=>request('/api/health').then(r=>r.status===200?resolve():retry()).catch(retry); const retry=()=>Date.now()-started>15000?reject(Error('server readiness timeout')):setTimeout(poll,100); poll(); }); }
-function env(extra={}) { return {...process.env, EDUTRACK_DATABASE_URL:DATABASE_URL, DATABASE_URL:'', NODE_ENV:'development', EDUTRACK_ENABLE_DEV_ACCESS:'true', EDUTRACK_DEV_EMAIL:DEV.email, EDUTRACK_DEV_PASSWORD:DEV.password, EDUTRACK_DEV_ACCESS_CODE:DEV.accessCode, PORT:String(PORT), ...extra}; }
+function env(extra={}) { return {...process.env, SUPABASE_DB_URL:DATABASE_URL, DATABASE_URL:'', NODE_ENV:'development', EDUTRACK_ENABLE_DEV_ACCESS:'true', EDUTRACK_DEV_EMAIL:DEV.email, EDUTRACK_DEV_PASSWORD:DEV.password, EDUTRACK_DEV_ACCESS_CODE:DEV.accessCode, PORT:String(PORT), ...extra}; }
 async function main(){
   const db=await mysql.createConnection(DATABASE_URL); let server; let browser;
   try {
-    await db.query('SET FOREIGN_KEY_CHECKS=0');
+
     for(const table of ['audit_events','teacher_class_assignments','staff_school_assignments','parent_student_relationships','students','classes','staff','server_sessions','tenant_memberships','user_roles','credentials','users','schools','districts','regions','tenants','payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records','schema_migrations']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{});
-    await db.query('SET FOREIGN_KEY_CHECKS=1');
+
     const migrated=spawnSync(process.execPath,['scripts/migrate-db.js'],{cwd:ROOT,env:env(),encoding:'utf8'}); assert.equal(migrated.status,0,migrated.stderr||migrated.stdout);
     const now=new Date();
     await db.query("INSERT INTO tenants (id,name,tenant_type,active,created_at,updated_at) VALUES ('tenant-a','Tenant A','SCHOOL_GROUP',1,?,?)",[now,now]);
@@ -54,7 +54,7 @@ async function main(){
     console.log('Part 21 UI/domain integration suite passed.');
   } finally {
     if(browser) await browser.close().catch(()=>{}); if(server&&!server.killed) server.kill('SIGTERM');
-    await db.query('SET FOREIGN_KEY_CHECKS=0').catch(()=>{}); for(const table of ['audit_events','teacher_class_assignments','staff_school_assignments','parent_student_relationships','students','classes','staff','server_sessions','tenant_memberships','user_roles','credentials','users','schools','districts','regions','tenants','payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records','schema_migrations']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{}); await db.query('SET FOREIGN_KEY_CHECKS=1').catch(()=>{}); await db.end();
+     for(const table of ['audit_events','teacher_class_assignments','staff_school_assignments','parent_student_relationships','students','classes','staff','server_sessions','tenant_memberships','user_roles','credentials','users','schools','districts','regions','tenants','payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records','schema_migrations']) await db.query(`TRUNCATE TABLE ${table}`).catch(()=>{});  await db.end();
   }
 }
 main().catch(e=>{console.error(e.stack||e);process.exitCode=1;});

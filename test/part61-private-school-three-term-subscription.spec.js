@@ -17,7 +17,7 @@ const ACCESS = 'part61-private-access';
 const policySource = fs.readFileSync(path.join(ROOT, 'app', 'subscription-policy.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const relationalSource = fs.readFileSync(path.join(ROOT, 'db', 'relational.js'), 'utf8');
-const schemaSource = fs.readFileSync(path.join(ROOT, 'db', 'schema.sql'), 'utf8');
+const schemaSource = require('./schema-source').read();
 const htmlSource = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 assert.match(policySource, /MAX_PRIVATE_TERM_MONTHS = 4/);
 assert.match(policySource, /validatePrivateAcademicYearDates/);

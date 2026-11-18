@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const relational = require('./db/relational');
+const supabaseAuth = require('./lib/supabase-auth');
 const authorization = require('./app/auth/authorization');
 const administrativeScope = require('./app/auth/administrative-scope');
 const ghanaHierarchy = require('./ghana-hierarchy');
@@ -22,6 +23,8 @@ const PORT = Number(process.env.PORT || 3000);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const RESET_TTL_MS = 15 * 60 * 1000;
 const COOKIE_NAME = 'edutrack_session';
+const SUPABASE_ACCESS_COOKIE = 'edutrack_supabase_access';
+const SUPABASE_REFRESH_COOKIE = 'edutrack_supabase_refresh';
 const CSRF_HEADER = 'x-csrf-token';
 const GENERIC_AUTH_ERROR = 'Authentication failed';
 const DEVELOPER_AUTH_ERROR = 'Invalid developer credentials';
@@ -126,6 +129,7 @@ function ensureData() {
   if (!fs.existsSync(DB_FILE)) saveDb({ version: 3, users: [], schools: [], staff: [], students: [], academicConfigurations: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [], schoolFees: [], schoolFeePayments: [] });
 }
 function loadDb() {
+  if (process.env.NODE_ENV !== 'test') return { version: 3, users: [], schools: [], staff: [], students: [], academicConfigurations: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: [], schoolFees: [], schoolFeePayments: [] };
   ensureData();
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   db.users ||= []; db.schools ||= []; db.staff ||= []; db.students ||= []; db.academicConfigurations ||= []; db.subscriptions ||= []; db.transactions ||= [];
@@ -133,6 +137,7 @@ function loadDb() {
   return db;
 }
 function saveDb(db) {
+  if (process.env.NODE_ENV !== 'test') return;
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOAD_DIR, { recursive: true, mode: 0o700 });
   const tmp = DB_FILE + '.tmp';
@@ -168,7 +173,7 @@ async function provisionDevelopmentAccount() {
   const now = new Date().toISOString();
   if (relational.isConfigured()) {
     const existing = await relational.findUser(env.EDUTRACK_DEV_EMAIL);
-    await relational.provisionDevelopmentAccount({ id: existing?.id || id('usr'), email: env.EDUTRACK_DEV_EMAIL, passwordHash: hashPassword(env.EDUTRACK_DEV_PASSWORD), accessCodeHash: hashPassword(env.EDUTRACK_DEV_ACCESS_CODE), active: true, updatedAt: now, createdAt: existing?.createdAt || now });
+    await relational.provisionDevelopmentAccount({ id: existing?.id || id('usr'), email: env.EDUTRACK_DEV_EMAIL, authPassword: env.EDUTRACK_DEV_PASSWORD, accessCodeHash: hashPassword(env.EDUTRACK_DEV_ACCESS_CODE), active: true, updatedAt: now, createdAt: existing?.createdAt || now });
   } else {
     const db = loadDb(); const existing = db.users.find(u => u.email.toLowerCase() === env.EDUTRACK_DEV_EMAIL.toLowerCase());
     const record = { id: existing?.id || id('usr'), email: env.EDUTRACK_DEV_EMAIL, staffId: 'DEV-ROOT', passwordHash: hashPassword(env.EDUTRACK_DEV_PASSWORD), accessCodeHash: hashPassword(env.EDUTRACK_DEV_ACCESS_CODE), role: 'DEVELOPER_ROOT', hierarchy: 'ALL', scope: ['NATIONAL','REGIONAL','DISTRICT','SCHOOL'], active: true, failedLoginCount: 0, lockedUntil: null, developmentFixture: true, updatedAt: now, createdAt: existing?.createdAt || now };
@@ -189,7 +194,7 @@ async function provisionBootstrapAccounts() {
   if (relational.isConfigured()) {
     for (const account of accounts) {
       const existing = await relational.findUser(account.email);
-      await relational.upsertUser({ id: existing?.id || id('usr'), email: account.email, passwordHash: hashPassword(account.password), accessCodeHash: hashPassword(account.accessCode), role: account.role, hierarchy: account.hierarchy, scope: account.scope, active: true, updatedAt: now, createdAt: existing?.createdAt || now });
+      await relational.upsertUser({ id: existing?.id || id('usr'), email: account.email, authPassword: account.password, accessCodeHash: hashPassword(account.accessCode), role: account.role, hierarchy: account.hierarchy, scope: account.scope, active: true, updatedAt: now, createdAt: existing?.createdAt || now });
     }
   } else {
     const db = loadDb();
@@ -224,13 +229,39 @@ function authUser(req, db) {
   if (!user || !user.active || String(user.status || 'ACTIVE') !== 'ACTIVE' || String(user.credentialStatus || 'ACTIVE') !== 'ACTIVE' || (session.loginScope && session.loginScope.role !== user.role)) return null;
   return { user, session };
 }
+async function validateSupabaseRequestSession(req, res, db) {
+  const cookies = parseCookies(req);
+  if (!cookies[COOKIE_NAME]) return true;
+  const auth = authUser(req, db);
+  if (!auth || auth.session.authMode === 'developer') return false;
+  if (!auth.user.supabaseAuthUserId || !cookies[SUPABASE_ACCESS_COOKIE] || !cookies[SUPABASE_REFRESH_COOKIE]) return false;
+  try {
+    const identity = await supabaseAuth.getUser(cookies[SUPABASE_ACCESS_COOKIE]);
+    return String(identity.id) === String(auth.user.supabaseAuthUserId);
+  } catch (error) {
+    if (error?.status !== 401) return false;
+  }
+  try {
+    const refreshed = await supabaseAuth.refreshSession(cookies[SUPABASE_REFRESH_COOKIE]);
+    if (String(refreshed.user.id) !== String(auth.user.supabaseAuthUserId)) return false;
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    await relational.extendSession(auth.session.tokenHash, expiresAt);
+    auth.session.expiresAt = expiresAt.toISOString();
+    res._pendingSetCookie = [cookie(COOKIE_NAME, cookies[COOKIE_NAME], SESSION_TTL_MS / 1000),
+      cookie(SUPABASE_ACCESS_COOKIE, refreshed.accessToken, Math.max(0, Math.floor((new Date(refreshed.expiresAt).getTime() - Date.now()) / 1000))),
+      cookie(SUPABASE_REFRESH_COOKIE, refreshed.refreshToken, 30 * 24 * 60 * 60)];
+    return true;
+  } catch { return false; }
+}
 function securityHeaders() {
   const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', 'Content-Security-Policy': "default-src 'self' 'unsafe-inline' https: data:; frame-ancestors 'none'" };
   if (process.env.NODE_ENV === 'production') headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
   return headers;
 }
 function json(res, status, body, headers = {}) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...securityHeaders(), ...headers });
+  const responseHeaders = { 'Content-Type': 'application/json; charset=utf-8', ...securityHeaders(), ...headers };
+  if (res._pendingSetCookie && !Object.prototype.hasOwnProperty.call(headers, 'Set-Cookie')) responseHeaders['Set-Cookie'] = res._pendingSetCookie;
+  res.writeHead(status, responseHeaders);
   res.end(JSON.stringify(body));
 }
 function rawBody(req, limit = MAX_BODY_BYTES) {
@@ -346,7 +377,9 @@ function requireRelational(res) { if (!relational.isConfigured()) { json(res, 50
 function admissionLevelForClassName(name) { const value = String(name || '').toUpperCase().replace(/\s+/g, ' ').trim(); if (/^KG\s*[0-9]/.test(value)) return 'KG'; if (/^(BASIC|CLASS)\s*[1-3]/.test(value)) return 'LOWER_PRIMARY'; if (/^(BASIC|CLASS)\s*[4-6]/.test(value)) return 'UPPER_PRIMARY'; if (/^JHS\s*[1-3]/.test(value)) return 'JHS'; return ''; }
   function assertProductionConfiguration({ requirePaystack = false } = {}) {
     if (process.env.NODE_ENV !== 'production') return;
-    if (!relational.isConfigured()) throw new Error('Production requires EDUTRACK_DATABASE_URL; JSON compatibility storage is not a production persistence target.');
+    if (!relational.isConfigured()) throw new Error('Production requires SUPABASE_DB_URL; JSON compatibility storage is not a production persistence target.');
+    if (!relational.isAuthConfigured()) throw new Error('Production requires SUPABASE_URL and SUPABASE_ANON_KEY for authentication.');
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Production requires SUPABASE_SERVICE_ROLE_KEY for server-side Auth administration.');
     if (process.env.EDUTRACK_ENABLE_DEV_ACCESS === 'true') throw new Error('Development access must be disabled in production.');
     if (!ALLOWED_ORIGINS.size || ALLOWED_ORIGINS.has('*') || [...ALLOWED_ORIGINS].some(origin => {
       try { const parsed = new URL(origin); return parsed.protocol !== 'https:' || !parsed.hostname; }
@@ -356,7 +389,7 @@ function admissionLevelForClassName(name) { const value = String(name || '').toU
     privateStorage.validate();
   }
 function domainErrorResponse(res, error) { if (error?.code === 'ER_DUP_ENTRY') return json(res, 409, { error: 'Duplicate record' }); if (error?.code === 'ER_NO_REFERENCED_ROW_2' || error?.code === 'ER_ROW_IS_REFERENCED_2') return json(res, 400, { error: 'Referenced record is invalid' }); if (error?.message === 'INVALID_PARENT' || error?.message === 'INVALID_HIERARCHY' || error?.message === 'INVALID_ROLE') return json(res, 400, { error: 'Domain relationship is invalid' }); if (error?.code === 'DOMAIN_VALIDATION') return json(res, 400, { error: error.message }); if (error?.code === 'AUTHORIZATION_DENIED') return json(res, 403, { error: error.message }); return json(res, 500, { error: 'Domain operation failed' }); }
-function domainErrorResponse(res, error) { if (error?.code === 'TEACHER_LIMIT') return json(res, 409, { error: error.message, teacherCount: error.teacherCount, teacherLimit: error.teacherLimit, schoolType: error.schoolType }); if (error?.code === 'ER_DUP_ENTRY') return json(res, 409, { error: 'Duplicate record' }); if (error?.code === 'ER_NO_REFERENCED_ROW_2' || error?.code === 'ER_ROW_IS_REFERENCED_2') return json(res, 400, { error: 'Referenced record is invalid' }); if (error?.message === 'INVALID_PARENT' || error?.message === 'INVALID_HIERARCHY' || error?.message === 'INVALID_ROLE') return json(res, 400, { error: 'Domain relationship is invalid' }); if (error?.code === 'DOMAIN_VALIDATION') return json(res, 400, { error: error.message }); if (error?.code === 'AUTHORIZATION_DENIED') return json(res, 403, { error: error.message }); return json(res, 500, { error: 'Domain operation failed' }); }
+function domainErrorResponse(res, error) { if (error?.code === 'TEACHER_LIMIT') return json(res, 409, { error: error.message, teacherCount: error.teacherCount, teacherLimit: error.teacherLimit, schoolType: error.schoolType }); if (error?.code === 'ER_DUP_ENTRY' || error?.code === '23505') return json(res, 409, { error: 'Duplicate record' }); if (['ER_NO_REFERENCED_ROW_2','ER_ROW_IS_REFERENCED_2','23503'].includes(error?.code)) return json(res, 400, { error: 'Referenced record is invalid' }); if (error?.message === 'INVALID_PARENT' || error?.message === 'INVALID_HIERARCHY' || error?.message === 'INVALID_ROLE') return json(res, 400, { error: 'Domain relationship is invalid' }); if (error?.code === 'DOMAIN_VALIDATION') return json(res, 400, { error: error.message }); if (error?.code === 'AUTHORIZATION_DENIED') return json(res, 403, { error: error.message }); return json(res, 500, { error: 'Domain operation failed' }); }
 function clientIp(req) { return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim(); }
 function limitKey(req, suffix) { return `${clientIp(req)}:${suffix}`; }
 function checkLimit(key, config) {
@@ -381,6 +414,15 @@ function requireSameOrigin(req, res) { if (!sameOrigin(req)) { json(res, 403, { 
 function cookie(name, value, maxAge) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   return `${name}=${encodeURIComponent(value)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`;
+}
+function authSessionCookies(rawSessionToken, authSession) {
+  const expiresIn = authSession?.expiresAt ? Math.max(0, Math.floor((new Date(authSession.expiresAt).getTime() - Date.now()) / 1000)) : 0;
+  return { 'Set-Cookie': [cookie(COOKIE_NAME, rawSessionToken, SESSION_TTL_MS / 1000),
+    cookie(SUPABASE_ACCESS_COOKIE, authSession?.accessToken || '', expiresIn),
+    cookie(SUPABASE_REFRESH_COOKIE, authSession?.refreshToken || '', 30 * 24 * 60 * 60)] };
+}
+function clearAuthSessionCookies() {
+  return { 'Set-Cookie': [cookie(COOKIE_NAME, '', 0), cookie(SUPABASE_ACCESS_COOKIE, '', 0), cookie(SUPABASE_REFRESH_COOKIE, '', 0)] };
 }
 function invalidateSessions(db, userId) { db.sessions = db.sessions.filter(s => s.userId !== userId); }
 function cleanup(db) {
@@ -454,20 +496,6 @@ function normalizedDistrictText(value) { return normalizedLoginText(value).repla
 function normalizedSchoolRole(value) {
   const role = normalizedLoginText(value).replace(/[^A-Z0-9]+/g, ' ').trim();
   return ({ 'HEAD TEACHER': 'HEADTEACHER', HEADMASTER: 'HEADTEACHER', HEADMISTRESS: 'HEADTEACHER', TEACHER: 'TEACHER', 'CLASSROOM TEACHER': 'TEACHER' })[role] || role.replace(/\s+/g, '_');
-}
-function provisionTestSchoolFixture(db) {
-  if (process.env.NODE_ENV !== 'test' || process.env.EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE !== 'true') return false;
-  const accessCode = process.env.EDUTRACK_TEST_SCHOOL_ACCESS_CODE;
-  const staffId = process.env.EDUTRACK_TEST_SCHOOL_STAFF_ID;
-  if (!accessCode || !staffId) throw new Error('Test school fixture credentials are required only when the fixture is enabled');
-  const fixtureId = 'test-school-western-sekondi'; const userId = 'test-headteacher-western-sekondi'; const now = new Date().toISOString();
-  const school = { id: fixtureId, tenantId: 'test-tenant-western-sekondi', name: 'EduTrack Test School', region: 'WESTERN', district: 'SECONDI TAKORADI METROPOLITAN', active: true, status: 'ACTIVE', developmentFixture: true, createdAt: now, updatedAt: now };
-  const user = { id: userId, email: 'headteacher.test@edutrack.invalid', staffId, passwordHash: hashPassword(accessCode), accessCodeHash: hashPassword(accessCode), role: 'HEADTEACHER', hierarchy: 'SCHOOL', scope: { tenantId: school.tenantId, schoolId: fixtureId }, schoolId: fixtureId, active: true, developmentFixture: true, failedLoginCount: 0, lockedUntil: null, createdAt: now, updatedAt: now };
-  const staff = { id: 'test-staff-western-sekondi', userId, staffId, staffIdentifier: staffId, fullName: 'Test Headteacher', role: 'HEADTEACHER', schoolId: fixtureId, tenantId: school.tenantId, region: school.region, district: school.district, status: 'ACTIVE', developmentFixture: true, createdAt: now, updatedAt: now };
-  const upsert = (rows, record) => { const index = rows.findIndex(row => String(row.id) === String(record.id)); if (index >= 0) rows[index] = { ...rows[index], ...record }; else rows.push(record); };
-  upsert(db.schools, school); upsert(db.users, user); upsert(db.staff, staff); db.subscriptions ||= [];
-  if (!db.subscriptions.some(row => String(row.schoolId) === fixtureId && row.developmentFixture)) db.subscriptions.push({ id: 'test-sub-western-sekondi', schoolId: fixtureId, tenantId: school.tenantId, status: 'ACTIVE', active: true, developmentFixture: true, expiresAt: '2099-12-31T23:59:59.999Z', createdAt: now, updatedAt: now });
-  return true;
 }
 async function persistedSchoolType(schoolId, db) {
   const school = relational.isConfigured()
@@ -652,7 +680,9 @@ function decoratePopulationDashboard(dashboard = {}, schoolType) {
 // Only allowlisted categories reach runtime logs; never log connection values
 // or arbitrary exception messages while diagnosing a failed deployment.
 const PRODUCTION_CONFIGURATION_FAILURES = new Map([
-  ['Production requires EDUTRACK_DATABASE_URL; JSON compatibility storage is not a production persistence target.', 'DATABASE_CONFIGURATION_MISSING'],
+  ['Production requires SUPABASE_DB_URL; JSON compatibility storage is not a production persistence target.', 'DATABASE_CONFIGURATION_MISSING'],
+  ['Production requires SUPABASE_URL and SUPABASE_ANON_KEY for authentication.', 'SUPABASE_AUTH_CONFIGURATION_MISSING'],
+  ['Production requires SUPABASE_SERVICE_ROLE_KEY for server-side Auth administration.', 'SUPABASE_AUTH_ADMIN_CONFIGURATION_MISSING'],
   ['Development access must be disabled in production.', 'DEVELOPMENT_ACCESS_ENABLED'],
   ['Production requires exact HTTPS EDUTRACK_ALLOWED_ORIGINS without wildcards.', 'ALLOWED_ORIGINS_INVALID'],
   ['Production requires Paystack server secrets for payment operations.', 'PAYMENT_CONFIGURATION_MISSING'],
@@ -668,6 +698,11 @@ async function handler(req, res) {
       return json(res, 503, { error: 'Service unavailable' });
     }
   }
+  // The JSON compatibility store is retained only for explicit test fixtures.
+  // Every non-test runtime must use the single Supabase PostgreSQL authority.
+  if (process.env.NODE_ENV !== 'test' && !relational.isConfigured()) {
+    return json(res, 503, { error: 'Supabase persistence is not configured' });
+  }
   // These public endpoints need neither the compatibility JSON store nor
   // hydrated user/session records. Keep configuration and origin checks intact
   // without requiring writes to a serverless deployment's read-only filesystem.
@@ -680,14 +715,17 @@ async function handler(req, res) {
     try {
       if (process.env.NODE_ENV === 'production' && !relational.isConfigured()) return json(res, 503, { ok: false, error: 'Relational persistence unavailable' });
       if (relational.isConfigured()) await relational.ensureInitialized();
-      return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'relational' : 'compatibility' });
+      return json(res, 200, { ok: true, persistence: relational.isConfigured() ? 'supabase-postgresql' : 'test-fixture' });
     } catch {
       console.error('[EDUTRACK_HEALTH]', 'DATABASE_UNAVAILABLE');
       return json(res, 503, { ok: false, error: 'Service unavailable' });
     }
   }
   const db = loadDb();
-  if (provisionTestSchoolFixture(db)) saveDb(db);
+  if (process.env.NODE_ENV === 'test' && !relational.isConfigured()
+      && req.url.startsWith('/api/') && !['/api/health','/api/auth/login-options'].includes(req.url.split('?')[0])) {
+    return json(res, 503, { error: 'Database-backed test identity is required' });
+  }
   const restrictedPath = req.url.split('?')[0];
   const restrictedFeature = restrictedPath.startsWith('/api/fees/') ? 'fees' : restrictedPath.startsWith('/api/transport/') ? 'transport' : restrictedPath.startsWith('/api/hostel/') ? 'hostel' : restrictedPath.startsWith('/api/communications/') || restrictedPath.startsWith('/api/chat/') ? 'communications' : null;
   if (restrictedFeature) {
@@ -701,6 +739,14 @@ async function handler(req, res) {
     }
   }
   if (relational.isConfigured()) await relational.hydrateAuthState(db);
+  const requestPath = req.url.split('?')[0];
+  const skipSessionValidation = ['/api/auth/login','/api/auth/super-admin-login','/api/auth/developer-login','/api/school-login','/api/auth/logout','/api/logout'].includes(requestPath);
+  if (relational.isConfigured() && requestPath.startsWith('/api/') && !skipSessionValidation && parseCookies(req)[COOKIE_NAME]) {
+    if (!await validateSupabaseRequestSession(req, res, db)) {
+      await relational.revokeSessionByHash(tokenHash(parseCookies(req)[COOKIE_NAME])).catch(() => {});
+      return json(res, 401, { error: 'Authentication required' }, clearAuthSessionCookies());
+    }
+  }
   cleanup(db);
   res.setHeader('X-Request-ID', correlationId(req));
   if (Buffer.byteLength(String(req.url || '')) > MAX_URL_BYTES) return json(res, 414, { error: 'Request URI too long' });
@@ -932,9 +978,10 @@ async function handler(req, res) {
       const retryAfter = Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0);
       return json(res, 429, { error: SUPER_ADMIN_AUTH_ERROR, retryAfter }, { 'Retry-After': String(Math.max(retryAfter, 1)) });
     }
-    const user = db.users.find(item => item.active && String(item.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && String(item.role || '').toUpperCase() === 'SUPER_ADMIN' && String(item.email || '').toLowerCase() === String(identifier || '').toLowerCase() && (!item.developmentFixture || DEV_ACCESS_ENABLED));
+    const user = relational.isConfigured() ? await relational.findUser(identifier) : db.users.find(item => item.active && String(item.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && String(item.role || '').toUpperCase() === 'SUPER_ADMIN' && String(item.email || '').toLowerCase() === String(identifier || '').toLowerCase() && (!item.developmentFixture || DEV_ACCESS_ENABLED));
     const locked = user && user.lockedUntil && new Date(user.lockedUntil) > new Date();
-    const valid = Boolean(displayName && identifier && password && user && !locked && verifyPassword(password, user.passwordHash));
+    const authSession = relational.isConfigured() && user ? await relational.authenticateUserSession(identifier, password) : null;
+    const valid = Boolean(displayName && identifier && password && user && !locked && (relational.isConfigured() ? authSession && String(authSession.user.id) === String(user.id) : verifyPassword(password, user.passwordHash)));
     if (!valid) {
       registerFailure(ipKey, LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT);
       const rejectedAudit = { id: id('audit'), action: 'SUPER_ADMIN_LOGIN_REJECTED', at: new Date().toISOString(), ip: clientIp(req), severity: 'high' };
@@ -947,7 +994,7 @@ async function handler(req, res) {
     if (relational.isConfigured()) await relational.createSession(session); else db.sessions.push(session);
     const loginAudit = { id: id('audit'), userId: user.id, action: 'SUPER_ADMIN_LOGIN_SUCCESS', at: now.toISOString(), ip: clientIp(req), severity: 'high' };
     if (relational.isConfigured()) await relational.appendAudit(loginAudit); else { db.audit.push(loginAudit); saveDb(db); }
-    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
+    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, authSession ? authSessionCookies(rawToken, authSession.authSession) : { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
   }
   if (req.method === 'POST' && req.url === '/api/school-login') {
     if (!requireSameOrigin(req,res)) return;
@@ -961,7 +1008,8 @@ async function handler(req, res) {
     const ipKey = limitKey(req, 'school-login'); const accountKey = limitKey(req, `school-account:${staffId || 'unknown'}`); const ipState = checkLimit(ipKey, LOGIN_LIMIT); const accountState = checkLimit(accountKey, LOGIN_LIMIT);
     if (ipState.blocked || accountState.blocked) return json(res, 429, { error: GENERIC_AUTH_ERROR, retryAfter: Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0) }, { 'Retry-After': String(Math.max(ipState.retryAfter || 1, accountState.retryAfter || 1)) });
     if (!ghanaHierarchy.validPair(region,district) || !['HEADTEACHER','ASSISTANT_HEADTEACHER','TEACHER'].includes(role)) { registerFailure(ipKey,LOGIN_LIMIT);registerFailure(accountKey,LOGIN_LIMIT);return json(res,400,{error:'Select a valid School role and a district belonging to the selected region.'}); }
-    const user = db.users.find(item => item.active && String(item.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && normalizedLoginText(item.staffId) === normalizedLoginText(staffId) && normalizedSchoolRole(item.role) === role && (!item.developmentFixture || DEV_ACCESS_ENABLED || process.env.EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE === 'true'));
+    const user = relational.isConfigured() ? await relational.findUser(staffId) : db.users.find(item => item.active && String(item.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && normalizedLoginText(item.staffId) === normalizedLoginText(staffId) && normalizedSchoolRole(item.role) === role && (!item.developmentFixture || DEV_ACCESS_ENABLED));
+    const authSession = relational.isConfigured() && user ? await relational.authenticateUserSession(staffId, accessCode) : null;
     let school, staff, subscription;
     if (relational.isConfigured() && user && administrativeScope.levelForRole(user.role) === 'SCHOOL') {
       const rows = await relational.domainRows("SELECT s.*,d.name AS district,r.name AS region,r.id AS region_id,st.id AS staff_record_id FROM staff st JOIN schools s ON s.id=st.school_id JOIN districts d ON d.id=s.district_id JOIN regions r ON r.id=d.region_id WHERE st.user_id=? AND st.status='ACTIVE' AND s.active=TRUE", [user.id]);
@@ -974,7 +1022,7 @@ async function handler(req, res) {
       staff = user && db.staff.find(item => String(item.userId || item.user_id || '') === String(user.id) && String(item.schoolId || item.school_id || '') === String(user.schoolId) && String(item.status || 'ACTIVE').toUpperCase() === 'ACTIVE');
       subscription = school && (db.subscriptions || []).find(item => String(item.schoolId || item.school_id) === String(school.id) && item.active !== false && String(item.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && (!item.expiresAt || new Date(item.expiresAt) > new Date()));
     }
-    const valid = Boolean(ghanaHierarchy.validPair(region, district) && region && district && accessCode && staffId && role && user && String(user.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && school && staff && school.active !== false && String(school.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && subscription && normalizedLoginText(school.region).replace(/ REGION$/, '') === normalizedLoginText(region).replace(/ REGION$/, '') && normalizedDistrictText(school.district) === normalizedDistrictText(district) && (!user.lockedUntil || new Date(user.lockedUntil) <= new Date()) && verifyPassword(accessCode, user.accessCodeHash));
+     const valid = Boolean(ghanaHierarchy.validPair(region, district) && region && district && accessCode && staffId && role && user && String(user.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && school && staff && school.active !== false && String(school.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && subscription && normalizedLoginText(school.region).replace(/ REGION$/, '') === normalizedLoginText(region).replace(/ REGION$/, '') && normalizedDistrictText(school.district) === normalizedDistrictText(district).replace(/ REGION$/, '') && (!user.lockedUntil || new Date(user.lockedUntil) <= new Date()) && verifyPassword(accessCode, user.accessCodeHash) && (!relational.isConfigured() || (authSession && String(authSession.user.id) === String(user.id))));
     if (!valid) { const reason = !user ? 'STAFF_NOT_FOUND' : !school ? 'SCHOOL_NOT_FOUND' : !staff ? 'STAFF_ASSIGNMENT_MISSING' : !subscription ? 'SUBSCRIPTION_INACTIVE' : normalizedLoginText(school.region).replace(/ REGION$/, '') !== normalizedLoginText(region).replace(/ REGION$/, '') ? 'REGION_MISMATCH' : normalizedDistrictText(school.district) !== normalizedDistrictText(district) ? 'DISTRICT_MISMATCH' : !verifyPassword(accessCode, user.accessCodeHash) ? 'ACCESS_CODE_MISMATCH' : 'AUTHENTICATION_REJECTED'; if (process.env.NODE_ENV === 'test') console.warn('[test school-login rejected]', reason, { staffId: staffId || null, role: role || null, region: region || null, district: district || null, dataFile: DB_FILE }); registerFailure(ipKey, LOGIN_LIMIT); registerFailure(accountKey, LOGIN_LIMIT); await auditDomainMutation(null, 'SCHOOL_LOGIN_REJECTED', req, { severity: 'medium', reason: process.env.NODE_ENV === 'test' ? reason : undefined }); return json(res, 401, { error: GENERIC_AUTH_ERROR }); }
     clearLimit(ipKey); clearLimit(accountKey); user.failedLoginCount = 0; user.lockedUntil = null; const rawToken = randomToken(); const now = new Date(); const session = { loginScope:{level:'SCHOOL',region,district,regionId:school.region_id || null,districtId:school.district_id || null,schoolId:school.id,role:user.role}, id: id('ses'), tokenHash: tokenHash(rawToken), userId: user.id, createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString() };
     const resolved=relational.isConfigured()?await authorization.resolve({user,session}):null;
@@ -984,7 +1032,7 @@ async function handler(req, res) {
     const loginAudit={id:id('audit'),action:'SCHOOL_LOGIN_SUCCESS',userId:user.id,schoolId:school.id,role:user.role,result:'success',at:now.toISOString(),ip:clientIp(req)};
     if (relational.isConfigured()) { await relational.createSession(session); await relational.appendAudit(loginAudit); }
     else { db.sessions.push(session); db.audit.push(loginAudit); saveDb(db); }
-    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: {...roleContext(user),permissions}, school: { id: school.id, tenantId: school.tenantId || school.tenant_id || null, name: school.name, region: school.region, district: school.district }, dashboard: 'school-general' }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
+    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: {...roleContext(user),permissions}, school: { id: school.id, tenantId: school.tenantId || school.tenant_id || null, name: school.name, region: school.region, district: school.district }, dashboard: 'school-general' }, authSession ? authSessionCookies(rawToken, authSession.authSession) : { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
   }
   if (req.method === 'POST' && req.url === '/api/auth/login') {
     if (!requireSameOrigin(req,res)) return;
@@ -1003,9 +1051,11 @@ async function handler(req, res) {
     const accountKey = limitKey(req, `account:${identifier || 'unknown'}`);
     const accountState = checkLimit(accountKey, LOGIN_LIMIT);
     if (ipState.blocked || accountState.blocked) return json(res, 429, { error: GENERIC_AUTH_ERROR, retryAfter: Math.max(ipState.retryAfter || 0, accountState.retryAfter || 0) }, { 'Retry-After': String(Math.max(ipState.retryAfter || 1, accountState.retryAfter || 1)) });
-    const user = db.users.find(u => u.active && String(u.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && (String(u.email || '').toLowerCase() === identifier.toLowerCase() || String(u.staffId || '').toLowerCase() === identifier.toLowerCase()) && String(u.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && (!u.developmentFixture || DEV_ACCESS_ENABLED));
+    const user = relational.isConfigured() ? await relational.findUser(identifier) : db.users.find(u => u.active && String(u.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && (String(u.email || '').toLowerCase() === identifier.toLowerCase() || String(u.staffId || '').toLowerCase() === identifier.toLowerCase()) && String(u.status || 'ACTIVE').toUpperCase() === 'ACTIVE' && (!u.developmentFixture || DEV_ACCESS_ENABLED));
     const locked = user && user.lockedUntil && new Date(user.lockedUntil) > new Date();
-    const credentialsValid = !!user && String(user.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && !locked && (hierarchical || verifyPassword(password, user.passwordHash)) && verifyPassword(accessCode, user.accessCodeHash);
+    const authSession = relational.isConfigured() && user ? await relational.authenticateUserSession(identifier,hierarchical?accessCode:password) : null;
+    const supabaseCredential = authSession?.user || null;
+    const credentialsValid = !!user && String(user.credentialStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' && !locked && (relational.isConfigured() ? !!supabaseCredential : (hierarchical || verifyPassword(password, user.passwordHash))) && verifyPassword(accessCode, user.accessCodeHash);
     const loginScope = hierarchical && credentialsValid ? await loginHierarchy.resolveSelection(user, input) : null;
     const valid = credentialsValid && (!hierarchical || (loginScope && normalizedLoginText(user.staffId) === normalizedLoginText(input.staffId)));
     if (!valid) {
@@ -1025,7 +1075,7 @@ async function handler(req, res) {
     if (relational.isConfigured()) await relational.createSession(session); else db.sessions.push(session);
     const loginAudit = { id: id('audit'), userId: user.id, action: 'LOGIN_SUCCESS', at: now.toISOString(), ip: clientIp(req) };
     if (relational.isConfigured()) await relational.appendAudit(loginAudit); else db.audit.push(loginAudit); if (!relational.isConfigured()) saveDb(db);
-    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
+    return json(res, 200, { authenticated: true, user: publicUser(user), authorization: roleContext(user) }, authSession ? authSessionCookies(rawToken, authSession.authSession) : { 'Set-Cookie': cookie(COOKIE_NAME, rawToken, SESSION_TTL_MS / 1000) });
   }
   if (req.method === 'GET' && req.url === '/api/auth/session') {
     const auth = authUser(req, db); if (!auth) return json(res, 401, { error: 'Authentication required' });
@@ -1037,15 +1087,17 @@ async function handler(req, res) {
   }
   if (req.method === 'GET' && req.url === '/api/auth/csrf') {
     const auth = authUser(req, db); if (!auth) return json(res, 401, { error: 'Authentication required' });
-    const token = randomToken(24); auth.session.csrfTokenHash = tokenHash(token); saveDb(db); return json(res, 200, { token });
+    const token = randomToken(24); auth.session.csrfTokenHash = tokenHash(token); if (relational.isConfigured()) await relational.updateSessionCsrf(auth.session.tokenHash, auth.session.csrfTokenHash); else saveDb(db); return json(res, 200, { token });
   }
   if (req.method === 'POST' && req.url === '/api/auth/logout') {
     if (!requireSameOrigin(req, res)) return;
-    const token = parseCookies(req)[COOKIE_NAME];
+    const cookies = parseCookies(req);
+    const token = cookies[COOKIE_NAME];
+    if (cookies[SUPABASE_ACCESS_COOKIE]) await supabaseAuth.signOut(cookies[SUPABASE_ACCESS_COOKIE]).catch(() => {});
     if (relational.isConfigured()) await relational.revokeSessionByHash(tokenHash(token));
     else { db.sessions = db.sessions.filter(s => s.tokenHash !== tokenHash(token)); auditSecurityEvent(db, 'LOGOUT', req, { result: 'success' }); saveDb(db); }
     if (relational.isConfigured()) await relational.appendAudit({ id: id('audit'), action: 'LOGOUT', at: new Date().toISOString(), ip: clientIp(req), result: 'success' });
-    return json(res, 200, { ok: true }, { 'Set-Cookie': cookie(COOKIE_NAME, '', 0) });
+    return json(res, 200, { ok: true }, clearAuthSessionCookies());
   }
   if (req.method === 'POST' && req.url === '/api/auth/credential-recovery/initiate') {
     if (!requireSameOrigin(req, res)) return;
@@ -1079,7 +1131,7 @@ async function handler(req, res) {
   if (req.method === 'POST' && req.url === '/api/auth/password-reset/confirm') {
     if (!requireSameOrigin(req, res)) return;
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
-    const resetToken = validateText(input.token, { required: true, max: 512 }); const password = validateText(input.password, { required: true, max: 256 }) || ''; const accessCode = validateText(input.accessCode, { required: false, max: 256 }) || ''; const record = relational.isConfigured() ? await relational.findPasswordReset(tokenHash(resetToken || '')) : resetRecord(db, resetToken || ''); if (!record || password.length < 12) return json(res, 400, { error: 'Password reset could not be completed' }); const user = relational.isConfigured() ? await relational.findUserById(record.user_id) : db.users.find(u => u.id === record.userId && u.active); const requiresCredentialEstablishment = String(user?.credentialStatus || 'ACTIVE').toUpperCase() === 'RESET_REQUIRED'; if (!user || (requiresCredentialEstablishment && accessCode.length < 12)) return json(res, 400, { error: 'Password reset could not be completed' }); const nextHash = hashPassword(password); const nextAccessCodeHash = requiresCredentialEstablishment ? hashPassword(accessCode) : user.accessCodeHash; if (relational.isConfigured()) { if (!(await relational.consumePasswordReset(record.id))) return json(res,400,{error:'Password reset could not be completed'}); await relational.updateCredentialHashes(user.id,nextHash,nextAccessCodeHash); await relational.appendAudit({id:id('audit'),action:'PASSWORD_RESET_COMPLETED',userId:user.id,at:new Date().toISOString(),ip:clientIp(req),credentialEstablished:requiresCredentialEstablishment}); } else { user.passwordHash = nextHash; user.accessCodeHash = nextAccessCodeHash; user.credentialStatus = 'ACTIVE'; user.failedLoginCount = 0; user.lockedUntil = null; record.usedAt = new Date().toISOString(); invalidateSessions(db, user.id); db.audit.push({ id: id('audit'), userId: user.id, action: 'PASSWORD_RESET_COMPLETED', at: new Date().toISOString(), credentialEstablished:requiresCredentialEstablishment }); saveDb(db); } return json(res, 200, { ok: true });
+    const resetToken = validateText(input.token, { required: true, max: 512 }); const password = validateText(input.password, { required: true, max: 256 }) || ''; const accessCode = validateText(input.accessCode, { required: false, max: 256 }) || ''; const record = relational.isConfigured() ? await relational.findPasswordReset(tokenHash(resetToken || '')) : resetRecord(db, resetToken || ''); if (!record || password.length < 12) return json(res, 400, { error: 'Password reset could not be completed' }); const user = relational.isConfigured() ? await relational.findUserById(record.user_id) : db.users.find(u => u.id === record.userId && u.active); const requiresCredentialEstablishment = String(user?.credentialStatus || 'ACTIVE').toUpperCase() === 'RESET_REQUIRED'; if (!user || (requiresCredentialEstablishment && accessCode.length < 12)) return json(res, 400, { error: 'Password reset could not be completed' }); const nextHash = hashPassword(password); const nextAccessCodeHash = requiresCredentialEstablishment ? hashPassword(accessCode) : user.accessCodeHash; if (relational.isConfigured()) { if (!(await relational.consumePasswordReset(record.id))) return json(res,400,{error:'Password reset could not be completed'}); await relational.updateCredentialHashes(user.id,password,nextAccessCodeHash); await relational.appendAudit({id:id('audit'),action:'PASSWORD_RESET_COMPLETED',userId:user.id,at:new Date().toISOString(),ip:clientIp(req),credentialEstablished:requiresCredentialEstablishment}); } else { user.passwordHash = nextHash; user.accessCodeHash = nextAccessCodeHash; user.credentialStatus = 'ACTIVE'; user.failedLoginCount = 0; user.lockedUntil = null; record.usedAt = new Date().toISOString(); invalidateSessions(db, user.id); db.audit.push({ id: id('audit'), userId: user.id, action: 'PASSWORD_RESET_COMPLETED', at: new Date().toISOString(), credentialEstablished:requiresCredentialEstablishment }); saveDb(db); } return json(res, 200, { ok: true });
   }
   if (req.method === 'POST' && req.url === '/api/auth/password-change') {
     if (!requireSameOrigin(req, res)) return;
@@ -1087,8 +1139,9 @@ async function handler(req, res) {
     let input; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid request' }); }
     const currentPassword = validateText(input.currentPassword, { required: true, max: 256 }) || '';
     const newPassword = validateText(input.newPassword, { required: true, max: 256 }) || '';
-    if (!verifyPassword(currentPassword, auth.user.passwordHash) || newPassword.length < 12) return json(res, 400, { error: 'Password change could not be completed' });
-    if (relational.isConfigured()) { await relational.updateCredentialHashes(auth.user.id, hashPassword(newPassword), auth.user.accessCodeHash); await relational.appendAudit({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString(), ip: clientIp(req) }); } else { auth.user.passwordHash = hashPassword(newPassword); invalidateSessions(db, auth.user.id); db.audit.push({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString() }); saveDb(db); }
+    const currentPasswordValid = relational.isConfigured() ? Boolean(await relational.authenticateUser(auth.user.email,currentPassword)) : verifyPassword(currentPassword, auth.user.passwordHash);
+    if (!currentPasswordValid || newPassword.length < 12) return json(res, 400, { error: 'Password change could not be completed' });
+    if (relational.isConfigured()) { await relational.updateCredentialHashes(auth.user.id,newPassword,auth.user.accessCodeHash); await relational.appendAudit({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString(), ip: clientIp(req) }); } else { auth.user.passwordHash = hashPassword(newPassword); invalidateSessions(db, auth.user.id); db.audit.push({ id: id('audit'), userId: auth.user.id, action: 'PASSWORD_CHANGED', at: new Date().toISOString() }); saveDb(db); }
     return json(res, 200, { ok: true }, { 'Set-Cookie': cookie(COOKIE_NAME, '', 0) });
   }
   if (!relational.isConfigured() && req.url.split('?')[0].startsWith('/api/domain/')) return requireRelational(res);
@@ -1539,21 +1592,15 @@ Write a concise professional education insight for the ' + level + ' level.');
   json(res, 404, { error: 'Not found' });
 }
 
-if (!(SERVERLESS_RUNTIME && process.env.NODE_ENV === 'production')) ensureData();
+if (process.env.NODE_ENV === 'test' && !(SERVERLESS_RUNTIME && process.env.NODE_ENV === 'production')) ensureData();
 function startServer() {
-  // A test server is not ready until its explicitly enabled disposable fixture
-  // has been written.  This keeps browser and direct API tests on one dataset.
-  if (process.env.NODE_ENV === 'test' && process.env.EDUTRACK_ENABLE_TEST_SCHOOL_FIXTURE === 'true') {
-    const db = loadDb();
-    if (provisionTestSchoolFixture(db)) saveDb(db);
-  }
   return http.createServer((req, res) => handler(req, res).catch(() => json(res, 500, { error: 'Internal server error' }))).listen(PORT, () => console.log(`EduTrack server listening on port ${PORT}`));
 }
 if (require.main === module) {
   (async () => {
     if (process.argv.includes('--provision-dev')) { await provisionDevelopmentAccount(); await relational.close(); }
     else if (process.argv.includes('--provision')) { await provisionBootstrapAccounts(); await relational.close(); }
-    else if (process.argv.includes('--reset')) { if (process.env.NODE_ENV === 'production') throw new Error('The destructive reset command is disabled in production.'); resetRegisteredData(); await relational.close(); }
+    else if (process.argv.includes('--reset')) { if (process.env.NODE_ENV !== 'test') throw new Error('The destructive reset command is available only to disposable tests.'); resetRegisteredData(); await relational.close(); }
     else startServer();
   })().catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

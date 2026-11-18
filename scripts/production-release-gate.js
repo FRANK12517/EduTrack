@@ -7,7 +7,8 @@ const unknown=(id,area,evidence,action)=>({id,area,status:'NOT_PROVEN',evidence,
 const gates=[];
 const prod=process.env.NODE_ENV==='production';
 gates.push(prod?pass('node-env','Application','NODE_ENV=production'):fail('node-env','Application','NODE_ENV is not production','Set NODE_ENV=production for release execution'));
-gates.push(process.env.EDUTRACK_DATABASE_URL||process.env.DATABASE_URL?pass('database-url','Database','Relational database URL is present'):fail('database-url','Database','EDUTRACK_DATABASE_URL or DATABASE_URL is missing','Configure the relational database URL through the secret manager'));
+gates.push(process.env.SUPABASE_DB_URL&&/^postgres(?:ql)?:\/\//i.test(process.env.SUPABASE_DB_URL)?pass('supabase-database-url','Database','Supabase PostgreSQL URL is present'):fail('supabase-database-url','Database','SUPABASE_DB_URL is missing or is not PostgreSQL','Configure the Supabase PostgreSQL URL through the secret manager'));
+gates.push(process.env.SUPABASE_URL&&process.env.SUPABASE_ANON_KEY&&process.env.SUPABASE_SERVICE_ROLE_KEY?pass('supabase-auth','Authentication','Supabase Auth server configuration is present'):fail('supabase-auth','Authentication','Required Supabase Auth configuration is missing','Configure the Supabase URL, anon key and server-only service role key'));
 gates.push(process.env.EDUTRACK_ENABLE_DEV_ACCESS==='true'?fail('dev-access','Authentication','Development access is enabled','Disable development access'):pass('dev-access','Authentication','Development access is disabled'));
 const origins=String(process.env.EDUTRACK_ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean);
 const validOrigins=origins.length>0&&origins.every(httpsOrigin)&&!origins.includes('*');

@@ -8,13 +8,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  fresh-supabase-validation:
+    uses: ./.github/workflows/supabase-migrations.yml
+
   release-gate:
+    needs: fresh-supabase-validation
     runs-on: ubuntu-latest
     env:
-      # Dedicated disposable target only; never inherit ambiguous production
-      # connection secrets for a workflow that executes database migrations.
-      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL }}
-      EDUTRACK_RELEASE_GATE_TARGET: ${{ secrets.EDUTRACK_RELEASE_GATE_TARGET }}
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
@@ -25,25 +25,6 @@ jobs:
       - run: npm ci
       - name: Install Chromium for attendance responsive regression
         run: npx playwright install --with-deps chromium
-      - name: Require explicitly authorized isolated release-gate target
-        shell: bash
-        run: |
-          if [ -z "$EDUTRACK_DATABASE_URL" ]; then
-            echo 'EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL is required.' >&2
-            exit 1
-          fi
-          if [ "$EDUTRACK_RELEASE_GATE_TARGET" != 'isolated-release-gate' ]; then
-            echo 'Release Gate target is not explicitly authorized as isolated.' >&2
-            exit 1
-          fi
-          case "$EDUTRACK_DATABASE_URL" in
-            mysql:*|mariadb:*) ;;
-            *) echo 'Release Gate requires a MySQL-compatible isolated target.' >&2; exit 1 ;;
-          esac
-      - name: Verify TLS connection to TiDB Cloud
-        run: node -e "require('./db/relational').getPool().query('SELECT 1').then(() => console.log('TiDB TLS connection verified.')).then(() => process.exit(0)).catch(() => { console.error('TiDB TLS connection failed.'); process.exit(1); })"
-      - name: Run additive database migration
-        run: node scripts/migrate-db.js
       - name: Run release checks
         run: npm run check
       - name: Verify public API guards on an immutable function filesystem

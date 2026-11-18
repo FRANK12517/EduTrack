@@ -15,6 +15,6 @@ const safe = output
   .replace(/(https?:\/\/)[^\s]+/gi, '$1[redacted]')
   .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]');
 const lines = safe.split(/\r?\n/).filter(Boolean).slice(-12);
-const classification = /ENOENT.*\/data/.test(output) ? 'FILESYSTEM_INITIALIZATION_FAILURE' : /EDUTRACK_DATABASE_URL/.test(output) ? 'MISSING_REQUIRED_DATABASE_CONFIGURATION' : result.status === 0 ? 'NO_IMPORT_FAILURE' : 'IMPORT_FAILURE_UNCLASSIFIED';
+const classification = /ENOENT.*\/data/.test(output) ? 'FILESYSTEM_INITIALIZATION_FAILURE' : /SUPABASE_DB_URL/.test(output) ? 'MISSING_REQUIRED_DATABASE_CONFIGURATION' : result.status === 0 ? 'NO_IMPORT_FAILURE' : 'IMPORT_FAILURE_UNCLASSIFIED';
 console.log(JSON.stringify({ classification, exitCode: result.status, safeDiagnostics: lines }, null, 2));
 process.exit(result.status === 0 ? 0 : 1);

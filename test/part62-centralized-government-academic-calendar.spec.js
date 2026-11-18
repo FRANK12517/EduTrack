@@ -12,7 +12,7 @@ const EMAIL = 'part62-government@example.invalid'; const PASSWORD = 'part62 gove
 const policy = require(path.join(ROOT, 'app', 'subscription-policy'));
 const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const relationalSource = fs.readFileSync(path.join(ROOT, 'db', 'relational.js'), 'utf8');
-const schemaSource = fs.readFileSync(path.join(ROOT, 'db', 'schema.sql'), 'utf8');
+const schemaSource = require('./schema-source').read();
 const htmlSource = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 assert.match(serverSource, /centralized_government_academic_calendar/);
 assert.match(serverSource, /governmentTermReference: term\.governmentCalendarVersion/);

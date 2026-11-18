@@ -7,7 +7,7 @@ jobs:
   disposable-read-only-validation:
     runs-on: ubuntu-latest
     env:
-      EDUTRACK_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: disposable-validation
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +19,9 @@ jobs:
       - name: Require disposable target authorization
         shell: bash
         run: |
-          test -n "$EDUTRACK_DATABASE_URL"
+          test -n "$SUPABASE_DB_URL"
           test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'disposable-validation'
-          case "$EDUTRACK_DATABASE_URL" in mysql:*|mariadb:*) ;; *) exit 1;; esac
+          case "$SUPABASE_DB_URL" in postgres://*|postgresql://*) ;; *) exit 1;; esac
       - run: node test/production-preflight-readonly.spec.js
       - name: Create before read-only signature
         run: node scripts/read-only-database-signature.js --target disposable-validation --output artifacts/disposable-before-signature.json

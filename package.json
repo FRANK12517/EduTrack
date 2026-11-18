@@ -11,6 +11,9 @@
     "provision": "node server.js --provision",
     "provision:dev": "node server.js --provision-dev",
     "db:migrate": "node scripts/migrate-db.js",
+    "test:supabase-migration-contract": "node test/supabase-migration-contract.spec.js",
+    "test:supabase-rls-fixture": "node test/supabase-rls-fixture.spec.js",
+    "test:postgres-pool-config": "node test/postgres-pool-config.spec.js",
     "db:import-json": "node scripts/import-json-to-db.js",
     "db:migrate-business": "node scripts/migrate-business-data.js",
     "backup:production": "node scripts/backup-production.js",
@@ -104,16 +107,16 @@
     "test:hierarchical-login": "node test/hierarchical-login.spec.js && npm run test:macro-hierarchy",
     "test:public-build": "node test/public-build.spec.js",
     "build": "node scripts/build-public.js",
-    "test:branding": "node test/branding-regression.spec.js"
+    "test:branding": "node test/branding-regression.spec.js",
+    "test:supabase-auth-contract": "node test/supabase-auth-contract.spec.js"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "playwright": "^1.62.1"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1116.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.23.4",
+    "pg": "^8.23.1",
     "qrcode-generator": "^1.4.4"
   }
 }

@@ -5,13 +5,13 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
-const mysql = require('mysql2/promise');
+const mysql = require('./postgres-test-client');
 
 const ROOT = path.resolve(__dirname, '..');
 const DB_FILE = path.join(ROOT, 'data', 'edutrack.json');
 const PORT = 3419;
 const BASE = `http://127.0.0.1:${PORT}`;
-const DATABASE_URL = process.env.EDUTRACK_DATABASE_URL || 'mysql://edutrack_test:part19_test_password@127.0.0.1:3306/edutrack_part19_test';
+const DATABASE_URL = process.env.SUPABASE_DB_URL;
 const DEV = { email: 'part19-db-dev@example.invalid', password: 'Part19-Database-Password!', accessCode: 'Part19-Database-Code!' };
 
 function request(pathname, options = {}) {
@@ -34,11 +34,11 @@ async function main() {
   let server;
   try {
     const tables = ['payment_events','subscriptions','payment_transactions','payment_intents','file_records','password_reset_records','audit_events','server_sessions','tenant_memberships','user_roles','credentials','users','role_permissions','permissions','schools','districts','regions','tenants','roles','schema_migrations'];
-    await db.query('SET FOREIGN_KEY_CHECKS=0');
-    for (const table of tables) await db.query(`TRUNCATE TABLE ${table}`).catch(() => {});
-    await db.query('SET FOREIGN_KEY_CHECKS=1');
 
-    const migrationEnv = { ...process.env, EDUTRACK_DATABASE_URL: DATABASE_URL };
+    for (const table of tables) await db.query(`TRUNCATE TABLE ${table}`).catch(() => {});
+
+
+    const migrationEnv = { ...process.env, SUPABASE_DB_URL: DATABASE_URL };
     const first = spawnSync(process.execPath, ['scripts/migrate-db.js'], { cwd: ROOT, env: migrationEnv, encoding: 'utf8' });
     assert.equal(first.status, 0, first.stderr || first.stdout);
     const second = spawnSync(process.execPath, ['scripts/migrate-db.js'], { cwd: ROOT, env: migrationEnv, encoding: 'utf8' });
@@ -72,9 +72,9 @@ async function main() {
     console.log('Part 19 database foundation suite passed.');
   } finally {
     if (server && !server.killed) server.kill('SIGTERM');
-    await db.query('SET FOREIGN_KEY_CHECKS=0');
+
     for (const table of ['audit_events','server_sessions','user_roles','credentials','users']) await db.query(`TRUNCATE TABLE ${table}`).catch(() => {});
-    await db.query('SET FOREIGN_KEY_CHECKS=1'); await db.end(); fs.writeFileSync(DB_FILE, originalJson);
+     await db.end(); fs.writeFileSync(DB_FILE, originalJson);
   }
 }
 main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

@@ -22,9 +22,9 @@ for (const requiredIgnore of ['.env', '.env.*', '*.log', '*.backup', 'data/uploa
 
 const publicAllowlist = require('../app/login-shell').PUBLIC_FILES;
 assert.match(server, /SAFE_PUBLIC_FILES = new Set\(PUBLIC_FILES\)/);
-assert.match(server, /!SAFE_PUBLIC_FILES\.has\(relative\)/);
+assert.match(server, /!SAFE_PUBLIC_FILES\.has\(publicPath\)/);
 assert.ok(publicAllowlist.includes('index.html') && publicAllowlist.includes('privileged-auth.js'));
-assert.ok(!publicAllowlist.includes('server.js') && !publicAllowlist.includes('db/schema.sql'));
+assert.ok(!publicAllowlist.includes('server.js') && !publicAllowlist.some(file => file.startsWith('supabase/migrations/')));
 assert.equal(packageJson.scripts['test:security'], 'node test/security.spec.js');
 assert.equal(packageJson.scripts['test:protected'], 'node test/protected-features.spec.js');
 assert.equal(packageJson.scripts['test:final'], 'node test/final-security.spec.js');

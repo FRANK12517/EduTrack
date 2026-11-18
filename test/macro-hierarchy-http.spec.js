@@ -1,6 +1,6 @@
 'use strict';
 // Real HTTP handler/auth middleware and real relational SELECT/UPDATE statements.
-// SQLite is a disposable SQL execution adapter, NOT a TiDB migration test.
+// SQLite is a disposable SQL execution adapter, not the PostgreSQL integration database.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
@@ -8,14 +8,14 @@ const path=require('node:path');
 const http=require('node:http');
 const crypto=require('node:crypto');
 const {DatabaseSync}=require('node:sqlite');
-const mysql=require('mysql2/promise');
+const mysql=require('./postgres-test-client');
 
 (async()=>{
   const sqlite=new DatabaseSync(':memory:');
   sqlite.function('NOW',()=>new Date().toISOString());
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'edutrack-macro-http-'));
   process.env.EDUTRACK_DATA_FILE=path.join(temp,'data.json');
-  process.env.EDUTRACK_DATABASE_URL='mysql://disposable.invalid/test';
+  process.env.SUPABASE_DB_URL='postgresql://disposable.invalid/test';
   process.env.DB_PASSWORD='';process.env.NODE_ENV='test';
   process.env.JWT_SECRET=crypto.randomBytes(32).toString('hex');
   for(const name of ['EDUTRACK_AI_PROVIDER_URL','OPENAI_API_BASE','BUILT_IN_FORGE_API_URL','EDUTRACK_AI_API_KEY','OPENAI_API_KEY','BUILT_IN_FORGE_API_KEY'])delete process.env[name];

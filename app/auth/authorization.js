@@ -73,8 +73,8 @@ async function resolve(auth) {
     if (!resolved) return null;
     return { ...auth, authorization: resolved };
   }
-  if (administrativeScope.coreRole(auth.user.role) || ['HEADTEACHER','ASSISTANT_HEADTEACHER','TEACHER'].includes(String(auth.user.role||'').toUpperCase()) || process.env.NODE_ENV === 'production') return null;
-  return { ...auth, authorization: { user: auth.user, roles: [auth.user.role], permissions: ['*'], memberships: [] } };
+  // No request may synthesize role grants or fall back to wildcard permissions.
+  return null;
 }
 async function authorize(auth, req, options = {}) {
   const resolved = await resolve(auth);

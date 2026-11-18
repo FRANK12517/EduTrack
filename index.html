@@ -25383,7 +25383,7 @@ function v43HideError() {
 //  it deliberately never says which of the four credentials was wrong.
 // ═══════════════════════════════════════════════════════════════════
 // Validates Region + District + School Access Code + Staff ID + Role
-// against the real backend (TiDB-backed /api/school-login) instead of
+// against the real backend (Supabase-backed /api/school-login) instead of
 // localStorage. Superseded v43ValidateSchoolLogin (below) as of this patch —
 // that function is kept for reference but is no longer called by v43DoLogin.
 async function v43ValidateSchoolLoginRemote(region, district, accessCode, staffId, role) {
@@ -147530,7 +147530,7 @@ window.SRG_ANNUAL = (function(){
 })();
 </script>
 
-<!-- EduTrack TiDB Cloud migration bridge: loaded after the legacy app so it can safely wrap existing hooks. -->
+<!-- EduTrack Supabase migration bridge: loaded after the legacy app to wrap existing hooks. -->
 <script src="/edutrack-cloud.js"></script>
 <script>
 (function () {

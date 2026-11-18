@@ -1,12 +1,10 @@
 'use strict';
 
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const { query, getPool } = require('../lib/db');
-const { levelForRole } = require('../app/auth/administrative-scope');
-
+const crypto = require('node:crypto');
 const relational = require('../db/relational');
 const authorization = require('../app/auth/authorization');
+const administrativeScope = require('../app/auth/administrative-scope');
+const supabaseAuth = require('../lib/supabase-auth');
 
 function readBody(req) {
   if (req.body && typeof req.body === 'object') return Promise.resolve(req.body);
@@ -17,206 +15,211 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-
 function json(res, status, value) {
   if (res.headersSent) return;
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(value));
 }
-
 function tokenFrom(req) {
   const header = String(req.headers.authorization || '');
   return header.startsWith('Bearer ') ? header.slice(7) : '';
 }
-
-function requireAuth(req, res) {
+function canonicalRole(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+const ROLE_ALIASES = Object.freeze({ 'head teacher':'HEADTEACHER', headteacher:'HEADTEACHER', headmaster:'HEADTEACHER', headmistress:'HEADTEACHER', 'assistant headteacher':'ASSISTANT_HEADTEACHER', 'assistant head teacher':'ASSISTANT_HEADTEACHER', 'asst headteacher':'ASSISTANT_HEADTEACHER', teacher:'TEACHER', 'class teacher':'TEACHER', 'classroom teacher':'TEACHER' });
+function schoolRole(value) { return ROLE_ALIASES[canonicalRole(value)] || null; }
+function safeRole(authz) { return authz.roles.find(role => ['HEADTEACHER','ASSISTANT_HEADTEACHER','TEACHER'].includes(role)) || null; }
+async function resolveBearer(req, res) {
+  const token = tokenFrom(req);
+  if (!token) { json(res, 401, { error: 'Authentication required' }); return null; }
   try {
-    const token = tokenFrom(req);
-    if (!token) throw new Error('missing token');
-    return jwt.verify(token, process.env.JWT_SECRET);
+    const identity = await supabaseAuth.getUser(token);
+    const user = await relational.findUserByAuthId(identity.id);
+    if (!user || !user.active || user.status !== 'ACTIVE') { json(res, 401, { error: 'Authentication required' }); return null; }
+    const authorizationState = await relational.resolveAuthorization(user.id);
+    if (!authorizationState) { json(res, 403, { error: 'Permission denied' }); return null; }
+    return { token, user, authorization: authorizationState };
   } catch {
     json(res, 401, { error: 'Authentication required' });
     return null;
   }
 }
-
-function dbRole(role) {
-  const key=canonicalRole(role);
-  return ({headteacher:'HEADTEACHER','assistant headteacher':'ASSISTANT_HEADTEACHER','classroom teacher':'TEACHER'})[key]||null;
+async function schoolAssignment(userId, schoolCode) {
+  const rows = await relational.domainRows(`
+    SELECT s.id AS school_id,s.school_code,s.name AS school_name,s.active AS school_active,
+           s.tenant_id,s.registration_metadata,d.name AS district,r.name AS region,r.id AS region_id,
+           st.id AS staff_record_id,st.staff_identifier,st.full_name
+    FROM staff st
+    JOIN staff_school_assignments a ON a.staff_id=st.id AND a.active IS TRUE
+    JOIN schools s ON s.id=a.school_id
+    JOIN districts d ON d.id=s.district_id
+    JOIN regions r ON r.id=d.region_id
+    WHERE st.user_id=? AND st.status='ACTIVE' AND s.active IS TRUE AND s.school_code=?
+    ORDER BY st.created_at LIMIT 2`, [userId, schoolCode]);
+  return rows.length === 1 ? rows[0] : null;
 }
-async function schoolAuthorization(claims, schoolCode, permissions) {
-  if(!claims||!claims.userId||!claims.schoolId||!relational.isConfigured())return null;
-  const role=dbRole(claims.role);if(!role)return null;
-  const accounts=await query('SELECT id,role,active,status,assigned_class,assigned_form FROM users WHERE id=? LIMIT 1',[claims.userId]);
-  if(!accounts.length||dbRole(accounts[0].role)!==role||!accounts[0].active||String(accounts[0].status).toUpperCase()!=='ACTIVE')return null;
-  const schools=await query('SELECT id,school_code,active,status FROM schools WHERE id=? LIMIT 1',[claims.schoolId]);
-  if(!schools.length||!schools[0].active||String(schools[0].status||'ACTIVE').toUpperCase()!=='ACTIVE'||String(schools[0].school_code)!==String(schoolCode))return null;
-  const trusted=await relational.resolveAuthorization(claims.userId);
-  if(!trusted||!trusted.user.active||trusted.user.status!=='ACTIVE'||!trusted.roles.includes(role))return null;
-  const authz={...trusted,roles:[role],rolePermissions:{[role]:trusted.rolePermissions[role]||[]}};
-  for(const permission of permissions){const decision=authorization.evaluate(authz,{permission,scope:{schoolId:claims.schoolId}});if(!decision.allowed)return null;}
-  return {userId:claims.userId,schoolId:claims.schoolId,schoolCode:schools[0].school_code,role,assignedClass:accounts[0].assigned_class||'',assignedForm:accounts[0].assigned_form||'',authorization:authz};
-}
-function assertSchool(auth, schoolCode) {
-  // Legacy bearer routes are School-only; macro officers must use the
-  // canonical permission/scope/consent-protected administrative read layer.
-  if (levelForRole(auth.role) !== 'SCHOOL') {
-    const error = new Error('Administrative access requires the canonical scoped API');
-    error.status = 403;
-    throw error;
+async function schoolAuthorization(bearer, schoolCode, permissionNames) {
+  if (!bearer?.user?.id || !schoolCode) return null;
+  const trusted = bearer.authorization;
+  const role = safeRole(trusted);
+  if (!role) return null;
+  const school = await schoolAssignment(bearer.user.id, schoolCode);
+  if (!school) return null;
+  const roleAuthorization = { ...trusted, roles: [role], rolePermissions: { [role]: trusted.rolePermissions[role] || [] } };
+  for (const permission of permissionNames) {
+    const decision = authorization.evaluate(roleAuthorization, { permission, scope: { schoolId: school.school_id } });
+    if (!decision.allowed) return null;
   }
-  if (!schoolCode || String(auth.schoolCode) !== String(schoolCode)) {
-    const error = new Error('Forbidden school scope');
-    error.status = 403;
-    throw error;
+  let assignedClass = null;
+  if (role === 'TEACHER') {
+    const classes = await relational.domainRows(`SELECT c.id,c.name FROM teacher_class_assignments tca
+      JOIN staff st ON st.id=tca.staff_id JOIN classes c ON c.id=tca.class_id
+      WHERE st.user_id=? AND tca.active IS TRUE AND c.school_id=? AND c.status='ACTIVE' ORDER BY c.name`, [bearer.user.id, school.school_id]);
+    assignedClass = classes.map(row => ({ id: row.id, name: row.name }));
+    if (!assignedClass.length) return null;
   }
+  return { userId: bearer.user.id, schoolId: school.school_id, schoolCode: school.school_code,
+    role, school, assignedClass, authorization: roleAuthorization };
 }
 async function login(req, res) {
   const input = await readBody(req);
-  const { schoolCode, staffId, password } = input;
+  const schoolCode = String(input.schoolCode || '').trim();
+  const staffId = String(input.staffId || '').trim();
+  const password = String(input.password || '');
   if (!schoolCode || !staffId || !password) return json(res, 400, { error: 'schoolCode, staffId and password are required' });
-  const rows = await query(`SELECT u.id, u.staff_id, u.full_name, u.role, u.password_hash, u.assigned_class, u.assigned_form, s.school_code, s.id AS school_id FROM users u JOIN schools s ON s.id = u.school_id WHERE s.school_code = ? AND u.staff_id = ?`, [schoolCode, staffId]);
-  if (!rows.length || !(await bcrypt.compare(password, rows[0].password_hash))) return json(res, 401, { error: 'Invalid credentials' });
-  const user = rows[0];
-  const token = jwt.sign({ userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role, assignedClass: user.assigned_class, assignedForm: user.assigned_form }, process.env.JWT_SECRET, { expiresIn: '12h' });
-  return json(res, 200, { token, user: { staffId: user.staff_id, name: user.full_name, role: user.role, assignedClass: user.assigned_class, assignedForm: user.assigned_form } });
+  const authenticated = await relational.authenticateUserSession(staffId, password);
+  if (!authenticated) return json(res, 401, { error: 'Invalid credentials' });
+  const trusted = await relational.resolveAuthorization(authenticated.user.id);
+  const role = safeRole(trusted || { roles: [] });
+  const assignment = await schoolAssignment(authenticated.user.id, schoolCode);
+  if (!trusted || !role || !assignment) return json(res, 401, { error: 'Invalid credentials' });
+  return json(res, 200, { token: authenticated.authSession.accessToken, refreshToken: authenticated.authSession.refreshToken,
+    expiresAt: authenticated.authSession.expiresAt, user: { staffId: authenticated.user.staffId, name: assignment.full_name, role,
+      assignedClass: null, assignedForm: null, schoolName: assignment.school_name, region: assignment.region, district: assignment.district } });
 }
-
-// Roles are free text in `users.role` but the login form only ever submits
-// one of the six SCHOOL-level labels from V43_CONFIG.roles (index.html,
-// ~line 24953). If a row in the database was typed/imported with a
-// slightly different spelling — "Head Teacher" vs "Headteacher", "Teacher"
-// vs "Classroom Teacher" — an exact match silently locks that person out
-// even though every credential is correct. Normalize + alias instead of
-// matching exactly.
-function normalizeRole(r) {
-  return String(r || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-const ROLE_ALIASES = {
-  'head teacher': 'headteacher',
-  'headmaster': 'headteacher',
-  'headmistress': 'headteacher',
-  'asst headteacher': 'assistant headteacher',
-  'assistant head teacher': 'assistant headteacher',
-  'teacher': 'classroom teacher',
-  'class teacher': 'classroom teacher',
-  'proprietor': 'school proprietor',
-  'ict coordinator': 'school ict coordinator',
-  'property officer': 'school property management officer',
-};
-function canonicalRole(r) {
-  const n = normalizeRole(r);
-  return ROLE_ALIASES[n] || n;
-}
-
 async function schoolLogin(req, res) {
   const input = await readBody(req);
-  const { region, district, accessCode, staffId, role } = input;
-  if (input.administrativeLevel && String(input.administrativeLevel).toUpperCase() !== 'SCHOOL') {
-    return json(res, 403, { error: 'Invalid staff ID, access code, or role' });
-  }
-  if (!region || !district || !accessCode || !staffId || !role) {
-    return json(res, 400, { error: 'region, district, accessCode, staffId and role are required' });
-  }
-
-  const rows = await query(
-    `SELECT u.id, u.staff_id, u.full_name, u.role, u.assigned_class, u.assigned_form,
-            s.id AS school_id, s.school_code, s.name AS school_name, s.region, s.district
-     FROM schools s
-     JOIN users u ON u.school_id = s.id
-     WHERE s.access_code = ?
-       AND s.access_code_status = 'ACTIVE'
-       AND (s.access_code_expires_at IS NULL OR s.access_code_expires_at > NOW())
-       AND LOWER(s.region) = LOWER(?)
-       AND LOWER(s.district) = LOWER(?)
-       AND u.staff_id = ?
-     LIMIT 1`,
-    [accessCode, region, district, staffId]
-  );
-
-  // Deliberately generic — never reveals which of the five fields was wrong,
-  // and never reveals whether the row was missing vs. the role not matching.
-  if (!rows.length || canonicalRole(rows[0].role) !== canonicalRole(role)) {
+  const region = String(input.region || '').trim(), district = String(input.district || '').trim();
+  const staffId = String(input.staffId || '').trim(), role = schoolRole(input.role), accessCode = String(input.accessCode || '');
+  if (!region || !district || !staffId || !role || !accessCode) return json(res, 400, { error: 'Invalid School login selection' });
+  const authenticated = await relational.authenticateUserSession(staffId, accessCode);
+  if (!authenticated) return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
+  const trusted = await relational.resolveAuthorization(authenticated.user.id);
+  const assignment = await schoolAssignment(authenticated.user.id, String(input.schoolCode || '').trim());
+  const actualRole = safeRole(trusted || { roles: [] });
+  if (!trusted || !assignment || actualRole !== role || canonicalRole(assignment.region).replace(/ region$/, '') !== canonicalRole(region).replace(/ region$/, '') || canonicalRole(assignment.district) !== canonicalRole(district)) {
     return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
   }
-
-  const user = rows[0];
-  const token = jwt.sign(
-    { userId: user.id, schoolId: user.school_id, schoolCode: user.school_code, role: user.role, administrativeLevel: 'SCHOOL',
-      assignedClass: user.assigned_class, assignedForm: user.assigned_form },
-    process.env.JWT_SECRET,
-    { expiresIn: '12h' }
-  );
-  return json(res, 200, {
-    token,
-    administrativeLevel: 'SCHOOL', dashboard: 'school-general',
-    user: { staffId: user.staff_id, name: user.full_name, role: user.role, schoolName: user.school_name,
-            region: user.region, district: user.district }
-  });
+  const roleAuthorization = { ...trusted, roles: [role], rolePermissions: { [role]: trusted.rolePermissions[role] || [] } };
+  if (!authorization.evaluate(roleAuthorization, { permission: 'scope.read', scope: { schoolId: assignment.school_id } }).allowed) return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
+  const classAssignments = role === 'TEACHER' ? await relational.domainRows(`SELECT c.id,c.name FROM teacher_class_assignments tca
+    JOIN staff st ON st.id=tca.staff_id JOIN classes c ON c.id=tca.class_id
+    WHERE st.user_id=? AND tca.active IS TRUE AND c.school_id=? AND c.status='ACTIVE' ORDER BY c.name`, [authenticated.user.id, assignment.school_id]) : [];
+  if (role === 'TEACHER' && !classAssignments.length) return json(res, 401, { error: 'Invalid staff ID, access code, or role' });
+  return json(res, 200, { token: authenticated.authSession.accessToken, refreshToken: authenticated.authSession.refreshToken,
+    expiresAt: authenticated.authSession.expiresAt, administrativeLevel: 'SCHOOL', dashboard: 'school-general',
+    user: { staffId: authenticated.user.staffId, name: assignment.full_name, role, schoolName: assignment.school_name,
+      region: assignment.region, district: assignment.district, assignedClasses: classAssignments } });
 }
-
 async function config(req, res, auth) {
   if (req.method === 'GET') {
     const code = new URL(req.url, 'http://localhost').searchParams.get('schoolCode');
-    assertSchool(auth, code);
-    const rows = await query('SELECT * FROM schools WHERE school_code = ?', [code]);
-    return rows.length ? json(res, 200, rows[0]) : json(res, 404, { error: 'School not found' });
+    if (String(auth.schoolCode) !== String(code)) return json(res, 403, { error: 'Forbidden school scope' });
+    const metadata = auth.school.registration_metadata && typeof auth.school.registration_metadata === 'object' ? auth.school.registration_metadata : {};
+    const cfg = metadata.legacyConfig && typeof metadata.legacyConfig === 'object' ? metadata.legacyConfig : {};
+    return json(res, 200, { ...cfg, id: auth.school.school_id, schoolCode: auth.school.school_code, school: cfg.school || auth.school.school_name });
   }
   if (req.method === 'POST') {
     const cfg = req.__legacyInput || await readBody(req);
-    assertSchool(auth, cfg.schoolCode);
-    if (!cfg.schoolCode || !cfg.school) return json(res, 400, { error: 'schoolCode and school name are required' });
-    await query(`INSERT INTO schools (school_code,name,ges_name,directorate,district,region,head_name,head_phone,academic_year,term,exam_type,category,grading_system,boys_count,girls_count,vacation_date,reopening_date,extra_config) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),ges_name=VALUES(ges_name),directorate=VALUES(directorate),district=VALUES(district),region=VALUES(region),head_name=VALUES(head_name),head_phone=VALUES(head_phone),academic_year=VALUES(academic_year),term=VALUES(term),exam_type=VALUES(exam_type),category=VALUES(category),grading_system=VALUES(grading_system),boys_count=VALUES(boys_count),girls_count=VALUES(girls_count),vacation_date=VALUES(vacation_date),reopening_date=VALUES(reopening_date),extra_config=VALUES(extra_config)`, [cfg.schoolCode,cfg.school,cfg.gesName||'GHANA EDUCATION SERVICE',cfg.directorate||null,cfg.district||null,cfg.region||null,cfg.head||null,cfg.headPhone||null,cfg.year||null,cfg.term||'3rd Term',cfg.examType||'End of Term Exam',cfg.category||'ORGANIZED BY SCHOOL',cfg.gradingSystem||'WAEC',cfg.boys||0,cfg.girls||0,cfg.vacationDate||null,cfg.reopeningDate||null,JSON.stringify(cfg.extra||{})]);
+    if (String(auth.schoolCode) !== String(cfg.schoolCode) || !cfg.school) return json(res, 400, { error: 'schoolCode and school name are required' });
+    const metadata = auth.school.registration_metadata && typeof auth.school.registration_metadata === 'object' ? auth.school.registration_metadata : {};
+    const next = { ...metadata, legacyConfig: cfg };
+    await relational.domainRows('UPDATE schools SET registration_metadata=?::jsonb,updated_at=CURRENT_TIMESTAMP WHERE id=?', [JSON.stringify(next), auth.schoolId]);
     return json(res, 200, { ok: true });
   }
   res.setHeader('Allow', 'GET, POST'); return json(res, 405, { error: 'Method Not Allowed' });
 }
-
 async function students(req, res, auth) {
   const input = req.__legacyInput || (req.method === 'GET' ? Object.fromEntries(new URL(req.url, 'http://localhost').searchParams) : await readBody(req));
-  assertSchool(auth, input.schoolCode);
+  if (String(auth.schoolCode) !== String(input.schoolCode)) return json(res, 403, { error: 'Forbidden school scope' });
   const { schoolCode, class: className, form, year, term } = input;
   if (!schoolCode || !className || !form || !year || !term) return json(res, 400, { error: 'schoolCode, class, form, year, term are required' });
-  if (auth.role === 'TEACHER' && (!auth.assignedClass || !auth.assignedForm || String(className) !== String(auth.assignedClass) || String(form) !== String(auth.assignedForm))) return json(res, 403, { error: 'Permission denied for assigned class scope' });
-  const schools = await query('SELECT id FROM schools WHERE school_code = ?', [schoolCode]);
-  if (!schools.length) return json(res, 404, { error: 'School not found' });
-  const schoolId = schools[0].id;
+  if (auth.role === 'TEACHER' && !auth.assignedClass.some(row => String(row.name) === String(className))) return json(res, 403, { error: 'Permission denied for assigned class scope' });
+  const classRows = await relational.domainRows('SELECT id FROM classes WHERE school_id=? AND name=? AND status=\'ACTIVE\' LIMIT 1', [auth.schoolId, className]);
+  if (!classRows.length) return json(res, 404, { error: 'Class not found' });
+  const classId = classRows[0].id;
   if (req.method === 'GET') {
-    const rows = await query(`SELECT s.student_usid,s.name,s.gender,tr.id AS term_record_id,tr.rank_in_class,tr.index_no,tr.total_score,tr.subjects_sat,tr.aggregate,tr.class_position,tr.conduct,tr.interest,tr.attitude,tr.ct_remarks,tr.ht_remarks,tr.times_present,tr.times_absent,tr.total_school_days,tr.promotion_status,tr.result_date FROM term_records tr JOIN students s ON s.id=tr.student_id WHERE tr.school_id=? AND tr.class_name=? AND tr.form=? AND tr.academic_year=? AND tr.term=? ORDER BY tr.rank_in_class ASC`, [schoolId,className,form,year,term]);
+    const rows = await relational.domainRows(`SELECT s.student_identifier AS student_usid,s.full_name AS name,s.gender,tr.id AS term_record_id,
+      tr.rank_in_class,tr.index_no,tr.total_score,tr.subjects_sat,tr.aggregate,tr.class_position,tr.conduct,tr.interest,tr.attitude,
+      tr.ct_remarks,tr.ht_remarks,tr.times_present,tr.times_absent,tr.total_school_days,tr.promotion_status,tr.result_date
+      FROM term_records tr JOIN students s ON s.id=tr.student_id
+      WHERE tr.school_id=? AND tr.class_name=? AND tr.form=? AND tr.academic_year=? AND tr.term=? AND s.class_id=?
+      ORDER BY tr.rank_in_class ASC`, [auth.schoolId,className,form,year,term,classId]);
     if (!rows.length) return json(res, 200, { students: [] });
-    const ids = rows.map(row => row.term_record_id); const scores = await query(`SELECT * FROM subject_scores WHERE term_record_id IN (${ids.map(() => '?').join(',')})`, ids); const grouped = {}; scores.forEach(row => (grouped[row.term_record_id] ||= []).push(row));
+    const ids = rows.map(row => row.term_record_id);
+    const scores = await relational.domainRows(`SELECT * FROM subject_scores WHERE term_record_id = ANY(?::text[])`, [ids]);
+    const grouped = {}; scores.forEach(row => (grouped[row.term_record_id] ||= []).push(row));
     return json(res, 200, { students: rows.map(row => ({ ...row, scores: grouped[row.term_record_id] || [] })) });
   }
   if (req.method === 'POST') {
     const student = input.student;
     if (!student || !student.student_usid) return json(res, 400, { error: 'student.student_usid is required' });
-    const conn = await getPool().getConnection();
-    try { await conn.beginTransaction();
-      await conn.execute(`INSERT INTO students (school_id,student_usid,name,gender,admission_year,current_class,current_form) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),gender=VALUES(gender),current_class=VALUES(current_class),current_form=VALUES(current_form)`, [schoolId,student.student_usid,student.name,student.gender||'M',year,className,form]);
-      const [[identity]] = await conn.query('SELECT id FROM students WHERE school_id=? AND student_usid=?', [schoolId,student.student_usid]);
-      await conn.execute(`INSERT INTO term_records (school_id,student_id,academic_year,term,class_name,form,rank_in_class,index_no,total_score,subjects_sat,aggregate,class_position,conduct,interest,attitude,ct_remarks,ht_remarks,times_present,times_absent,total_school_days,promotion_status,result_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE rank_in_class=VALUES(rank_in_class),index_no=VALUES(index_no),total_score=VALUES(total_score),subjects_sat=VALUES(subjects_sat),aggregate=VALUES(aggregate),class_position=VALUES(class_position),conduct=VALUES(conduct),interest=VALUES(interest),attitude=VALUES(attitude),ct_remarks=VALUES(ct_remarks),ht_remarks=VALUES(ht_remarks),times_present=VALUES(times_present),times_absent=VALUES(times_absent),total_school_days=VALUES(total_school_days),promotion_status=VALUES(promotion_status),result_date=VALUES(result_date)`, [schoolId,identity.id,year,term,className,form,student.rank||null,student.indexNo||null,student.totalScore||0,student.subjSat||0,student.aggregate||null,student.position||null,student.conduct||null,student.interest||null,student.attitude||null,student.ctRemarks||null,student.htRemarks||null,student.timesPresent||null,student.timesAbsent||null,student.totalSchoolDays||null,student.promotionStatus||null,student.resultDate||null]);
-      const [[record]] = await conn.query('SELECT id FROM term_records WHERE student_id=? AND academic_year=? AND term=?', [identity.id,year,term]);
-      for (const [subject, score] of Object.entries(student.scores || {})) await conn.execute(`INSERT INTO subject_scores (term_record_id,subject,class_score,exam_score,project,ce1,ce2,group_work,class_test,total_ca,ca_50,exam_50,total_score,grade,remark) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE class_score=VALUES(class_score),exam_score=VALUES(exam_score),project=VALUES(project),ce1=VALUES(ce1),ce2=VALUES(ce2),group_work=VALUES(group_work),class_test=VALUES(class_test),total_ca=VALUES(total_ca),ca_50=VALUES(ca_50),exam_50=VALUES(exam_50),total_score=VALUES(total_score),grade=VALUES(grade),remark=VALUES(remark)`, [record.id,subject,score.classScore??null,score.examScore??null,score.project??null,score.ce1??null,score.ce2??null,score.groupWork??null,score.classTest??null,score.totalCA??null,score.ca50??null,score.exam50??null,score.totalScore??null,score.grade??null,score.remark||null]);
-      await conn.commit(); return json(res, 200, { ok: true, studentId: identity.id, termRecordId: record.id });
-    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+    const id = `student_${crypto.randomBytes(12).toString('hex')}`;
+    const admissionNumber = `legacy_${auth.schoolId}_${String(student.student_usid).slice(0,80)}`;
+    const students = await relational.domainRows(`INSERT INTO students (id,admission_number,student_identifier,full_name,gender,tenant_id,school_id,class_id,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,\'ACTIVE\',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      ON CONFLICT (student_identifier) DO UPDATE SET full_name=EXCLUDED.full_name,gender=EXCLUDED.gender,class_id=EXCLUDED.class_id,updated_at=CURRENT_TIMESTAMP
+      WHERE students.school_id=EXCLUDED.school_id RETURNING id`, [id,admissionNumber,String(student.student_usid),String(student.name||'').trim(),student.gender||'M',auth.school.tenant_id,auth.schoolId,classId]);
+    if (!students.length) return json(res, 409, { error: 'Student identifier belongs to another School' });
+    const studentId = students[0].id;
+    const records = await relational.domainRows(`INSERT INTO term_records (school_id,student_id,academic_year,term,class_name,form,rank_in_class,index_no,total_score,subjects_sat,aggregate,class_position,conduct,interest,attitude,ct_remarks,ht_remarks,times_present,times_absent,total_school_days,promotion_status,result_date)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT (student_id,academic_year,term) DO UPDATE SET class_name=EXCLUDED.class_name,form=EXCLUDED.form,rank_in_class=EXCLUDED.rank_in_class,index_no=EXCLUDED.index_no,total_score=EXCLUDED.total_score,subjects_sat=EXCLUDED.subjects_sat,aggregate=EXCLUDED.aggregate,class_position=EXCLUDED.class_position,conduct=EXCLUDED.conduct,interest=EXCLUDED.interest,attitude=EXCLUDED.attitude,ct_remarks=EXCLUDED.ct_remarks,ht_remarks=EXCLUDED.ht_remarks,times_present=EXCLUDED.times_present,times_absent=EXCLUDED.times_absent,total_school_days=EXCLUDED.total_school_days,promotion_status=EXCLUDED.promotion_status,result_date=EXCLUDED.result_date
+      RETURNING id`, [auth.schoolId,studentId,year,term,className,form,student.rank||null,student.indexNo||null,student.totalScore||0,student.subjSat||0,student.aggregate||null,student.position||null,student.conduct||null,student.interest||null,student.attitude||null,student.ctRemarks||null,student.htRemarks||null,student.timesPresent||null,student.timesAbsent||null,student.totalSchoolDays||null,student.promotionStatus||null,student.resultDate||null]);
+    const recordId = records[0].id;
+    for (const [subject, score] of Object.entries(student.scores || {})) {
+      await relational.domainRows(`INSERT INTO subject_scores (term_record_id,subject,class_score,exam_score,project,ce1,ce2,group_work,class_test,total_ca,ca_50,exam_50,total_score,grade,remark)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (term_record_id,subject) DO UPDATE SET class_score=EXCLUDED.class_score,exam_score=EXCLUDED.exam_score,project=EXCLUDED.project,ce1=EXCLUDED.ce1,ce2=EXCLUDED.ce2,group_work=EXCLUDED.group_work,class_test=EXCLUDED.class_test,total_ca=EXCLUDED.total_ca,ca_50=EXCLUDED.ca_50,exam_50=EXCLUDED.exam_50,total_score=EXCLUDED.total_score,grade=EXCLUDED.grade,remark=EXCLUDED.remark`, [recordId,subject,score.classScore??null,score.examScore??null,score.project??null,score.ce1??null,score.ce2??null,score.groupWork??null,score.classTest??null,score.totalCA??null,score.ca50??null,score.exam50??null,score.totalScore??null,score.grade??null,score.remark||null]);
+    }
+    return json(res, 200, { ok: true, studentId, termRecordId: recordId });
   }
   res.setHeader('Allow','GET, POST'); return json(res,405,{error:'Method Not Allowed'});
 }
-
 async function handler(req, res) {
   try {
-    if (req.url.split('?')[0] === '/api/login') return req.method === 'POST' ? login(req,res) : json(res,405,{error:'Method Not Allowed'});
-    if (req.url.split('?')[0] === '/api/school-login') return req.method === 'POST' ? schoolLogin(req,res) : json(res,405,{error:'Method Not Allowed'});
-    if (!['/api/config','/api/students'].includes(req.url.split('?')[0])) return false;
-    const claims = requireAuth(req,res); if (!claims) return true;
-    const route=req.url.split('?')[0];let schoolCode='';let permissions=[];
-    if(route==='/api/config') { schoolCode=req.method==='GET'?new URL(req.url,'http://localhost').searchParams.get('schoolCode'):'';if(req.method==='POST')req.__legacyInput=await readBody(req);schoolCode=schoolCode||String(req.__legacyInput&&req.__legacyInput.schoolCode||'');permissions=['schools.manage']; }
-    else { const input=req.method==='GET'?Object.fromEntries(new URL(req.url,'http://localhost').searchParams):await readBody(req);schoolCode=String(input.schoolCode||'');permissions=['students.manage','scores.manage'];req.__legacyInput=input; }
-    let auth;try{auth=await schoolAuthorization(claims,schoolCode,permissions)}catch(error){json(res,503,{error:'Authorization service unavailable'});return true;}
+    const route = req.url.split('?')[0];
+    if (route === '/api/login') return req.method === 'POST' ? await login(req,res) : json(res,405,{error:'Method Not Allowed'});
+    if (route === '/api/school-login') return req.method === 'POST' ? await schoolLogin(req,res) : json(res,405,{error:'Method Not Allowed'});
+    if (route === '/api/auth/refresh') {
+      if (req.method !== 'POST') return json(res,405,{error:'Method Not Allowed'});
+      const input=await readBody(req);const session=await supabaseAuth.refreshSession(input.refreshToken);
+      const user=await relational.findUserByAuthId(session.user.id);
+      if(!user||!user.active||user.status!=='ACTIVE')return json(res,401,{error:'Authentication required'});
+      return json(res,200,{token:session.accessToken,refreshToken:session.refreshToken,expiresAt:session.expiresAt});
+    }
+    if (route === '/api/logout') {
+      if (req.method !== 'POST') return json(res,405,{error:'Method Not Allowed'});
+      const bearer=await resolveBearer(req,res);if(!bearer)return true;
+      await supabaseAuth.signOut(bearer.token).catch(()=>{});
+      return json(res,200,{ok:true});
+    }
+    if (!['/api/config','/api/students'].includes(route)) return false;
+    const bearer=await resolveBearer(req,res);if(!bearer)return true;
+    let input, schoolCode, permissions;
+    if(route==='/api/config') {
+      if(req.method==='POST'){input=await readBody(req);req.__legacyInput=input;}
+      schoolCode=req.method==='GET'?new URL(req.url,'http://localhost').searchParams.get('schoolCode'):String(input.schoolCode||'');
+      permissions=req.method==='GET'?['schools.manage']:['schools.manage'];
+    } else {
+      input=req.method==='GET'?Object.fromEntries(new URL(req.url,'http://localhost').searchParams):await readBody(req);
+      req.__legacyInput=input;schoolCode=String(input.schoolCode||'');permissions=['students.manage','scores.manage'];
+    }
+    const auth=await schoolAuthorization(bearer,schoolCode,permissions);
     if(!auth){json(res,403,{error:'Permission denied'});return true;}
-    if (route === '/api/config') await config(req,res,auth); else await students(req,res,auth);
+    if(route==='/api/config')await config(req,res,auth);else await students(req,res,auth);
     return true;
-  } catch (error) { json(res, error.status || 500, { error: error.status ? error.message : 'Internal server error' }); return true; }
+  } catch (error) {
+    const status=error?.status===429?429:500;
+    return json(res,status,{error:status===429?'Authentication rate limited':'Internal server error'});
+  }
 }
-
-module.exports = { handler };
+module.exports = { handler, schoolAuthorization };

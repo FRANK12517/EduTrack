@@ -1,0 +1,48 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const source=fs.readFileSync(require.resolve('../ges-teacher-assessment.js'),'utf8');
+const added={conduct:{positive:['Existing custom conduct'],negative:[]}};
+const api={getComments:(category,sentiment)=>(added[category]?.[sentiment]||[]).slice()};
+const window={EMS_COMMENT_LIBRARY_API:api,addEventListener(){}};
+const document={readyState:'loading',addEventListener(){},getElementById(){return null;},head:{appendChild(){}},body:{}};
+class MutationObserver{observe(){}}
+vm.runInNewContext(source,{window,document,MutationObserver,localStorage:{getItem(){return null},setItem(){}},Set,JSON,String,Array,Object});
+const assessment=window.GESTeacherAssessment;
+assert.ok(assessment,'shared assessment module initializes');
+assert.equal(assessment.categories.length,5);
+const expected={conduct:['conduct','slip-conduct','Conduct'],interest:['interest','slip-interest','Interest'],attitude:['attitude','slip-attitude','Attitude'],ctRemarks:['ctRemarks','slip-ct-remarks',"Class Teacher's Remarks"],htRemarks:['htRemarks','slip-ht-remarks',"Headteacher's Remarks"]};
+for(const [key,[category,legacyId,label]] of Object.entries(expected)){
+  assert.equal(assessment.categories.find(x=>x.key===key).id,legacyId);
+  assert.equal(assessment.categories.find(x=>x.key===key).label,label);
+  assert.equal(assessment.newComments[category].positive.length,15);
+  assert.equal(assessment.newComments[category].negative.length,15);
+  assert.equal(assessment.comments[category].positive.length>=15,true);
+  assert.equal(assessment.comments[category].negative.length>=15,true);
+  assert.equal(new Set(assessment.comments[category].positive.map(x=>x.trim().toLocaleLowerCase())).size,assessment.comments[category].positive.length);
+  assert.equal(new Set(assessment.comments[category].negative.map(x=>x.trim().toLocaleLowerCase())).size,assessment.comments[category].negative.length);
+  const negative=new Set(assessment.comments[category].negative.map(x=>x.trim().toLocaleLowerCase()));
+  for(const comment of assessment.comments[category].positive)assert.equal(negative.has(comment.trim().toLocaleLowerCase()),false,`${category} comment appears in only one sentiment bank`);
+}
+assert.ok(assessment.comments.conduct.positive.includes('Existing custom conduct'),'existing custom comments are retained');
+assert.equal(Object.values(assessment.newComments).reduce((n,category)=>n+category.positive.length,0),75);
+assert.equal(Object.values(assessment.newComments).reduce((n,category)=>n+category.negative.length,0),75);
+const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
+assert.match(html,/<script id="edutrack-ges-teacher-assessment" src="\/ges-teacher-assessment\.js" defer><\/script>/);
+assert.match(html,/function emsSeedGesAssessmentV314\(\)[\s\S]*?if \(!seen\.has\(key\)\)/);
+const shell=fs.readFileSync(require.resolve('../app/login-shell.js'),'utf8');assert.match(shell,/ges-teacher-assessment\.js/);assert.match(shell,/edutrack-ges-teacher-assessment/);
+assert.match(fs.readFileSync(require.resolve('../index.html'),'utf8'),/data-ges-comment="conduct"/,'mock printable layout has a selected-text slot');
+assert.match(fs.readFileSync(require.resolve('../index.html'),'utf8'),/function v83BuildPrintableSlip\(\)[\s\S]*?const clone = slip\.cloneNode\(true\)/,'exam printable renderer still clones the slip without embedding controls');
+assert.match(fs.readFileSync(require.resolve('../index.html'),'utf8'),/function gmrBuildPrintableSlip\(\)[\s\S]*?var clone = slip\.cloneNode\(true\)/,'mock PDF/print renderer still clones the slip without embedding controls');
+const moduleText=source;
+assert.match(moduleText,/saveSlipRemarks\(document\.getElementById\('slip-index'\)/,'exam adapter calls the existing exam persistence function');
+assert.match(moduleText,/GES_MOCK_RESULT\.saveRemarks\(\)/,'mock adapter calls the existing mock persistence function');
+assert.match(moduleText,/ges_assessment_v1:/,'assessment state is namespaced by result context');
+assert.match(moduleText,/var panelId='ges-assessment-panel-'\+kind/,'exam and mock use separate control panels');
+assert.match(moduleText,/@media print\{\.ges-assessment-panel\{display:none!important\}\}/,'control panel is hidden in print');
+assert.match(moduleText,/panel\.appendChild\(existing\)/,'legacy exam remark inputs are moved outside the printable slip');
+assert.match(moduleText,/var current=slip\.querySelector\('#'\+c\.id\)/,'rerendered exam controls are rebound from the current slip');
+assert.match(moduleText,/resultContext=host&&host\.querySelector\('\.slip-info-grid'\)\?\.textContent/,'exam context includes rendered class and academic metadata');
+assert.match(moduleText,/function setSelectValue\(select,value\)/,'exam save adapter adds selected comments to the native select before persisting');
+console.log('GES Teacher Assessment shared library, category counts, stable dedupe, legacy references, and asset registration passed.');

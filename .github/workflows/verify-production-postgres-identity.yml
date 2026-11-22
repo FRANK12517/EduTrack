@@ -1,0 +1,25 @@
+name: Verify production Supabase PostgreSQL identity
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-production-identity:
+    runs-on: ubuntu-latest
+    env:
+      EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: ${{ secrets.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require explicitly authorized production read-only target
+        shell: bash
+        run: |
+          test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'production-read-only'
+          case "$SUPABASE_DB_URL" in postgres://*|postgresql://*) ;; *) exit 1;; esac
+      - name: Verify Supabase PostgreSQL identity with strict TLS
+        run: node scripts/verify-production-postgres-identity.js

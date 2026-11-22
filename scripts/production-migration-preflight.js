@@ -1,36 +1,40 @@
 'use strict';
 
-// This script deliberately never imports db/relational: that module can migrate.
+// This script connects directly and read-only; it never runs migrations.
 const fs = require('node:fs');
 const path = require('node:path');
-const mysql = require('mysql2/promise');
+const { Client } = require('pg');
+const { poolOptions } = require('../lib/postgres-pool');
 const { readonly } = require('../lib/production-preflight-readonly');
-const { options: verifiedTiDbOptions } = require('./verify-production-tidb-secrets');
 
 const TARGET = 'production-read-only';
-function quote(name) { return `\`${String(name).replace(/`/g, '``')}\``; }
+function quote(name) { return `"${String(name).replace(/"/g, '""')}"`; }
 function countName(names, needle) { return names.filter(name => name === needle).length; }
 function option(name, fallback) { const i = process.argv.indexOf(name); return i < 0 ? fallback : process.argv[i + 1]; }
 function outputPath() { return option('--output', path.join('artifacts', 'production-migration-preflight.json')); }
 function requireTarget(env = process.env, expectedTarget = TARGET) {
   if (!['production-read-only', 'disposable-validation'].includes(expectedTarget) || env.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET !== expectedTarget) throw new Error('Production preflight target is not explicitly authorized as read-only');
-  if (expectedTarget === TARGET) return verifiedTiDbOptions(env);
-  if (!env.EDUTRACK_DATABASE_URL || !/^(mysql|mariadb):\/\//.test(env.EDUTRACK_DATABASE_URL)) throw new Error('EDUTRACK_DATABASE_URL must be an explicit MySQL-compatible production connection');
-  return { uri: env.EDUTRACK_DATABASE_URL, ssl: { rejectUnauthorized: true }, multipleStatements: false, decimalNumbers: true };
+  if (!env.SUPABASE_DB_URL || !/^(postgres|postgresql):\/\//.test(env.SUPABASE_DB_URL)) throw new Error('SUPABASE_DB_URL must be an explicit PostgreSQL connection');
+  const options = poolOptions({ ...env, EDUTRACK_DB_POOL_SIZE: '1' });
+  if (expectedTarget === TARGET && ['localhost','127.0.0.1','::1','[::1]'].includes(new URL(options.connectionString).hostname)) throw new Error('Production read-only target cannot be local');
+  return { connectionString: options.connectionString, ssl: options.ssl };
 }
 function entityType(column) { return /(^id$|_id$|^id_)/i.test(column.COLUMN_NAME); }
 
 async function main() {
   const expectedTarget = option('--target', TARGET);
   const connectionOptions = requireTarget(process.env, expectedTarget);
-  const raw = await mysql.createConnection(connectionOptions);
+  const client = new Client(connectionOptions);
+  await client.connect();
+  await client.query('BEGIN READ ONLY');
+  const raw = { async query(sql, values) { const result = await client.query(sql, values); return [result.rows, result.fields]; }, async end() { try { await client.query('ROLLBACK'); } finally { await client.end(); } } };
   const db = readonly(raw);
   try {
-    const [[server]] = await db.query('SELECT DATABASE() AS database_name, VERSION() AS version');
-    const [tables] = await db.query('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME');
-    const [columns] = await db.query('SELECT TABLE_NAME,COLUMN_NAME,DATA_TYPE,COLUMN_TYPE,IS_NULLABLE,CHARACTER_MAXIMUM_LENGTH,CHARACTER_SET_NAME,COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME,ORDINAL_POSITION');
-    const [keys] = await db.query('SELECT TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME,CONSTRAINT_NAME,ORDINAL_POSITION');
-    const [indexes] = await db.query('SELECT TABLE_NAME,INDEX_NAME,NON_UNIQUE,COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME,INDEX_NAME,SEQ_IN_INDEX');
+    const [[server]] = await db.query('SELECT current_database() AS database_name, version() AS version');
+    const [tables] = await db.query("SELECT table_name AS \"TABLE_NAME\" FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name");
+    const [columns] = await db.query("SELECT table_name AS \"TABLE_NAME\",column_name AS \"COLUMN_NAME\",data_type AS \"DATA_TYPE\",udt_name AS \"COLUMN_TYPE\",is_nullable AS \"IS_NULLABLE\",character_maximum_length AS \"CHARACTER_MAXIMUM_LENGTH\",NULL::text AS \"CHARACTER_SET_NAME\",NULL::text AS \"COLLATION_NAME\" FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position");
+    const [keys] = await db.query("SELECT k.table_name AS \"TABLE_NAME\",k.column_name AS \"COLUMN_NAME\",k.constraint_name AS \"CONSTRAINT_NAME\",c.table_name AS \"REFERENCED_TABLE_NAME\",c.column_name AS \"REFERENCED_COLUMN_NAME\" FROM information_schema.key_column_usage k JOIN information_schema.table_constraints t ON t.constraint_schema=k.constraint_schema AND t.constraint_name=k.constraint_name AND t.constraint_type='FOREIGN KEY' LEFT JOIN information_schema.constraint_column_usage c ON c.constraint_schema=k.constraint_schema AND c.constraint_name=k.constraint_name WHERE k.table_schema='public' ORDER BY k.table_name,k.constraint_name,k.ordinal_position");
+    const [indexes] = await db.query("SELECT tablename AS \"TABLE_NAME\",indexname AS \"INDEX_NAME\",CASE WHEN indexdef ILIKE '% UNIQUE %' THEN 0 ELSE 1 END AS \"NON_UNIQUE\",NULL::text AS \"COLUMN_NAME\" FROM pg_indexes WHERE schemaname='public' ORDER BY tablename,indexname");
     const tableNames = tables.map(row => row.TABLE_NAME);
     const foreignKeys = keys.filter(row => row.REFERENCED_TABLE_NAME);
     const identifierColumns = columns.filter(entityType);

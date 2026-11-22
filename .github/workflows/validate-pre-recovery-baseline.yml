@@ -1,4 +1,4 @@
-name: Validate preserved pre-recovery baseline
+name: Verify production Supabase schema baseline
 
 on:
   workflow_dispatch:
@@ -7,22 +7,21 @@ jobs:
   validate-preserved-baseline:
     runs-on: ubuntu-latest
     env:
-      EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL }}
+      EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: ${{ secrets.EDUTRACK_PRODUCTION_PREFLIGHT_TARGET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - name: Require only the dedicated preserved-target credential
+      - name: Require explicitly authorized production read-only target
         shell: bash
         run: |
-          test -n "${EDUTRACK_TIDB_PRE_RECOVERY_DATABASE_URL}"
-          test -z "${EDUTRACK_DATABASE_URL}" && test -z "${DATABASE_URL}" && test -z "${TIDB_HOST}"
-          test -z "${EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL}" && test -z "${EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL}"
-          test -z "${EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL}" && test -z "${EDUTRACK_TIDB_TEST_DATABASE_URL}"
+          test "$EDUTRACK_PRODUCTION_PREFLIGHT_TARGET" = 'production-read-only'
+          case "${SUPABASE_DB_URL}" in postgres://*|postgresql://*) ;; *) exit 1;; esac
       - name: Verify read-only authorization guards
         run: node test/pre-recovery-baseline-validator.spec.js
-      - name: Validate the preserved legacy baseline with read-only SQL
+      - name: Validate all migrated tables, migrations, foreign keys, and RLS with read-only SQL
         run: node scripts/validate-pre-recovery-baseline.js
       - uses: actions/upload-artifact@v4
         if: always()

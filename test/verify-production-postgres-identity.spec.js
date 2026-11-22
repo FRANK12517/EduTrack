@@ -1,0 +1,10 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { options } = require('../scripts/verify-production-postgres-identity');
+const env = { EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'production-read-only', SUPABASE_DB_URL: 'postgresql://user:password@db.example.test:5432/postgres' };
+assert.equal(options(env).ssl.rejectUnauthorized, true);
+assert.throws(() => options({ ...env, SUPABASE_DB_URL: '' }));
+assert.throws(() => options({ ...env, EDUTRACK_PRODUCTION_PREFLIGHT_TARGET: 'disposable-validation' }));
+assert.throws(() => options({ ...env, SUPABASE_DB_URL: 'mysql://user:password@db.example.test/db' }));
+assert.throws(() => options({ ...env, SUPABASE_DB_URL: 'postgres://user:password@localhost/postgres' }));
+console.log('Production Supabase PostgreSQL identity guard passed.');

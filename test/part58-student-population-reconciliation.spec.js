@@ -18,7 +18,7 @@ const ACCESS = 'part58-reconciliation-access';
 
 const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const relationalSource = fs.readFileSync(path.join(ROOT, 'db', 'relational.js'), 'utf8');
-const schemaSource = fs.readFileSync(path.join(ROOT, 'db', 'schema.sql'), 'utf8');
+const schemaSource = require('./schema-source').read();
 for (const source of [relationalSource, schemaSource]) {
   assert.match(source, /student_population_reconciliations/);
   assert.match(source, /subscription_timestamp/);

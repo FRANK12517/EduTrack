@@ -1,6 +1,6 @@
 'use strict';
 // Real HTTP handler/auth middleware and real relational SELECT/UPDATE statements.
-// SQLite is a disposable SQL execution adapter, NOT a TiDB migration test.
+// SQLite is a disposable SQL execution adapter, not the PostgreSQL integration database.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
@@ -8,13 +8,14 @@ const path=require('node:path');
 const http=require('node:http');
 const crypto=require('node:crypto');
 const {DatabaseSync}=require('node:sqlite');
-const mysql=require('mysql2/promise');
+const mysql=require('./postgres-test-client');
 
 (async()=>{
   const sqlite=new DatabaseSync(':memory:');
+  sqlite.function('NOW',()=>new Date().toISOString());
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'edutrack-macro-http-'));
   process.env.EDUTRACK_DATA_FILE=path.join(temp,'data.json');
-  process.env.EDUTRACK_DATABASE_URL='mysql://disposable.invalid/test';
+  process.env.SUPABASE_DB_URL='postgresql://disposable.invalid/test';
   process.env.DB_PASSWORD='';process.env.NODE_ENV='test';
   process.env.JWT_SECRET=crypto.randomBytes(32).toString('hex');
   for(const name of ['EDUTRACK_AI_PROVIDER_URL','OPENAI_API_BASE','BUILT_IN_FORGE_API_URL','EDUTRACK_AI_API_KEY','OPENAI_API_KEY','BUILT_IN_FORGE_API_KEY'])delete process.env[name];
@@ -34,7 +35,7 @@ const mysql=require('mysql2/promise');
     CREATE TABLE parent_student_relationships (parent_user_id TEXT,student_id TEXT,active INTEGER);
     CREATE TABLE regions (id TEXT PRIMARY KEY,name TEXT,national_tenant_id TEXT);
     CREATE TABLE districts (id TEXT PRIMARY KEY,name TEXT,region_id TEXT);
-    CREATE TABLE schools (id TEXT PRIMARY KEY,name TEXT,school_code TEXT,tenant_id TEXT,district_id TEXT,active INTEGER,district_sync_enabled INTEGER,district_sync_actor_id TEXT,district_sync_updated_at TEXT);
+    CREATE TABLE schools (id TEXT PRIMARY KEY,name TEXT,school_code TEXT,tenant_id TEXT,district_id TEXT,active INTEGER,status TEXT,district_sync_enabled INTEGER,district_sync_actor_id TEXT,district_sync_updated_at TEXT);
     CREATE TABLE students (id TEXT PRIMARY KEY,full_name TEXT,student_identifier TEXT,tenant_id TEXT,school_id TEXT,class_id TEXT,gender TEXT,special_needs TEXT,status TEXT);
     CREATE TABLE staff (id TEXT PRIMARY KEY,user_id TEXT,full_name TEXT,tenant_id TEXT,school_id TEXT,status TEXT);
     CREATE TABLE classes (id TEXT PRIMARY KEY,name TEXT,tenant_id TEXT,school_id TEXT,status TEXT);
@@ -60,10 +61,12 @@ const mysql=require('mysql2/promise');
     INSERT INTO regions VALUES ('r1','Central Region','n1'),('r2','Ashanti Region','n1'),('r3','Greater Accra Region','n2');
     INSERT INTO districts VALUES ('d1','Cape Coast Metro','r1'),('d2','Kumasi Metro','r2'),('d3','Accra Metro','r3');
   `);
+  for(const column of ['full_name TEXT','role TEXT','assigned_class TEXT','assigned_form TEXT','school_id TEXT'])sqlite.exec('ALTER TABLE users ADD COLUMN '+column);
+  for(const column of ['access_code TEXT','access_code_status TEXT','access_code_expires_at TEXT','region TEXT','district TEXT'])sqlite.exec('ALTER TABLE schools ADD COLUMN '+column);
   sqlite.exec('ALTER TABLE tenants ADD COLUMN name TEXT');
   const insert=(table,row)=>sqlite.prepare(`INSERT INTO ${table} (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(()=>'?').join(',')})`).run(...Object.values(row));
   for(let i=1;i<=3;i++){
-    insert('schools',{id:'s'+i,name:'School '+i,school_code:'SC'+i,tenant_id:'t'+i,district_id:'d'+i,active:1,district_sync_enabled:i===1?0:1,district_sync_actor_id:i===1?null:'ht'+i});
+    insert('schools',{id:'s'+i,name:'School '+i,school_code:'SC'+i,tenant_id:'t'+i,district_id:'d'+i,active:1,status:'ACTIVE',district_sync_enabled:i===1?0:1,district_sync_actor_id:i===1?null:'ht'+i});
     insert('students',{id:'p'+i,full_name:'Pupil '+i,student_identifier:'PERMANENT-'+i,tenant_id:'t'+i,school_id:'s'+i,class_id:'c'+i,gender:'female',special_needs:'',status:'ACTIVE'});
     insert('staff',{id:'staff'+i,user_id:'ht'+i,full_name:'Staff '+i,tenant_id:'t'+i,school_id:'s'+i,status:'ACTIVE'});
     insert('subscriptions',{id:'sub'+i,school_id:'s'+i,status:'ACTIVE',expires_at:'2099-01-01 00:00:00'});
@@ -83,11 +86,12 @@ const mysql=require('mysql2/promise');
     insert('promotion_records',{id:'promotion'+i,school_id:'s'+i,tenant_id:'t'+i,created_at:'2026-09-01'});
     insert('scores',{id:'score'+i,school_id:'s'+i,tenant_id:'t'+i,class_id:'c'+i,student_id:'p'+i,subject_id:'subjects'+i,raw_score:70,maximum_score:100,status:'PUBLISHED',examination_id:'examinations'+i,updated_at:'2026-09-01'});
   }
-  const grants=['scope.read','schools.manage','controlpanel.view','controlpanel.export','ai.use','reporting.read','students.manage','staff.manage','classes.manage','attendance.manage','academics.manage','examinations.manage','scores.manage','results.manage','promotion.manage','communications.manage','communications.view'];
-  for(const permission of grants)insert('permissions',{id:permission,name:permission});
-  const accounts={ht1:['HEADTEACHER','SCHOOL','t1',{schoolIds:['s1'],tenantIds:['t1'],classIds:['c1']}],ht2:['HEADTEACHER','SCHOOL','t2',{schoolIds:['s2'],tenantIds:['t2']}],district:['DISTRICT_ADMIN','DISTRICT','t1',{districtIds:['d1']}],otherDistrict:['DISTRICT_ADMIN','DISTRICT','t2',{districtIds:['d2']}],regional:['REGIONAL_ADMIN','REGIONAL','t1',{regionIds:['r1']}],national:['NATIONAL_ADMIN','NATIONAL','n1',{}],teacher:['TEACHER','SCHOOL','t1',{schoolIds:['s1']}],parent:['PARENT','SCHOOL','t1',{schoolIds:['s1']}],student:['STUDENT','SCHOOL','t1',{schoolIds:['s1']}],super:['SUPER_ADMIN','NATIONAL','n1',{}],support:['DISTRICT_SISO','DISTRICT','t1',{districtIds:['d1']}],noPermission:['DISTRICT_SPORTS_OFFICER','DISTRICT','t1',{districtIds:['d1']}]};
+  const grants=['scope.read','schools.manage','controlpanel.view','controlpanel.export','ai.use','reporting.read','students.manage','staff.manage','classes.manage','attendance.manage','academics.manage','examinations.manage','scores.manage','results.manage','promotion.manage','communications.manage','communications.view'];const schoolGrants=['ai.use','signature.manage','attendance.qr.manage','transport.view','transport.manage','transport.event.record','transport.staff.manage','transport.location.manage','admissions.view','admissions.review','admissions.finalize','communications.view','communications.manage','hostel.view','hostel.manage','hostel.rollcall','schools.manage','staff.manage','students.manage','academics.manage','attendance.manage','classes.manage','examinations.manage','scores.manage','results.manage','promotion.manage','fees.manage','reporting.read','scope.read'];
+  for(const permission of new Set([...grants,...schoolGrants]))insert('permissions',{id:permission,name:permission});
+  const accounts={ht1:['HEADTEACHER','SCHOOL','t1',{schoolIds:['s1'],tenantIds:['t1'],classIds:['c1']}],ht2:['HEADTEACHER','SCHOOL','t2',{schoolIds:['s2'],tenantIds:['t2']}],assistant:['ASSISTANT_HEADTEACHER','SCHOOL','t1',{schoolIds:['s1'],tenantIds:['t1']}],district:['DISTRICT_ADMIN','DISTRICT','t1',{districtIds:['d1']}],otherDistrict:['DISTRICT_ADMIN','DISTRICT','t2',{districtIds:['d2']}],regional:['REGIONAL_ADMIN','REGIONAL','t1',{regionIds:['r1']}],national:['NATIONAL_ADMIN','NATIONAL','n1',{}],teacher:['TEACHER','SCHOOL','t1',{schoolIds:['s1']}],parent:['PARENT','SCHOOL','t1',{schoolIds:['s1']}],student:['STUDENT','SCHOOL','t1',{schoolIds:['s1']}],super:['SUPER_ADMIN','NATIONAL','n1',{}],support:['DISTRICT_SISO','DISTRICT','t1',{districtIds:['d1']}],noPermission:['DISTRICT_SPORTS_OFFICER','DISTRICT','t1',{districtIds:['d1']}]};
   const users=[],sessions=[],tokens={};const roleSet=new Set();
   const accessCode=crypto.randomBytes(12).toString('hex'),salt=crypto.randomBytes(16).toString('hex');
+  sqlite.prepare("UPDATE schools SET access_code=?,access_code_status='ACTIVE',region='Central Region',district='Cape Coast Metro' WHERE id='s1'").run(accessCode);
   const encoded=salt+':'+crypto.scryptSync(accessCode,salt,64).toString('hex');
   accounts.wrongTenantHeadteacher=['HEADTEACHER','SCHOOL','t1',{schoolIds:['s2']}];
   accounts.regionalNarrow=['REGIONAL_ADMIN','REGIONAL','t1',{regionIds:['r1'],districtIds:['d1b']}];
@@ -97,18 +101,23 @@ const mysql=require('mysql2/promise');
   for(const [role,{level}] of Object.entries(require('../app/auth/administrative-scope').CORE_ROLES)) {
     accounts['officer-'+role]=[role,level,level==='NATIONAL'?'n1':'t1',level==='DISTRICT'?{districtIds:['d1']}:level==='REGIONAL'?{regionIds:['r1']}:{}];
   }
+  for(const [alias,role] of [['REGIONAL_INSTITUTIONAL_SUPPORT_OFFICER','REGIONAL_SISO'],['NATIONAL_INSTITUTIONAL_SUPPORT_OFFICER','NATIONAL_SISO']]) {
+    const level=role.startsWith('REGIONAL_')?'REGIONAL':'NATIONAL';
+    accounts['legacy-'+alias]=[alias,level,level==='NATIONAL'?'n1':'t1',level==='REGIONAL'?{regionIds:['r1']}:{}];
+  }
   for(const [id,[role,level,tenantId,scope]] of Object.entries(accounts)){
     insert('users',{id,staff_id:'STAFF-'+id,scope_json:JSON.stringify(scope),status:'ACTIVE',active:1,development_fixture:0,hierarchy:level});
     insert('credentials',{user_id:id,password_hash:encoded,access_code_hash:encoded,status:'ACTIVE'});
     if(!roleSet.has(role)){
       roleSet.add(role);insert('roles',{id:role,name:role});
-      for(const permission of (id==='noPermission'?['scope.read']:grants))insert('role_permissions',{role_id:role,permission_id:permission});
+      for(const permission of (id==='noPermission'?['scope.read']:role==='ASSISTANT_HEADTEACHER'?[]:role==='HEADTEACHER'?schoolGrants:grants))insert('role_permissions',{role_id:role,permission_id:permission});
     }
     insert('user_roles',{user_id:id,role_id:role});insert('tenant_memberships',{user_id:id,tenant_id:tenantId,scope_json:JSON.stringify(scope),active:1});
     users.push({id,role,hierarchy:level,active:true});tokens[id]=crypto.randomBytes(18).toString('hex');
     sessions.push({id:'session-'+id,userId:id,tokenHash:crypto.createHash('sha256').update(tokens[id]).digest('hex'),expiresAt:'2099-01-01T00:00:00.000Z'});
     insert('server_sessions',{id:'session-'+id,user_id:id,token_hash:sessions.at(-1).tokenHash,created_at:'2026-09-01 00:00:00',expires_at:'2099-01-01 00:00:00'});
   }
+  sqlite.prepare("UPDATE users SET full_name='Headteacher One',role='HEADTEACHER',school_id='s1' WHERE id='ht1'").run();sqlite.prepare("UPDATE users SET full_name='Assistant Headteacher One',role='ASSISTANT_HEADTEACHER',school_id='s1' WHERE id='assistant'").run();insert('staff',{id:'staff-assistant',user_id:'assistant',full_name:'Assistant Headteacher One',tenant_id:'t1',school_id:'s1',status:'ACTIVE'});
   const connection={release(){},escape:value=>"'"+String(value).replace(/'/g,"''")+"'",beginTransaction:async()=>sqlite.exec('BEGIN'),commit:async()=>sqlite.exec('COMMIT'),rollback:async()=>sqlite.exec('ROLLBACK'),query:async(sql,params=[])=>{
     // Schema is explicitly built above. No DDL is tested by this adapter.
     if(/^SELECT version FROM schema_migrations/.test(sql))return [[{version:26}]];
@@ -138,8 +147,8 @@ const mysql=require('mysql2/promise');
     const login=await fetch(base+'/api/school-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({region:'Central Region',district:'Cape Coast Metro',staffId:'STAFF-ht1',role:'Headteacher',accessCode})});
     const loginBody=await login.json();assert.equal(login.status,200,JSON.stringify(loginBody));assert.equal(loginBody.authenticated,true);
     assert.equal(loginBody.school.id,'s1');assert.match(login.headers.get('set-cookie'),/HttpOnly/);
-    tokens.ht1=login.headers.get('set-cookie').split(';')[0].split('=')[1];
-    assert.equal((await check('ht1','/api/auth/session',200)).authenticated,true,'new School login session survives relational hydration');
+    tokens.ht1=login.headers.get('set-cookie').split(';')[0].split('=')[1];const assistantLogin=await fetch(base+'/api/school-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({region:'Central Region',district:'Cape Coast Metro',staffId:'STAFF-assistant',role:'Assistant Headteacher',accessCode})});const assistantLoginBody=await assistantLogin.json();assert.equal(assistantLogin.status,200,JSON.stringify(assistantLoginBody));assert.equal(assistantLoginBody.dashboard,'school-general');tokens.assistant=assistantLogin.headers.get('set-cookie').split(';')[0].split('=')[1];
+    const headteacherSession=await check('ht1','/api/auth/session',200);assert.equal(headteacherSession.authenticated,true,'new School login session survives relational hydration');const assistantSession=await check('assistant','/api/auth/session',200);assert.equal(assistantSession.user.role,'ASSISTANT_HEADTEACHER');assert.notEqual(headteacherSession.user.id,assistantSession.user.id,'School leaders retain distinct authentication identities');assert.deepEqual(assistantSession.authorization.permissions,headteacherSession.authorization.permissions,'Assistant Headteacher effective permission set matches Headteacher exactly');assert.equal((await check('assistant','/api/domain/students?schoolId=s1',200)).students.length,1,'Assistant Headteacher can read same-school students');await check('assistant','/api/domain/students?schoolId=s2',403);
     assert.equal((await check('ht1','/api/school-district-sync',200)).schoolId,'s1','existing Headteacher control uses the login session');
     const rejected=await fetch(base+'/api/school-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({region:'Central Region',district:'Cape Coast Metro',staffId:'STAFF-ht1',role:'Headteacher',accessCode:'incorrect'})});
     assert.equal(rejected.status,401);await rejected.text();
@@ -149,11 +158,18 @@ const mysql=require('mysql2/promise');
     sqlite.exec("UPDATE credentials SET status='ACTIVE' WHERE user_id='ht1'");
     const jwt=require('jsonwebtoken');
     for(const role of ['DISTRICT_ADMIN','REGIONAL_ADMIN','NATIONAL_ADMIN','District Director of Education','SISO','HEADTEACHER']){
-      const token=jwt.sign({role,schoolCode:'SC1'},process.env.JWT_SECRET,{expiresIn:'1h'});
+      const claims=role==='HEADTEACHER'?{userId:'ht1',schoolId:'s1',schoolCode:'SC1',role}:{role,schoolCode:'SC1'};
+      const token=jwt.sign(claims,process.env.JWT_SECRET,{expiresIn:'1h'});
       const response=await fetch(base+'/api/config?schoolCode=SC1',{headers:{Authorization:'Bearer '+token}});
       assert.equal(response.status,role==='HEADTEACHER'?200:403,'legacy school API: '+role);
       await response.text();
     }
+    const assistantToken=jwt.sign({userId:'assistant',schoolId:'s1',schoolCode:'SC1',role:'ASSISTANT_HEADTEACHER'},process.env.JWT_SECRET,{expiresIn:'1h'});const assistantLegacy=await fetch(base+'/api/config?schoolCode=SC1',{headers:{Authorization:'Bearer '+assistantToken}});assert.equal(assistantLegacy.status,200,'legacy config API accepts inherited school-management grant');await assistantLegacy.text();const forgedAssistant=jwt.sign({userId:'assistant',schoolId:'s1',schoolCode:'SC1',role:'HEADTEACHER'},process.env.JWT_SECRET,{expiresIn:'1h'});assert.equal((await fetch(base+'/api/config?schoolCode=SC1',{headers:{Authorization:'Bearer '+forgedAssistant}})).status,403,'Assistant identity cannot be forged as Headteacher');assert.equal((await fetch(base+'/api/config?schoolCode=SC2',{headers:{Authorization:'Bearer '+assistantToken}})).status,403,'Assistant Headteacher cannot cross school boundary');const headteacherToken=jwt.sign({userId:'ht1',schoolId:'s1',schoolCode:'SC1',role:'HEADTEACHER'},process.env.JWT_SECRET,{expiresIn:'1h'});
+    assert.equal((await fetch(base+'/api/config?schoolCode=SC2',{headers:{Authorization:'Bearer '+headteacherToken}})).status,403,'a valid Headteacher cannot switch the schoolCode scope');
+    sqlite.prepare("UPDATE users SET role='TEACHER',school_id='s1',assigned_class='Class 1',assigned_form='Form 1' WHERE id='teacher'").run();
+    const teacherToken=jwt.sign({userId:'teacher',schoolId:'s1',schoolCode:'SC1',role:'TEACHER'},process.env.JWT_SECRET,{expiresIn:'1h'});
+    const outOfAssignment=await fetch(base+'/api/students',{method:'POST',headers:{Authorization:'Bearer '+teacherToken,'Content-Type':'application/json'},body:JSON.stringify({schoolCode:'SC1',class:'Class 2',form:'Form 1',year:'2026',term:'1',student:{student_usid:'TEST'}})});
+    assert.equal(outOfAssignment.status,403,'legacy student API enforces the Teacher assigned class and form');await outOfAssignment.text();
     for(const [user,regions,districts] of [['district',['r1'],['d1']],['regional',['r1'],['d1']],['national',['r1','r2'],['d1','d2']]]) {
       assert.deepEqual((await check(user,'/api/domain/regions',200)).regions.map(x=>x.id).sort(),regions);
       assert.deepEqual((await check(user,'/api/domain/districts',200)).districts.map(x=>x.id).sort(),districts);
@@ -177,9 +193,9 @@ const mysql=require('mysql2/promise');
     assert.equal((await request('ht1','/api/school-district-sync',{enabled:true},'https://evil.invalid')).status,403);
     await check('ht1','/api/school-district-sync',400,{enabled:'true'});
     await check('noPermission','/api/control-panel/summary',403);
-    await check('ht1','/api/school-district-sync',200,{enabled:true});
+    await check('ht1','/api/school-district-sync',200,{enabled:true});await check('assistant','/api/school-district-sync',200,{enabled:false});assert.equal(Number(sqlite.prepare("SELECT district_sync_enabled FROM schools WHERE id='s1'").get().district_sync_enabled),0);assert.equal(sqlite.prepare("SELECT district_sync_actor_id FROM schools WHERE id='s1'").get().district_sync_actor_id,'assistant','operation records the authenticated Assistant identity');assert.equal(sqlite.prepare("SELECT actor_user_id FROM audit_events WHERE event_type='SCHOOL_DISTRICT_SYNC_CHANGED' ORDER BY rowid DESC LIMIT 1").get().actor_user_id,'assistant','audit records the actual Assistant actor');await check('assistant','/api/school-district-sync',200,{enabled:true});
     for(const user of ['district','regional','national'])assert.ok((await schools(user)).includes('s1'),'ON eligible '+user);
-    for(const [route,key] of routes){const data=await check('district','/api/domain/'+route,200);assert.equal(data[key].length,1,'ON scoped '+route);}
+    for(const [route,key] of routes){const data=await check('district','/api/domain/'+route,200);assert.equal(data[key].length,key==='staff'?2:1,'ON scoped '+route);}
     await check('regional','/api/domain/attendance?schoolId=s1',200);
     assert.equal((await check('regional','/api/domain/examination-components?schoolId=s1&tenantId=t1&examinationId=examinations1',200)).components.length,1);
     assert.equal((await check('regional','/api/domain/mock-components?schoolId=s1&tenantId=t1&mockExaminationId=mock_examinations1',200)).components.length,1);
@@ -213,8 +229,8 @@ const mysql=require('mysql2/promise');
     assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM students').get().n,3);
     assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM published_results').get().n,3);
     const audit=sqlite.prepare("SELECT actor_user_id,occurred_at,metadata_json FROM audit_events WHERE event_type='SCHOOL_DISTRICT_SYNC_CHANGED' ORDER BY rowid").all();
-    assert.equal(audit.length,2);assert.equal(audit[0].actor_user_id,'ht1');assert.ok(audit[0].occurred_at);
-    assert.deepEqual(audit.map(x=>{const a=JSON.parse(x.metadata_json);return [a.schoolId,a.previousEnabled,a.enabled];}),[['s1',false,true],['s1',true,false]]);
+    assert.equal(audit.length,4);assert.deepEqual(audit.map(x=>x.actor_user_id),['ht1','assistant','assistant','ht1'],'audit retains the actual actor for each equivalent operational action');assert.ok(audit.every(x=>x.occurred_at));
+    assert.deepEqual(audit.map(x=>{const a=JSON.parse(x.metadata_json);return [a.schoolId,a.previousEnabled,a.enabled];}),[['s1',false,true],['s1',true,false],['s1',false,true],['s1',true,false]]);
     // New School-originated data written during each consent phase remains
     // available locally and is eligible upward only while consent is ON.
     for(const [phase,enabled] of [['OFF',false],['ON',true],['OFF_AGAIN',false]]){
@@ -245,7 +261,8 @@ const mysql=require('mysql2/promise');
     const districtUrl=(view,extra='')=>'/api/control-panel/district?view='+view+'&districtId=d1'+extra;
     for(const [role,permissions] of Object.entries(matrix)){
       const user='officer-'+role;
-      const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffId:'STAFF-'+user,accessCode,administrativeLevel:'DISTRICT',region:'Central Region',district:'Cape Coast Metro',role})});
+      const loginInput={staffId:'STAFF-'+user,accessCode,administrativeLevel:'DISTRICT',region:'Central Region',district:'Cape Coast Metro',role};
+      const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(loginInput)});
       const data=await login.json();assert.equal(login.status,200,JSON.stringify(data));assert.equal(data.authorization.dashboard,'district-general');
       tokens[user]=login.headers.get('set-cookie').split(';')[0].split('=')[1];
       assert.equal((await check(user,'/api/control-panel/district?view=context',200)).role,role);
@@ -256,7 +273,8 @@ const mysql=require('mysql2/promise');
       for(const view of ['overview','schools','attendance','examinations','sports','export'])await check(user,'/api/control-panel/district?view='+view+'&districtId=d2',403);
       await check(user,districtUrl('schools','&schoolId=s2'),403);
       await check(user,districtUrl('schools','&schoolId=coverage32'),403);
-      await check(user,districtUrl('schools','&schoolId=s1'),200);
+      if(role==='DISTRICT_SISO') await check(user,districtUrl('schools','&schoolId=s1'),200);
+      else await check(user,districtUrl('schools','&schoolId=s1'),200);
       await check(user,districtUrl('sports'),permissions.includes('district.sports.manage')?201:403,{districtId:'d1',schoolId:'s1',type:'calendar',record:{eventName:'Verified event',sport:'Football'}});
     }
     const sportsUser='officer-DISTRICT_SPORTS_OFFICER';

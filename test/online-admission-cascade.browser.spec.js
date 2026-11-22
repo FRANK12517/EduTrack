@@ -16,7 +16,8 @@ const port = 3453;
       if (!started) await new Promise(resolve => setTimeout(resolve, 150));
     }
     assert.equal(started, true, 'local EduTrack server did not start');
-    const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true });
+    const executablePath = process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium');
+    const browser = await chromium.launch({ executablePath, headless: true });
     try {
       const page = await browser.newPage({ viewport: { width: 414, height: 693 }, hasTouch: true, isMobile: true });
       await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });

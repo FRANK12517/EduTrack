@@ -4,14 +4,14 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     env:
-      EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       EDUTRACK_RECOVERY_REHEARSAL_TARGET: isolated-recovery-rehearsal
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: test -n "$EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL"
+      - run: test -n "$SUPABASE_DB_URL"
       - run: node test/rehearsal-target-identity-discovery.spec.js
       - run: node scripts/rehearsal-target-identity-discovery.js
       - uses: actions/upload-artifact@v4

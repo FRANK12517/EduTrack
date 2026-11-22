@@ -16,7 +16,7 @@ const ACCESS = 'part60-carry-access';
 
 const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const relationalSource = fs.readFileSync(path.join(ROOT, 'db', 'relational.js'), 'utf8');
-const schemaSource = fs.readFileSync(path.join(ROOT, 'db', 'schema.sql'), 'utf8');
+const schemaSource = require('./schema-source').read();
 const htmlSource = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 assert.match(serverSource, /calculateCarryForwardForSchool/);
 assert.match(serverSource, /carry-forward\/calculate/);

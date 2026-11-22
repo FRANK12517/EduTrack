@@ -1,0 +1,87 @@
+name: Supabase Fresh Database Migrations
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - codex/supabase-fresh-backend
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked test dependencies
+        run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.114.0
+      - name: Start isolated Supabase and apply the fresh schema
+        run: |
+          supabase start
+          supabase db reset --local --no-seed
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          source "$RUNNER_TEMP/supabase.env"
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_DB_URL=$DB_URL"
+            echo "SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+      - name: Verify PostgreSQL connection configuration is fail-closed
+        run: |
+          npm run test:postgres-pool-config
+          npm run test:supabase-auth-contract
+      - name: Build and check public assets
+        run: |
+          npm run build
+          npm run test:public-build
+          npm run test:branding
+      - name: Run authentication, authorization, dashboard, and admissions regressions
+        run: |
+          node test/part68-administrative-dashboard-separation.spec.js
+          node test/macro-hierarchy-part1.spec.js
+          node test/district-dashboard.spec.js
+          node test/school-sidebar-restoration.spec.js
+          node test/super-admin-authentication.spec.js
+          node test/admission-workflow-preservation.spec.js
+      - name: Install Chromium for browser regressions
+        run: npx playwright install --with-deps chromium
+      - name: Run browser session, admission, and attendance regressions
+        env:
+          EDUTRACK_TEST_SCHOOL_ACCESS_CODE: ci-only-access-code
+          EDUTRACK_TEST_SCHOOL_STAFF_ID: ci-headteacher
+          EDUTRACK_TEST_SUPABASE_TARGET: local-disposable
+        run: |
+          node test/school-routes-runner.js
+          node test/online-admission-cascade.browser.spec.js
+          node test/attendance-mobile-layout.browser.spec.js
+      - name: Validate the reconciled schema contract
+        run: npm run test:supabase-migration-contract
+      - name: Exercise RLS with disposable identity and scope fixtures
+        run: npm run test:supabase-rls-fixture
+      - name: Run migrated academic database integrations
+        run: |
+          npm run test:part23
+          npm run test:part24
+          npm run test:part25
+          npm run test:part26
+      - name: Run database-backed security regression suite
+        run: npm run test:security
+      - name: Run complete application regression suite
+        run: npm test
+      - name: Lint the migrated PostgreSQL schemas
+        run: supabase db lint --local --schema public,private --fail-on error
+      - name: Stop isolated Supabase services
+        if: always()
+        run: supabase stop --no-backup

@@ -3,7 +3,7 @@
 if(window.__EDUTRACK_ADMIN_DASHBOARD_SEPARATION__)return;
 window.__EDUTRACK_ADMIN_DASHBOARD_SEPARATION__=true;
 var RETIRED_LEVELS=[];var ADMIN_LEVELS=['DISTRICT','REGIONAL','NATIONAL'];
-var state=null,requestVersion=0,sportsSnapshot=[],sportsSchools=[],sportsUI={tab:'dashboard'};
+var state=null,requestVersion=0,loginFormVersion=0,sportsSnapshot=[],sportsSchools=[],sportsUI={tab:'dashboard'};
 var terminal=Object.freeze([{id:'about',label:'About the Developer'},{id:'copyright',label:'Copyright'},{id:'acknowledgement',label:'Acknowledgement'},{id:'logout',label:'Logout'}].map(Object.freeze));
 var districtGroups=[
  {id:'general',label:'District overview',items:[{id:'overview',label:'District General Dashboard',permission:'district.dashboard.view'},{id:'schools',label:'Synchronized Schools',permission:'district.schools.read'}]},
@@ -76,16 +76,16 @@ function guardRoute(){var m=location.hash.match(/^#\/(district|regional|national
 
 var loginOptionsPromise;
 function loginOptions(){if(!loginOptionsPromise)loginOptionsPromise=api('/api/auth/login-options').catch(function(e){loginOptionsPromise=null;throw e});return loginOptionsPromise}
-async function districtLoginForm(level){
- var host=q('v43DynamicFields');if(!host)return;host.replaceChildren();
+async function districtLoginForm(level){var formVersion=++loginFormVersion;
+ var host=q('v43DynamicFields');if(!host)return;host.replaceChildren();var loginError=q('v43LoginError');if(loginError){loginError.textContent='';loginError.style.display='none'}
  function field(label,node){var wrap=document.createElement('label');wrap.className='v43-field-group';wrap.textContent=label;wrap.appendChild(node);return wrap}
  function select(id,placeholder){var node=document.createElement('select');node.id=id;node.className='v43-field-select';node.append(new Option(placeholder,''));return node}
  function credential(id,label){var factory=window.EDUTRACK_ENHANCEMENT_PART1&&window.EDUTRACK_ENHANCEMENT_PART1.fieldInput;if(factory)return factory(id,label,'');var node=document.createElement('input');node.id=id;node.type='password';node.autocomplete='off';node.className='v43-field-input';return field(label,node)}
  var region,district,role=select('v43-role','— Select Role —');
  if(level!=='NATIONAL'){region=select('v43-region','— Select Region —');window.EDUTRACK_GHANA_HIERARCHY.populateRegions(region);host.append(field('Select Region',region))}
- if(level==='DISTRICT'){district=select('v43-district','— Select Region First —');district.disabled=true;region.addEventListener('change',function(){window.EDUTRACK_GHANA_HIERARCHY.cascade(region,district)});host.append(field('Select District',district))}
+ if(level==='DISTRICT'){district=select('v43-district','— Select Region First —');district.disabled=true;region.addEventListener('change',function(){window.EDUTRACK_GHANA_HIERARCHY.cascade(region,district);role.value=''});district.addEventListener('change',function(){role.value=''});host.append(field('Select District',district))}
  host.append(field('Select Role',role),credential('v43-staffId','Staff ID'),credential('v43-access-code','Access Code'));role.disabled=true;
- try{var options=await loginOptions();if(!role.isConnected)return;Object.keys(options.roles).filter(function(key){return options.roles[key].level===level}).forEach(function(key){role.append(new Option(options.roles[key].label,key))});role.disabled=false}catch(e){var error=q('v43LoginError');if(error){error.textContent='Unable to load login roles. Select the level again to retry.';error.style.display='block'}}
+ try{var options=await loginOptions();if(formVersion!==loginFormVersion||!role.isConnected)return;var roleMap=options&&options.roles;if(!roleMap||typeof roleMap!=='object'||Array.isArray(roleMap))throw Error('Invalid login-role response');var roleKeys=Object.keys(roleMap).filter(function(key){return roleMap[key]&&roleMap[key].level===level});if(roleKeys.length!==5)throw Error('Incomplete login-role response');roleKeys.forEach(function(key){role.append(new Option(roleMap[key].label,key))});role.disabled=false}catch(e){if(formVersion!==loginFormVersion)return;loginOptionsPromise=null;var error=q('v43LoginError');if(error){error.textContent='Unable to load login roles. Select the level again to retry.';error.style.display='block'}}
 }
 async function districtLogin(event){event.preventDefault();event.stopImmediatePropagation();var button=q('v43LoginBtn');if(button)button.disabled=true;try{
  var active=document.querySelector('.login-level-btn.active'),level=active&&active.dataset.level;
@@ -95,7 +95,7 @@ async function districtLogin(event){event.preventDefault();event.stopImmediatePr
  if(Object.values(payload).some(function(v){return !v})||(level==='DISTRICT'&&!window.EDUTRACK_GHANA_HIERARCHY.validPair(payload.region,payload.district)))throw Error('Complete the fields for the selected administrative level.');
  var response=await api('/api/auth/login',{method:'POST',body:JSON.stringify(payload)});if(response.authorization.administrativeLevel!==level)throw Error('An account for the selected administrative level is required.');q('v43-access-code').value='';await openDistrict(level)
  }catch(e){var error=q('v43LoginError');if(error){error.textContent=e.message;error.style.display='block'}}finally{if(button)button.disabled=false}}
-document.addEventListener('click',function(e){var card=e.target.closest&&e.target.closest('.login-level-btn');if(card){if(ADMIN_LEVELS.includes(card.dataset.level)){setTimeout(function(){districtLoginForm(card.dataset.level)},0)}else if(q('district-password-label'))q('district-password-label').remove()}var active=document.querySelector('.login-level-btn.active');if(e.target.closest&&e.target.closest('#v43LoginBtn')&&active&&ADMIN_LEVELS.includes(active.dataset.level))districtLogin(e)},true);
+document.addEventListener('click',function(e){var card=e.target.closest&&e.target.closest('.login-level-btn');if(card){loginFormVersion++;if(ADMIN_LEVELS.includes(card.dataset.level)){setTimeout(function(){districtLoginForm(card.dataset.level)},0)}else if(q('district-password-label'))q('district-password-label').remove()}var active=document.querySelector('.login-level-btn.active');if(e.target.closest&&e.target.closest('#v43LoginBtn')&&active&&ADMIN_LEVELS.includes(active.dataset.level))districtLogin(e)},true);
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&q('district-password')&&q('login-screen')&&q('login-screen').contains(e.target))districtLogin(e)},true);
 // Reuse the existing Sports module's renderers and forms; its adapter never reads local School data.
 async function refreshSports(){var districtId=state.districtId;var results=await Promise.all([api(endpoint('sports')),api(endpoint('schools'))]);if(!state||state.districtId!==districtId)throw Error('District session changed. Refresh this view.');sportsSnapshot=results[0].records;sportsSchools=results[1].schools;return results}

@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');const {spawn}=require('node:child_process');const path=require('node:path');
-const ROOT=path.resolve(__dirname,'..');const DB=process.env.EDUTRACK_DATABASE_URL||'mysql://edutrack_test:part19_test_password@127.0.0.1:3306/edutrack_part19_test';
-const base={NODE_ENV:'production',EDUTRACK_DATABASE_URL:DB,EDUTRACK_ENABLE_DEV_ACCESS:'false',EDUTRACK_ALLOWED_ORIGINS:'https://app.example.com',PAYSTACK_SECRET_KEY:'part34-test-only',PAYSTACK_WEBHOOK_SECRET:'part34-test-only',EDUTRACK_PAYMENT_PLANS:JSON.stringify({basic:{amount:1000,currency:'GHS',durationDays:30}}),EDUTRACK_STORAGE_MODE:'s3',EDUTRACK_STORAGE_BUCKET:'part34-test-private',AWS_ACCESS_KEY_ID:'part34-test-only',AWS_SECRET_ACCESS_KEY:'part34-test-only'};
+const ROOT=path.resolve(__dirname,'..');const DB=process.env.SUPABASE_DB_URL;
+const base={NODE_ENV:'production',SUPABASE_DB_URL:DB,EDUTRACK_ENABLE_DEV_ACCESS:'false',EDUTRACK_ALLOWED_ORIGINS:'https://app.example.com',PAYSTACK_SECRET_KEY:'part34-test-only',PAYSTACK_WEBHOOK_SECRET:'part34-test-only',EDUTRACK_PAYMENT_PLANS:JSON.stringify({basic:{amount:1000,currency:'GHS',durationDays:30}}),EDUTRACK_STORAGE_MODE:'s3',EDUTRACK_STORAGE_BUCKET:'part34-test-private',AWS_ACCESS_KEY_ID:'part34-test-only',AWS_SECRET_ACCESS_KEY:'part34-test-only'};
 function runPreflight(extra={}){return new Promise(resolve=>{const child=spawn(process.execPath,['scripts/production-preflight.js'],{cwd:ROOT,env:{...process.env,...extra}});let out='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>out+=d);child.on('close',code=>resolve({code,out}));})}
 async function waitHealth(port,child){for(let i=0;i<40;i++){try{const r=await fetch(`http://127.0.0.1:${port}/api/health`);return r}catch{}await new Promise(r=>setTimeout(r,150));}child.kill('SIGTERM');throw new Error('production health endpoint did not start')}
 (async()=>{

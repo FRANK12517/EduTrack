@@ -22,8 +22,9 @@ for (const status of ['PENDING_REVIEW', 'CORRECTION_REQUIRED', 'RESUBMITTED', 'U
 }
 assert.match(relational, /async function submitPendingAdmission/);
 assert.match(relational, /pending_admission_applications/);
-assert.match(relational, /Only a Headteacher can generate a Permanent Student ID/);
-assert.match(relational, /r\.name='HEADTEACHER'/);
+assert.match(relational, /isHeadteacherEquivalent\(actorRole\)/, 'admission finalization uses the shared Headteacher-equivalence policy');
+assert.match(relational, /includes\('admissions\.finalize'\)/, 'admission finalization requires its effective permission');
+assert.match(relational, /permissionSourceRole\(role\)/, 'the operation resolves grants from the canonical source role');
 assert.match(relational, /student_identifier/);
 assert.match(relational, /permanent_student_id/);
 
@@ -31,10 +32,15 @@ assert.match(server, /\/api\/admissions\/applications/);
 assert.ok(server.includes("roles:input.action==='FINALIZE_ADMISSION'?['HEADTEACHER']:[]"), 'finalization must require the Headteacher role');
 assert.match(server, /admissions\.finalize/);
 assert.match(server, /admissions\.review/);
-assert.match(auth, /HEADTEACHER/);
+assert.match(auth, /ASSISTANT_HEADTEACHER/);
+const authorization=require('../app/auth/authorization');
+const assistant={user:{id:'assistant',active:true,status:'ACTIVE'},roles:['ASSISTANT_HEADTEACHER'],permissions:[],rolePermissions:{ASSISTANT_HEADTEACHER:['admissions.finalize']},memberships:[{scope:{schoolIds:['school-1']}}]};
+assert.equal(authorization.evaluate(assistant,{permission:'admissions.finalize',scope:{schoolId:'school-1'}}).allowed,true,'Assistant inherits the Headteacher admission grant');
+assert.equal(authorization.evaluate(assistant,{roles:['HEADTEACHER'],permission:'admissions.finalize',scope:{schoolId:'school-1'}}).allowed,true,'Assistant is accepted by Headteacher-equivalent endpoint role guards');
+assert.equal(authorization.evaluate({...assistant,rolePermissions:{}},{permission:'admissions.finalize',scope:{schoolId:'school-1'}}).allowed,false,'missing inherited authorization fails closed');
 
 for (const roleCard of ['SCHOOL', 'DISTRICT', 'REGIONAL', 'NATIONAL', 'PARENT', 'STUDENT']) {
   assert.match(html, new RegExp(roleCard), `login-card role must remain present: ${roleCard}`);
 }
 
-console.log('Admission workflow preservation and Headteacher-only ID regression passed.');
+console.log('Admission workflow preservation and Headteacher-equivalent ID regression passed.');

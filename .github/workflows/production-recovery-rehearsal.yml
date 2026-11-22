@@ -1,54 +1,101 @@
-name: Production recovery rehearsal
+name: Supabase fresh database recovery validation
 
 on:
   workflow_dispatch:
     inputs:
+      target_project_ref:
+        description: Project ref of the approved, empty Supabase project
+        required: true
+        type: string
       confirmation:
-        description: Type RECOVER_ISOLATED_REHEARSAL_ONLY to authorize the isolated rehearsal
+        description: Type INITIALIZE_NEW_SUPABASE_DATABASE to authorize initialization
         required: true
         type: string
 
 jobs:
   recovery-rehearsal:
-    # This protected environment is the independent authorization boundary for
-    # the isolated TiDB branch and its environment-scoped credential.
+    # Keep this protected environment as the independent approval boundary.
     environment: recovery-rehearsal
     runs-on: ubuntu-latest
     env:
       NODE_ENV: recovery-rehearsal
       EDUTRACK_RECOVERY_REHEARSAL_CONFIRMATION: ${{ inputs.confirmation }}
-      EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL: ${{ secrets.EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL }}
+      SUPABASE_PROJECT_REF: ${{ inputs.target_project_ref }}
+      SUPABASE_NEW_PROJECT_REF: ${{ secrets.SUPABASE_NEW_PROJECT_REF }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
-      - name: Require the protected isolated target and exact confirmation
-        shell: bash
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.114.0
+      - name: Require the protected new project and exact confirmation
+        id: authorization
+        run: node -e "require('./scripts/rehearse-production-recovery').assertAuthorized()"
+      - name: Run recovery authorization and schema contract tests
         run: |
-          test "${EDUTRACK_RECOVERY_REHEARSAL_CONFIRMATION}" = 'RECOVER_ISOLATED_REHEARSAL_ONLY'
-          test -n "${EDUTRACK_TIDB_RECOVERY_REHEARSAL_DATABASE_URL}"
-          test -z "${EDUTRACK_DATABASE_URL}" && test -z "${DATABASE_URL}"
-          test -z "${TIDB_HOST}" && test -z "${TIDB_PASSWORD}"
-          test -z "${EDUTRACK_TIDB_RELEASE_GATE_DATABASE_URL}" && test -z "${EDUTRACK_TIDB_FRESH_TEST_DATABASE_URL}"
-      - name: Run authorization regression tests
-        run: node test/recovery-rehearsal-authorization.spec.js
-      - name: Resume canonical recovery on the approved rehearsal target
-        run: node scripts/rehearse-production-recovery.js
-      - name: Run non-production regression tests
+          node test/recovery-rehearsal-authorization.spec.js
+          npm run test:supabase-migration-contract
+          npm run test:supabase-auth-contract
+      - name: Link the protected Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Verify the database is completely fresh
+        id: preflight
+        run: node scripts/rehearse-production-recovery.js preflight
+      - name: Preview pending committed migrations
+        id: dry_run
+        run: supabase db push --linked --dry-run
+      - name: Recheck freshness immediately before initialization
+        run: node scripts/rehearse-production-recovery.js preflight
+      - name: Apply committed migrations without resetting the database
+        id: migration
+        run: supabase db push --linked --yes
+      - name: Verify authenticated security boundaries
+        id: security
+        run: npm run test:security
+      - name: Verify database-backed academic workflows
+        id: parts
         run: |
+          npm run test:part23
+          npm run test:part24
+          npm run test:part25
+          npm run test:part26
+      - name: Run application regression and migration checks
+        id: regression
+        run: |
+          npm run build
+          npm run test:public-build
+          npm run test:branding
           npm run check
-          npm run test:part20
+          npm run test:supabase-rls-fixture
+          npm run test:macro-hierarchy
           npm run test:admission-workflow
-      - name: Run School login smoke test when an isolated fixture is configured
-        shell: bash
-        run: |
-          if [ -n "${EDUTRACK_TEST_SCHOOL_ACCESS_CODE}" ] && [ -n "${EDUTRACK_TEST_SCHOOL_STAFF_ID}" ]; then
-            npm run test:school-login-thin
-          else
-            echo 'School login smoke test not run: no isolated fixture credentials are configured.'
-          fi
-      - uses: actions/upload-artifact@v4
+      - name: Validate final schema and write recovery audit event
+        id: validation
+        run: node scripts/rehearse-production-recovery.js validate
+      - name: Finalize recovery report with every step outcome
+        if: always()
+        env:
+          EDUTRACK_RECOVERY_AUTHORIZATION_OUTCOME: ${{ steps.authorization.outcome }}
+          EDUTRACK_RECOVERY_PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          EDUTRACK_RECOVERY_DRY_RUN_OUTCOME: ${{ steps.dry_run.outcome }}
+          EDUTRACK_RECOVERY_MIGRATION_OUTCOME: ${{ steps.migration.outcome }}
+          EDUTRACK_RECOVERY_SECURITY_OUTCOME: ${{ steps.security.outcome }}
+          EDUTRACK_RECOVERY_PARTS_OUTCOME: ${{ steps.parts.outcome }}
+          EDUTRACK_RECOVERY_REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
+          EDUTRACK_RECOVERY_VALIDATION_OUTCOME: ${{ steps.validation.outcome }}
+        run: node scripts/rehearse-production-recovery.js report
+      - name: Upload recovery validation report
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: recovery-rehearsal-report

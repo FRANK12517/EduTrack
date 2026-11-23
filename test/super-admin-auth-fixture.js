@@ -54,7 +54,7 @@ async function createSuperAdminFixture({ password }) {
   if (!password || String(password).length < 12) throw new Error('The Super Administrator test password does not meet the Auth policy');
   const identity = crypto.randomUUID().replaceAll('-', '');
   const userId = 'test-super-admin-' + identity;
-  const email = userId + '@example.invalid';
+  const email = userId + '@example.com';
   let authUserId = null;
 
   try {
@@ -74,6 +74,9 @@ async function createSuperAdminFixture({ password }) {
     assert.ok(resolved.roles.includes('SUPER_ADMIN'), 'the test identity must have a persisted Super Admin role');
     const mappedUser = await relational.findUser(email);
     assert.equal(String(mappedUser?.supabaseAuthUserId), String(authUserId), 'the EduTrack user must map to the Supabase Auth UUID');
+    const authenticated = await relational.authenticateUserSession(email, String(password));
+    assert.equal(String(authenticated?.user?.id), userId, 'the provisioned Supabase Auth password must resolve to this database-backed Super Administrator');
+    assert.equal(String(authenticated?.authSession?.user?.id), String(authUserId), 'the Supabase Auth identity must match the persisted EduTrack identity mapping');
     return {
       email,
       userId,

@@ -246,7 +246,7 @@ async function hydrateAuthState(db) {
   await ensureInitialized();
   const { rows: users } = await query(`SELECT u.*, c.access_code_hash, c.status AS credential_status, r.name AS role_name FROM users u LEFT JOIN credentials c ON c.user_id=u.id LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id`);
   db.users = users.map(rowToUser);
-  const { rows: sessions } = await query('SELECT id,token_hash AS tokenHash,user_id AS userId,created_at AS createdAt,expires_at AS expiresAt,revoked_at AS revokedAt,csrf_token_hash AS csrfTokenHash,login_scope_json AS loginScope FROM server_sessions WHERE revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP');
+  const { rows: sessions } = await query('SELECT id,token_hash AS "tokenHash",user_id AS "userId",created_at AS "createdAt",expires_at AS "expiresAt",revoked_at AS "revokedAt",csrf_token_hash AS "csrfTokenHash",login_scope_json AS "loginScope" FROM server_sessions WHERE revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP');
   db.sessions = sessions.map(session => ({...session, loginScope:parseJson(session.loginScope,null)}));
   return db;
 }

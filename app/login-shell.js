@@ -1,6 +1,6 @@
 'use strict';
 // Shared by the Node server and the Vercel static build.
-const PUBLIC_FILES = ['index.html', 'ghana-hierarchy.js', 'privileged-auth.js', 'startup-readiness.js', 'school-login-boot.js', 'school-module-loader.js', 'attendance-register-ui.js', 'admin-dashboard-separation.js', 'school-sidebar.js', 'school-user-guide.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'individual-result-slip-fix.js', 'manifest.webmanifest', 'assets/edutrack-app-icon.png', 'assets/favicon-16.png', 'assets/favicon-32.png', 'assets/apple-touch-icon.png', 'assets/pwa-192.png', 'assets/pwa-512.png', 'school-route-history.js'];
+const PUBLIC_FILES = ['index.html', 'ghana-hierarchy.js', 'privileged-auth.js', 'startup-readiness.js', 'school-login-boot.js', 'school-module-loader.js', 'attendance-register-ui.js', 'admin-dashboard-separation.js', 'school-sidebar.js', 'school-user-guide.js', 'qr-attendance.js', 'hostel-management.js', 'transport-management.js', 'online-admission.js', 'admissions-review.js', 'communication-hub.js', 'chat-module.js', 'control-panel.js', 'analytics-narrative.js', 'quiz-module.js', 'individual-result-slip-fix.js', 'ges-teacher-assessment.js', 'manifest.webmanifest', 'assets/edutrack-app-icon.png', 'assets/favicon-16.png', 'assets/favicon-32.png', 'assets/apple-touch-icon.png', 'assets/pwa-192.png', 'assets/pwa-512.png', 'school-route-history.js'];
 function renderLoginShell(source) {
       let shell = source.toString('latin1');
       // These optional theme files are not present in this distribution. Their
@@ -17,7 +17,7 @@ function renderLoginShell(source) {
       // The shared ghana-hierarchy.js module exposes the same immutable map to all forms.
       let scriptIndex = -1;
       shell = shell.replace(/<script\b[^>]*>/gi, tag => {
-        if (tag.includes('ghana-hierarchy.js')) return tag;
+        if (tag.includes('ghana-hierarchy.js') || /\bid=["']edutrack-ges-teacher-assessment["']/i.test(tag)) return tag;
         scriptIndex += 1;
         return scriptIndex > 24 && scriptIndex < 244
           ? tag.replace(/^<script/i, `<script type="application/x-edutrack-lazy" data-edutrack-lazy="true" data-edutrack-script-index="${scriptIndex}"`)

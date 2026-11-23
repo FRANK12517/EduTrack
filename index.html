@@ -4845,6 +4845,7 @@ td input, td select, td textarea, td button {
 <style id="edutrack-v43-eye-toggle-style">.v43-input-toggle-wrap{position:relative!important;width:100%!important;display:block!important}.v43-input-toggle-wrap .v43-field-input{width:100%!important;padding-right:3rem!important;box-sizing:border-box!important}.v43-eye-toggle{position:absolute!important;right:.38rem!important;top:50%!important;transform:translateY(-50%)!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;border:0!important;background:transparent!important;border-radius:50%!important;width:2.2rem!important;height:2.2rem!important;padding:0!important;cursor:pointer!important;touch-action:manipulation!important;color:#6b4b78!important;z-index:2!important;line-height:1!important}.v43-eye-toggle svg{width:1.05rem;height:1.05rem;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.v43-eye-toggle:hover{background:rgba(107,75,120,.08)}.v43-eye-toggle:focus-visible{outline:3px solid #4dd0e1;outline-offset:2px}.v43-field-label{text-transform:uppercase;letter-spacing:.04em}@media (max-width:520px){.v43-eye-toggle{right:.3rem;width:2.25rem;height:2.25rem}}</style>
 <style id="edutrack-sync-switch-style">.ems-sync-switch{position:relative;display:inline-block;width:3.1rem;height:1.7rem;flex:0 0 auto}.ems-sync-switch input{position:absolute;opacity:0;width:0;height:0}.ems-sync-slider{position:absolute;inset:0;background:#cbd5e1;border-radius:999px;cursor:pointer;transition:.2s}.ems-sync-slider:before{content:"";position:absolute;width:1.25rem;height:1.25rem;left:.22rem;top:.22rem;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s}.ems-sync-switch input:checked + .ems-sync-slider{background:#0e7c86}.ems-sync-switch input:checked + .ems-sync-slider:before{transform:translateX(1.4rem)}.ems-sync-switch input:focus-visible + .ems-sync-slider{outline:3px solid #4dd0e1;outline-offset:2px}.ems-sync-switch input:disabled + .ems-sync-slider{opacity:.55;cursor:not-allowed}@media(max-width:520px){.ems-sync-switch{width:3.25rem;height:1.8rem}}</style>
 <script src="/individual-result-slip-fix.js" defer></script>
+<script id="edutrack-ges-teacher-assessment" src="/ges-teacher-assessment.js" defer></script>
 </head>
 <body>
 
@@ -21755,10 +21756,14 @@ const GES_ASSESSMENT_V314 = {
 function emsSeedGesAssessmentV314() {
   const added = emsLoadAddedComments();
   Object.keys(GES_ASSESSMENT_V314).forEach(function(cat){
-    added[cat] = {
-      positive: GES_ASSESSMENT_V314[cat].positive.slice(),
-      negative: GES_ASSESSMENT_V314[cat].negative.slice()
-    };
+    if (!added[cat]) added[cat] = { positive: [], negative: [] };
+    ['positive','negative'].forEach(function(sentiment){
+      const seen = new Set(added[cat][sentiment].map(function(text){return String(text).trim().toLocaleLowerCase();}));
+      GES_ASSESSMENT_V314[cat][sentiment].forEach(function(text){
+        const key = String(text).trim().toLocaleLowerCase();
+        if (!seen.has(key)) { added[cat][sentiment].push(text); seen.add(key); }
+      });
+    });
   });
   emsSaveAddedComments(added);
   emsBuildCommentLibrary();
@@ -143344,6 +143349,8 @@ window.SRG_ANNUAL = (function(){
     var bestElects = gmrBestElectives(record);
 
     gmrLastFetched = { cls: cls, mockType: mockType, usid: usid };
+    var mockSlipHost = document.getElementById('gmr-slip-container');
+    if (mockSlipHost) { mockSlipHost.dataset.class = cls; mockSlipHost.dataset.mockType = mockType; mockSlipHost.dataset.student = usid; }
 
     statusEl.innerHTML = '<span class="status-ok">✅ FOUND — ' + esc(mockType) + ' | JHS | Class: ' + esc(cls) + '</span>';
 
@@ -143404,6 +143411,12 @@ window.SRG_ANNUAL = (function(){
           '<div class="slip-sum-item"><div class="num">' + (calc.subjSat ? (calc.total/calc.subjSat).toFixed(2)+'%' : 'N/A') + '</div><div class="lbl">Average Score</div></div>' +
         '</div>' +
         (bestElects.length ? '<div style="padding:.35rem 1rem;background:#f0f7ff;border-top:1px solid var(--border);font-size:.78rem;color:var(--navy)"><strong>✅ Best Electives Used in Aggregate:</strong> ' + bestElects.map(esc).join(' &nbsp;|&nbsp; ') + '</div>' : '') +
+        '<section class="slip-results-section ges-assessment-print-values"><div style="font-weight:700;font-size:.85rem;margin:.4rem 0;color:var(--navy)">GES TEACHER ASSESSMENT</div>' +
+          '<p>Conduct: <span data-ges-comment="conduct">' + esc(savedConduct) + '</span></p>' +
+          '<p>Interest: <span data-ges-comment="interest">' + esc(savedInterest) + '</span></p>' +
+          '<p>Attitude: <span data-ges-comment="attitude">' + esc(savedAttitude) + '</span></p>' +
+          '<p>Class Teacher\'s Remarks: <span data-ges-comment="ctRemarks">' + esc(savedCtRem) + '</span></p>' +
+          '<p>Headteacher\'s Remarks: <span data-ges-comment="htRemarks">' + esc(savedHtRem) + '</span></p></section>' +
         '<div class="slip-attendance-heading"><div style="font-weight:700;font-size:.82rem;margin-bottom:.5rem;color:var(--navy)">📅 ATTENDANCE RECORD</div></div>' +
         '<div class="slip-attend-grid">' +
           '<div class="slip-attend-item"><label class="slip-attend-label">Times Present</label><select id="gmr-present" class="slip-attend-select" onchange="GES_MOCK_RESULT.saveRemarks()">' + makeNumOptions(savedPresent) + '</select></div>' +

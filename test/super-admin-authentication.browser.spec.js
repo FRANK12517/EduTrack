@@ -1,27 +1,24 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { chromium } = require('playwright');
+const { createSuperAdminFixture } = require('./super-admin-auth-fixture');
 
 const ROOT = path.resolve(__dirname, '..');
-const TEST_DIR = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'edutrack-release-test-'));
+const TEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'edutrack-super-admin-browser-'));
 const DB_FILE = path.join(TEST_DIR, 'edutrack.json');
 process.env.EDUTRACK_DATA_FILE = DB_FILE;
-const BACKUP_FILE = `${DB_FILE}.super-admin-browser-backup`;
 const PORT = 3104;
 const BASE = `http://127.0.0.1:${PORT}`;
-const EMAIL = 'super-admin-browser@example.invalid';
 const CURRENT_PASSWORD = 'browser-current-super-admin-password';
 const NEW_PASSWORD = 'browser-new-super-admin-password';
 const ACCESS_CODE = 'browser-unused-access-code';
 const NAME = 'Super Administrator';
 
-function hash(value, salt) { return `${salt}:${crypto.scryptSync(value, salt, 64).toString('hex')}`; }
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function waitForServer(child) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Super Administrator browser server did not start')), 10000);
@@ -30,20 +27,25 @@ function waitForServer(child) {
     child.once('exit', code => { if (code !== null) reject(new Error(`server exited with ${code}`)); });
   });
 }
+function stopServer(child) {
+  if (!child || child.exitCode !== null) return Promise.resolve();
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, 5000);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    child.kill('SIGTERM');
+  });
+}
 
 async function run() {
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, BACKUP_FILE);
-  fs.writeFileSync(DB_FILE, JSON.stringify({
-    version: 3,
-    users: [{ id: 'usr_super_admin_browser', email: EMAIL, passwordHash: hash(CURRENT_PASSWORD, 'browser-password-salt'), accessCodeHash: hash(ACCESS_CODE, 'browser-access-salt'), role: 'SUPER_ADMIN', hierarchy: 'ROOT', scope: ['ROOT'], active: true, failedLoginCount: 0, lockedUntil: null, createdAt: new Date().toISOString() }],
-    schools: [], staff: [], subscriptions: [], transactions: [], paymentIntents: [], paymentEvents: [], files: [], sessions: [], passwordResets: [], audit: []
-  }, null, 2));
-
-  const server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), NODE_ENV: 'development' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let fixture;
+  let server;
   let browser;
+  let auditSince;
   try {
+    fixture = await createSuperAdminFixture({ password: CURRENT_PASSWORD });
+    server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, EDUTRACK_DATA_FILE: DB_FILE, PORT: String(PORT), NODE_ENV: 'development' }, stdio: ['ignore', 'pipe', 'pipe'] });
     await waitForServer(server);
+    auditSince = new Date(Date.now() - 1000).toISOString();
     browser = await chromium.launch({ executablePath: process.env.EDUTRACK_BROWSER_PATH || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '/usr/bin/chromium'), headless: true });
     const context1 = await browser.newContext({ viewport: { width: 390, height: 844 } });
     context1.setDefaultTimeout(10000);
@@ -52,7 +54,7 @@ async function run() {
     await page1.locator('#super-admin-login-btn').waitFor({ state: 'visible' });
     await page1.locator('#super-admin-login-btn').click();
     await page1.locator('#admin-login-name').fill(NAME);
-    await page1.locator('#admin-login-email').fill(EMAIL);
+    await page1.locator('#admin-login-email').fill(fixture.email);
     await page1.locator('#admin-login-password').fill(CURRENT_PASSWORD);
     await page1.locator('#admin-login-submit-btn').click();
     await page1.locator('#sub-admin-overlay').waitFor({ state: 'visible' });
@@ -62,7 +64,10 @@ async function run() {
     await passwordGroup.click();
     await passwordMenu.waitFor({ state: 'visible' });
     assert.equal(await page1.evaluate((secrets) => Object.entries(localStorage).some(([key, value]) => /password|access[_-]?code|token/i.test(key) || secrets.some(secret => secret && String(value).includes(secret))), [CURRENT_PASSWORD, NEW_PASSWORD, ACCESS_CODE]), false, 'browser localStorage must not contain credentials');
-    assert.ok((await context1.cookies()).some(item => item.name === 'edutrack_session' && item.httpOnly), 'Super Administrator session must be HttpOnly');
+    const loginCookies = await context1.cookies();
+    assert.ok(loginCookies.some(item => item.name === 'edutrack_session' && item.httpOnly), 'Super Administrator session must be HttpOnly');
+    assert.ok(loginCookies.some(item => item.name === 'edutrack_supabase_access' && item.httpOnly), 'Supabase access credential must be HttpOnly');
+    assert.ok(loginCookies.some(item => item.name === 'edutrack_supabase_refresh' && item.httpOnly), 'Supabase refresh credential must be HttpOnly');
 
     await passwordMenu.click();
     assert.equal(await page1.locator('#panel-sa-change-password button').getAttribute('onclick'), 'EMS_SUPER_ADMIN_ACCESS.changePassword()');
@@ -88,7 +93,7 @@ async function run() {
     await page2.locator('#super-admin-login-btn').waitFor({ state: 'visible' });
     await page2.locator('#super-admin-login-btn').click();
     await page2.locator('#admin-login-name').fill(NAME);
-    await page2.locator('#admin-login-email').fill(EMAIL);
+    await page2.locator('#admin-login-email').fill(fixture.email);
     await page2.locator('#admin-login-password').fill(NEW_PASSWORD);
     const freshLoginResponse = page2.waitForResponse(response => response.url().endsWith('/api/auth/super-admin-login'));
     await page2.locator('#admin-login-submit-btn').click();
@@ -105,7 +110,7 @@ async function run() {
     await page3.locator('#super-admin-login-btn').waitFor({ state: 'visible' });
     await page3.locator('#super-admin-login-btn').click();
     await page3.locator('#admin-login-name').fill(NAME);
-    await page3.locator('#admin-login-email').fill(EMAIL);
+    await page3.locator('#admin-login-email').fill(fixture.email);
     await page3.locator('#admin-login-password').fill(CURRENT_PASSWORD);
     await page3.locator('#admin-login-submit-btn').click();
     await page3.locator('#admin-login-error').waitFor({ state: 'visible' });
@@ -116,9 +121,9 @@ async function run() {
     console.log('Super Administrator browser login, password change, fresh-context persistence, and old-password rejection regression passed.');
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (!server.killed) server.kill('SIGTERM');
-    await sleep(100);
-    if (fs.existsSync(BACKUP_FILE)) { fs.copyFileSync(BACKUP_FILE, DB_FILE); fs.unlinkSync(BACKUP_FILE); }
+    await stopServer(server);
+    if (fixture) await fixture.cleanup(auditSince);
+    fs.rmSync(TEST_DIR, { recursive: true, force: true });
   }
 }
 

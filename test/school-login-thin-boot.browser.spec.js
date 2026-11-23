@@ -45,7 +45,15 @@ async function directLogin() {
   assert.equal(body.authenticated, true);
   assert.equal(body.user.role, fixture.role);
   assert.match(response.headers.get('set-cookie') || '', /HttpOnly/i, 'authenticated response must set an HttpOnly cookie');
-  const sessionCookie = (response.headers.get('set-cookie') || '').split(';')[0];
+  const issuedCookies = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie') || ''];
+  const sessionCookie = issuedCookies.map(value => value.split(';', 1)[0]).filter(Boolean).join('; ');
+  for (const cookieName of ['edutrack_session=', 'edutrack_supabase_access=', 'edutrack_supabase_refresh=']) {
+    assert.ok(sessionCookie.includes(cookieName), `login must issue ${cookieName} cookie`);
+    const pair = sessionCookie.split('; ').find(value => value.startsWith(cookieName));
+    assert.ok(pair && pair.length > cookieName.length, `login must issue a non-empty ${cookieName} value`);
+  }
   const session = await fetch(`${baseUrl}/api/auth/session`, { headers: { cookie: sessionCookie } });
   const sessionBody = await session.json();
   assert.equal(session.status, 200, `server-resolved School session: ${JSON.stringify(sessionBody)}`);

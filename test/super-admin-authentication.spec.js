@@ -102,7 +102,9 @@ async function run() {
     const session = await request('/api/auth/session', { headers: { cookie: sessionCookie } });
     if (session.status !== 200) {
       const responseText = await session.text();
-      assert.fail(`the login-issued cookies should restore the Supabase-backed session; HTTP ${session.status}; body=${responseText}; server diagnostics:\n${serverDiagnostics.join('').slice(-4000)}`);
+      const persistedSessions = await relational.domainRows('SELECT user_id,expires_at,revoked_at FROM server_sessions WHERE user_id=? ORDER BY created_at DESC LIMIT 3', [fixture.userId]);
+      const sessionSummary = persistedSessions.map(row => ({ userIdMatches: String(row.user_id) === String(fixture.userId), active: !row.revoked_at && new Date(row.expires_at) > new Date() }));
+      assert.fail(`the login-issued cookies should restore the Supabase-backed session; HTTP ${session.status}; body=${responseText}; persisted sessions=${JSON.stringify(sessionSummary)}; server diagnostics:\n${serverDiagnostics.join('').slice(-4000)}`);
     }
     assert.equal((await json(session)).user.role, 'SUPER_ADMIN');
 

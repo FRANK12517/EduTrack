@@ -59,12 +59,12 @@ async function run() {
   try {
     fixture = await createSuperAdminFixture({ password: CURRENT_PASSWORD });
     const authTraceFile = path.join(TEST_DIR, 'server-auth-trace.cjs');
-    fs.writeFileSync(authTraceFile, "console.log('SUPER_ADMIN_TEST_RUNTIME db=' + Boolean(process.env.SUPABASE_DB_URL) + ' auth=' + Boolean(process.env.SUPABASE_URL) + ' anon=' + Boolean(process.env.SUPABASE_ANON_KEY));\nconst originalFetch = globalThis.fetch;\nglobalThis.fetch = async (...args) => {\n  const response = await originalFetch(...args);\n  try { const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url); if (url.pathname.includes('/auth/v1/')) console.log('SUPER_ADMIN_TEST_AUTH path=' + url.pathname.split('/').pop() + ' status=' + response.status + ' grant=' + (url.searchParams.get('grant_type') || 'none')); } catch {}\n  return response;\n};");
+    fs.writeFileSync(authTraceFile, "console.log('SUPER_ADMIN_TEST_RUNTIME db=' + Boolean(process.env.SUPABASE_DB_URL) + ' auth=' + Boolean(process.env.SUPABASE_URL) + ' anon=' + Boolean(process.env.SUPABASE_ANON_KEY));\nconst relational = require(process.cwd() + '/db/relational');\nconst originalHydrate = relational.hydrateAuthState;\nrelational.hydrateAuthState = async (db) => { await originalHydrate(db); const id = process.env.EDUTRACK_TEST_USER_ID; console.log('SUPER_ADMIN_TEST_HYDRATE mapped=' + db.users.some(user => user.id === id) + ' session=' + db.sessions.some(session => session.userId === id)); return db; };\nconst originalFetch = globalThis.fetch;\nglobalThis.fetch = async (...args) => {\n  const response = await originalFetch(...args);\n  try { const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url); if (url.pathname.includes('/auth/v1/')) console.log('SUPER_ADMIN_TEST_AUTH path=' + url.pathname.split('/').pop() + ' status=' + response.status + ' grant=' + (url.searchParams.get('grant_type') || 'none')); } catch {}\n  return response;\n};");
     const inheritedNodeOptions = String(process.env.NODE_OPTIONS || '').trim();
     const nodeOptions = `${inheritedNodeOptions}${inheritedNodeOptions ? ' ' : ''}--require "${authTraceFile}"`;
     server = spawn(process.execPath, ['server.js'], {
       cwd: ROOT,
-      env: { ...process.env, EDUTRACK_DATA_FILE: DB_FILE, PORT: String(PORT), NODE_ENV: 'development', NODE_OPTIONS: nodeOptions },
+      env: { ...process.env, EDUTRACK_DATA_FILE: DB_FILE, PORT: String(PORT), NODE_ENV: 'development', NODE_OPTIONS: nodeOptions, EDUTRACK_TEST_USER_ID: fixture.userId },
       stdio: ['ignore', 'pipe', 'pipe']
     });
     server.stdout.on('data', chunk => serverDiagnostics.push(chunk.toString()));
@@ -95,6 +95,8 @@ async function run() {
     assert.equal(Object.prototype.hasOwnProperty.call(loginPayload.user, 'passwordHash'), false);
     for (const cookieName of ['edutrack_session=', 'edutrack_supabase_access=', 'edutrack_supabase_refresh=']) {
       assert.ok(sessionCookie.includes(cookieName), `login must issue ${cookieName} cookie`);
+      const pair = sessionCookie.split('; ').find(value => value.startsWith(cookieName));
+      assert.ok(pair && pair.length > cookieName.length, `login must issue a non-empty ${cookieName} value`);
     }
 
     const session = await request('/api/auth/session', { headers: { cookie: sessionCookie } });

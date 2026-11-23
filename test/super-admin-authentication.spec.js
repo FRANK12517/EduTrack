@@ -59,7 +59,7 @@ async function run() {
   try {
     fixture = await createSuperAdminFixture({ password: CURRENT_PASSWORD });
     const authTraceFile = path.join(TEST_DIR, 'server-auth-trace.cjs');
-    fs.writeFileSync(authTraceFile, "console.log('SUPER_ADMIN_TEST_RUNTIME db=' + Boolean(process.env.SUPABASE_DB_URL) + ' auth=' + Boolean(process.env.SUPABASE_URL) + ' anon=' + Boolean(process.env.SUPABASE_ANON_KEY));\nconst originalFetch = globalThis.fetch;\nglobalThis.fetch = async (...args) => {\n  const response = await originalFetch(...args);\n  try { const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url); if (url.pathname.endsWith('/auth/v1/token')) console.log('SUPER_ADMIN_TEST_AUTH status=' + response.status + ' grant=' + url.searchParams.get('grant_type')); } catch {}\n  return response;\n};");
+    fs.writeFileSync(authTraceFile, "console.log('SUPER_ADMIN_TEST_RUNTIME db=' + Boolean(process.env.SUPABASE_DB_URL) + ' auth=' + Boolean(process.env.SUPABASE_URL) + ' anon=' + Boolean(process.env.SUPABASE_ANON_KEY));\nconst originalFetch = globalThis.fetch;\nglobalThis.fetch = async (...args) => {\n  const response = await originalFetch(...args);\n  try { const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url); if (url.pathname.includes('/auth/v1/')) console.log('SUPER_ADMIN_TEST_AUTH path=' + url.pathname.split('/').pop() + ' status=' + response.status + ' grant=' + (url.searchParams.get('grant_type') || 'none')); } catch {}\n  return response;\n};");
     const inheritedNodeOptions = String(process.env.NODE_OPTIONS || '').trim();
     const nodeOptions = `${inheritedNodeOptions}${inheritedNodeOptions ? ' ' : ''}--require "${authTraceFile}"`;
     server = spawn(process.execPath, ['server.js'], {
@@ -98,7 +98,10 @@ async function run() {
     }
 
     const session = await request('/api/auth/session', { headers: { cookie: sessionCookie } });
-    assert.equal(session.status, 200);
+    if (session.status !== 200) {
+      const responseText = await session.text();
+      assert.fail(`the login-issued cookies should restore the Supabase-backed session; HTTP ${session.status}; body=${responseText}; server diagnostics:\n${serverDiagnostics.join('').slice(-4000)}`);
+    }
     assert.equal((await json(session)).user.role, 'SUPER_ADMIN');
 
     const changed = await request('/api/auth/password-change', {

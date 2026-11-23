@@ -55,13 +55,20 @@ async function run() {
   let fixture;
   let server;
   let auditSince;
+  const serverDiagnostics = [];
   try {
     fixture = await createSuperAdminFixture({ password: CURRENT_PASSWORD });
+    const authTraceFile = path.join(TEST_DIR, 'server-auth-trace.cjs');
+    fs.writeFileSync(authTraceFile, "console.log('SUPER_ADMIN_TEST_RUNTIME db=' + Boolean(process.env.SUPABASE_DB_URL) + ' auth=' + Boolean(process.env.SUPABASE_URL) + ' anon=' + Boolean(process.env.SUPABASE_ANON_KEY));\nconst originalFetch = globalThis.fetch;\nglobalThis.fetch = async (...args) => {\n  const response = await originalFetch(...args);\n  try { const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url); if (url.pathname.endsWith('/auth/v1/token')) console.log('SUPER_ADMIN_TEST_AUTH status=' + response.status + ' grant=' + url.searchParams.get('grant_type')); } catch {}\n  return response;\n};");
+    const inheritedNodeOptions = String(process.env.NODE_OPTIONS || '').trim();
+    const nodeOptions = `${inheritedNodeOptions}${inheritedNodeOptions ? ' ' : ''}--require "${authTraceFile}"`;
     server = spawn(process.execPath, ['server.js'], {
       cwd: ROOT,
-      env: { ...process.env, EDUTRACK_DATA_FILE: DB_FILE, PORT: String(PORT), NODE_ENV: 'development' },
+      env: { ...process.env, EDUTRACK_DATA_FILE: DB_FILE, PORT: String(PORT), NODE_ENV: 'development', NODE_OPTIONS: nodeOptions },
       stdio: ['ignore', 'pipe', 'pipe']
     });
+    server.stdout.on('data', chunk => serverDiagnostics.push(chunk.toString()));
+    server.stderr.on('data', chunk => serverDiagnostics.push(chunk.toString()));
     await waitForServer(server);
     auditSince = new Date(Date.now() - 1000).toISOString();
 
@@ -75,7 +82,10 @@ async function run() {
       method: 'POST', headers: { 'content-type': 'application/json', origin: BASE },
       body: JSON.stringify({ name: NAME, email: fixture.email, password: CURRENT_PASSWORD })
     });
-    assert.equal(login.status, 200, 'the server-side Super Administrator password should authenticate');
+    if (login.status !== 200) {
+      const responseText = await login.text();
+      assert.fail(`the server-side Super Administrator password should authenticate; HTTP ${login.status}; body=${responseText}; server diagnostics:\n${serverDiagnostics.join('').slice(-4000)}`);
+    }
     const sessionCookie = cookie(login);
     const loginPayload = await json(login);
     assert.equal(loginPayload.authenticated, true);
